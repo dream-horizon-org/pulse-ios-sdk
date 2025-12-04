@@ -1,30 +1,25 @@
-# Contributing
+# Contributing to Pulse iOS SDK
 
-We welcome your contributions to this project!
+We welcome your contributions to Pulse iOS SDK!
 
-Please read the [OpenTelemetry Contributor Guide][otel-contributor-guide]
-for general information on how to contribute including signing the Contributor License Agreement, the Code of Conduct, and Community Expectations.
+This repository is a fork of [OpenTelemetry-Swift](https://github.com/open-telemetry/opentelemetry-swift) with custom features like PulseKit. Contributions should align with our goals of providing a simplified, production-ready SDK for iOS applications.
 
 ## Before you begin
 
-### Specifications / Guidelines
+### Project Context
 
-As with other OpenTelemetry clients, opentelemetry-swift follows the
-[opentelemetry-specification][otel-specification] and the
-[library guidelines][otel-lib-guidelines].
+Pulse iOS SDK is built on top of OpenTelemetry-Swift and follows the [OpenTelemetry specification][otel-specification]. We maintain this fork to:
+- Add custom features like PulseKit
+- Provide simplified APIs for iOS developers
+- Stay in sync with upstream OpenTelemetry improvements
 
-### Focus on Capabilities, Not Structure Compliance
+### Code Style
 
-OpenTelemetry is an evolving specification, one where the desires and
-use cases are clear, but the method to satisfy those uses cases are not.
-
-As such, Contributions should provide functionality and behavior that
-conforms to the specification, but the interface and structure are flexible.
-
-It is preferable to have contributions follow the idioms of the language
-rather than conform to specific API names or argument patterns in the spec.
-
-For a deeper discussion, see: https://github.com/open-telemetry/opentelemetry-specification/issues/165
+Contributions should:
+- Follow Swift idioms and best practices
+- Maintain compatibility with OpenTelemetry specifications
+- Focus on simplicity and ease of use for iOS developers
+- Include appropriate tests and documentation
 
 ## Getting started
 
@@ -36,48 +31,63 @@ Fork the project on GitHub by clicking the `Fork` button at the top of the
 repository and clone your fork locally:
 
 ```sh
-git clone git@github.com:YOUR_GITHUB_NAME/opentelemetry-swift.git
+git clone git@github.com:YOUR_GITHUB_NAME/pulse-ios-sdk.git
 ```
 
 or
 ```sh
-git clone https://github.com/YOUR_GITHUB_NAME/opentelemetry-swift.git
+git clone https://github.com/YOUR_GITHUB_NAME/pulse-ios-sdk.git
 ```
 
-It can be helpful to add the `open-telemetry/opentelemetry-swift` repo as a
-remote so you can track changes (we're adding as `upstream` here):
+### Set up remotes
+
+It's helpful to add both the upstream OpenTelemetry-Swift repo and this repo as remotes:
 
 ```sh
-git remote add upstream git@github.com:open-telemetry/opentelemetry-swift.git
+# Add the original OpenTelemetry-Swift repo (for syncing upstream changes)
+git remote add opentelemetry https://github.com/open-telemetry/opentelemetry-swift.git
+
+# Add this repo as origin (if not already set)
+git remote set-url origin https://github.com/dream-horizon-org/pulse-ios-sdk.git
 ```
 
-or
-
-```sh
-git remote add upstream https://github.com/open-telemetry/opentelemetry-swift.git
-```
-
-For more detailed information on this workflow read the
-[GitHub Workflow][otel-github-workflow].
+This allows you to:
+- Sync upstream OpenTelemetry-Swift changes: `git fetch opentelemetry`
+- Track your contributions: `git push origin`
 
 ### Build
 
 Open `Package.swift` in Xcode and follow normal development process.
 
-To build from the command line you need `swift` version `5.0+`.
 
 ```sh
 swift build
+```
+
+To build specific targets:
+
+```sh
+# Build PulseKit only
+swift build --target PulseKit
+
+# Build for iOS
+make build-for-testing-ios
 ```
 
 ### Test
 
 Open `Package.swift` in Xcode and follow normal testing process.
 
-To test from the command line you need `swift` version `5.0+`.
+To test from the command line:
 
 ```sh
 swift test
+```
+
+To test for iOS:
+
+```sh
+make test-without-building-ios
 ```
 ### Linting
 #### SwiftLint
@@ -102,31 +112,43 @@ git checkout -b my-feature-branch
 ### Create a Pull Request
 
 You'll need to create a Pull Request once you've finished your work.
-The [Kubernetes GitHub Workflow][kube-github-workflow-pr] document has
-a significant section on PRs.
 
-Open the PR against the `open-telemetry/opentelemetry-swift repository.
+Open the PR against the `dream-horizon-org/pulse-ios-sdk` repository.
 
 Please put `[WIP]` in the title, or create it as a [`Draft`][github-draft] PR
 if the PR is not ready for review.
 
-#### Sign the Contributor License Agreement (CLA)
+#### PR Guidelines
 
-All PRs are automatically checked for a signed CLA. Your first PR fails this
-check if you haven't signed the [CNCF CLA][cncf-cla].
-
-The failed check displays a link to `details` which walks you through the
-process. Don't worry it's painless!
+- Provide a clear description of changes
+- Reference any related issues
+- Ensure all tests pass
+- Update documentation if needed
+- Keep PRs focused and reasonably sized
 
 ### Review and feedback
 
-PRs require a review from one or more of the [code owners](CODEOWNERS) before
-merge. You'll probably get some feedback from these fine folks which helps to
-make the project that much better. Respond to the feedback and work with your
-reviewer(s) to resolve any issues.
+PRs will be reviewed by maintainers. We appreciate your patience and will work with you to ensure your contribution fits well with the project goals. Respond to feedback and work with reviewers to resolve any issues.
 
-### Generating OTLP protobuf files
-Occasionally, the opentelemetry protocol's protobuf definitions are updated and need to be regenerated for the OTLP exporters. This is documentation on how to accomplish that for this project. Other projects can regenerate their otlp protobuf files using the [Open Telemetry build tools][build-tools].
+## Syncing with Upstream OpenTelemetry-Swift
+
+Since this is a fork, you may want to sync changes from upstream:
+
+```sh
+# Fetch upstream changes
+git fetch opentelemetry
+
+# Merge upstream main into your branch
+git merge opentelemetry/main --allow-unrelated-histories
+
+# Resolve any conflicts and commit
+```
+
+See our [issue tracking template](.github/ISSUE_TEMPLATE/) for monitoring upstream Swift 6.x migration progress.
+
+## Generating OTLP Protobuf Files
+
+Occasionally, the OpenTelemetry protocol's protobuf definitions are updated and need to be regenerated for the OTLP exporters. This section documents how to regenerate them for Pulse iOS SDK.
 
 #### Requirements
 - [protoc]
@@ -180,12 +202,17 @@ Replace the generated files in `Sources/Exporters/OpenTelemetryProtocolCommon/pr
 `trace.pb.swift`
 `trace_service.pb.swift`
 
-[cncf-cla]: https://identity.linuxfoundation.org/projects/cncf
+## Resources
+
+- [Pulse iOS SDK Repository](https://github.com/dream-horizon-org/pulse-ios-sdk)
+- [OpenTelemetry-Swift Repository](https://github.com/open-telemetry/opentelemetry-swift) - Upstream repository
+- [OpenTelemetry Specification][otel-specification]
+- [OpenTelemetry Community](https://github.com/open-telemetry/community)
+- [PulseKit Documentation](Sources/PulseKit/README.md)
+
+## Links
+
 [github-draft]: https://github.blog/2019-02-14-introducing-draft-pull-requests/
-[kube-github-workflow-pr]: https://github.com/kubernetes/community/blob/master/contributors/guide/github-workflow.md#7-create-a-pull-request
-[otel-contributor-guide]: https://github.com/open-telemetry/community/blob/master/CONTRIBUTING.md
-[otel-github-workflow]: https://github.com/open-telemetry/community/blob/master/CONTRIBUTING.md#github-workflow
-[otel-lib-guidelines]: https://github.com/open-telemetry/opentelemetry-specification/blob/master/specification/library-guidelines.md
 [otel-specification]: https://github.com/open-telemetry/opentelemetry-specification
 [grpc-swift]: https://github.com/grpc/grpc-swift
 [opentelemetry-proto]: https://github.com/open-telemetry/opentelemetry-proto
