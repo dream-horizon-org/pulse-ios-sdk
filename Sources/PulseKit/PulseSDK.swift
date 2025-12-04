@@ -67,7 +67,8 @@ public class PulseSDK {
             let installationContext = InstallationContext(
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
-                openTelemetry: openTelemetry
+                openTelemetry: openTelemetry,
+                endpointBaseUrl: endpointBaseUrl
             )
             installInstrumentations(config: config, ctx: installationContext)
 
