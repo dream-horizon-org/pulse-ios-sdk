@@ -1,8 +1,8 @@
-### OTLP Exporter Example
+### OTLP HTTP Exporter Example
 
-This example shows how to use [OTLP HTTP Exporter](https://github.com/open-telemetry/opentelemetry-swift/tree/main/Sources/Exporters/OpenTelemetryProtocol) to instrument a simple Swift application.
+This example shows how to use the OTLP HTTP Exporter to instrument a simple Swift application. This is part of [Pulse iOS SDK](https://github.com/dream-horizon-org/pulse-ios-sdk), which includes the full OpenTelemetry-Swift implementation.
 
-This example will export spans data using [OTLP HTTP Exporter ](https://github.com/open-telemetry/opentelemetry-swift/tree/main/Sources/Exporters/OpenTelemetryProtocol). It will use [proto format](https://github.com/open-telemetry/opentelemetry-proto).
+This example will export spans data using the OTLP HTTP Exporter. It will use [proto format](https://github.com/open-telemetry/opentelemetry-proto).
 
 
 ## Run the Application
@@ -49,8 +49,9 @@ This will create a service and spans with the name `my-swift-app`
 ## Useful links
 
 - For more information on OpenTelemetry, visit: <https://opentelemetry.io/>
-- For more information on trace, visit: <https://github.com/open-telemetry/opentelemetry-swift/tree/main/Sources/OpenTelemetrySdk/Trace>
-- For more information on metrics, visit: <https://github.com/open-telemetry/opentelemetry-swift/tree/main/Sources/OpenTelemetrySdk/Metrics>
+- For more information on Pulse iOS SDK, visit: <https://github.com/dream-horizon-org/pulse-ios-sdk>
+- For more information on trace, visit: <https://github.com/dream-horizon-org/pulse-ios-sdk/tree/main/Sources/OpenTelemetrySdk/Trace> (Note: This repository includes OpenTelemetry-Swift)
+- For more information on metrics, visit: <https://github.com/dream-horizon-org/pulse-ios-sdk/tree/main/Sources/OpenTelemetrySdk/Metrics> (Note: This repository includes OpenTelemetry-Swift)
 
 ## LICENSE
 
