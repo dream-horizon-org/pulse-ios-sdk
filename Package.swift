@@ -254,7 +254,8 @@ extension Package {
         .executable(name: "OTLPHTTPExporter", targets: ["OTLPHTTPExporter"]),
         .library(name: "SignPostIntegration", targets: ["SignPostIntegration"]),
         .library(name: "ResourceExtension", targets: ["ResourceExtension"]),
-        .library(name: "MetricKitInstrumentation", targets: ["MetricKitInstrumentation"])
+        .library(name: "MetricKitInstrumentation", targets: ["MetricKitInstrumentation"]),
+        .library(name: "PulseKit", targets: ["PulseKit"])
       ])
       targets.append(contentsOf: [
         .target(
@@ -406,6 +407,21 @@ extension Package {
             "PrometheusExporter"],
           path: "Examples/Prometheus Sample",
           exclude: ["README.md"]
+        ),
+        .target(
+          name: "PulseKit",
+          dependencies: [
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
+            "OpenTelemetryProtocolExporterHttp",
+            "ResourceExtension",
+            "Sessions",
+            "URLSessionInstrumentation",
+            "NetworkStatus",
+            "SignPostIntegration"
+          ],
+          path: "Sources/PulseKit"
         )
       ])
     #endif
