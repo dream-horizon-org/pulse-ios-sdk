@@ -58,7 +58,7 @@ public final class InteractionManager {
             
             startStateObservation()
         } catch {
-            print("[PulseSDK] Interaction: Failed to initialize - \(error.localizedDescription)")
+            print("[PulseKit] Interaction: Failed to initialize - \(error.localizedDescription)")
         }
     }
     

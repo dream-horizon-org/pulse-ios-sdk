@@ -39,7 +39,7 @@ Then add PulseKit to your target:
 import PulseKit
 
 // Initialize PulseKit in your AppDelegate or App struct
-PulseSDK.shared.initialize(endpointBaseUrl: "https://your-backend.com/otlp")
+PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com/otlp")
 ```
 
 That's it! PulseKit automatically instruments your network requests, tracks sessions, and sends telemetry data to your backend.

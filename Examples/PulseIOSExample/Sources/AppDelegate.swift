@@ -10,7 +10,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
         // Initialize with instrumentation configuration using DSL syntax
-        PulseSDK.shared.initialize(endpointBaseUrl: "http://127.0.0.1:4318")
+        PulseKit.shared.initialize(endpointBaseUrl: "http://127.0.0.1:4318")
         
         // Create window and root view controller
         window = UIWindow(frame: UIScreen.main.bounds)

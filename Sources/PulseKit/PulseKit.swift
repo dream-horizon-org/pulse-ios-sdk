@@ -8,10 +8,9 @@ import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
 import NetworkStatus
-import SignPostIntegration
 
-public class PulseSDK {
-    public static let shared = PulseSDK()
+public class PulseKit {
+    public static let shared = PulseKit()
 
     // Thread-safe initialization
     private let initializationQueue = DispatchQueue(label: "com.pulse.ios.sdk.initialization")
@@ -24,14 +23,14 @@ public class PulseSDK {
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseSDK.initialize")
+            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
         return otel.loggerProvider.get(instrumentationScopeName: "com.pulse.ios.sdk")
     }()
 
     private lazy var tracer: Tracer = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseSDK.initialize")
+            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
         return otel.tracerProvider.get(instrumentationName: "com.pulse.ios.sdk", instrumentationVersion: "1.0.0")
     }()
@@ -176,7 +175,7 @@ public class PulseSDK {
 
     public func trackEvent(
         name: String,
-        observedTimeStampInMs: Int64,
+        observedTimeStampInMs: Double,
         params: [String: Any?] = [:]
     ) {
         guard isInitialized else { return }
@@ -189,7 +188,7 @@ public class PulseSDK {
             attributes[key] = attributeValue(from: value)
         }
 
-        let observedDate = Date(timeIntervalSince1970: Double(observedTimeStampInMs) / 1000.0)
+        let observedDate = Date(timeIntervalSince1970: observedTimeStampInMs / 1000.0)
         logger.logRecordBuilder()
             .setObservedTimestamp(observedDate)
             .setBody(AttributeValue.string(name))
@@ -309,6 +308,17 @@ public class PulseSDK {
 
     public func getOpenTelemetry() -> OpenTelemetry? {
         return openTelemetry
+    }
+    
+    public func getOtelOrNull() -> OpenTelemetry? {
+        return openTelemetry
+    }
+    
+    public func getOtelOrThrow() -> OpenTelemetry {
+        guard let otel = openTelemetry else {
+            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+        }
+        return otel
     }
 
     public func isSDKInitialized() -> Bool {

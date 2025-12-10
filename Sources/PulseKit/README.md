@@ -10,7 +10,7 @@ The Pulse iOS SDK provides a simple, unified API for instrumenting iOS applicati
 import PulseKit
 
 // Initialize the SDK
-PulseSDK.shared.initialize(endpointBaseUrl: "https://your-backend.com")
+PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com")
 ```
 
 ## API Reference
@@ -29,7 +29,7 @@ Initializes the Pulse SDK with the specified configuration.
 
 **Example:**
 ```swift
-PulseSDK.shared.initialize(
+PulseKit.shared.initialize(
     endpointBaseUrl: "https://your-backend.com",
     endpointHeaders: [
         "Authorization": "Bearer your-token",
@@ -73,7 +73,7 @@ Tracks a custom event as a log record.
 **Example:**
 ```swift
 let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-PulseSDK.shared.trackEvent(
+PulseKit.shared.trackEvent(
     name: "user_action",
     observedTimeStampInMs: timestamp,
     params: [
@@ -100,7 +100,7 @@ Tracks a non-fatal error by name.
 **Example:**
 ```swift
 let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-PulseSDK.shared.trackNonFatal(
+PulseKit.shared.trackNonFatal(
     name: "api_error",
     observedTimeStampInMs: timestamp,
     params: [
@@ -126,7 +126,7 @@ do {
     let data = try JSONSerialization.jsonObject(with: jsonData)
 } catch {
     let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-    PulseSDK.shared.trackNonFatal(
+    PulseKit.shared.trackNonFatal(
         error: error,
         observedTimeStampInMs: timestamp,
         params: [
@@ -154,7 +154,7 @@ Creates a span, executes the provided action, and automatically ends the span.
 
 **Example:**
 ```swift
-let result = PulseSDK.shared.trackSpan(
+let result = PulseKit.shared.trackSpan(
     name: "database_query",
     params: [
         "query.type": "select",
@@ -178,7 +178,7 @@ Creates and starts a span. You must manually call `span.end()` when done.
 
 **Example:**
 ```swift
-let span = PulseSDK.shared.startSpan(
+let span = PulseKit.shared.startSpan(
     name: "api_request",
     params: ["endpoint": "/api/data"]
 )
@@ -198,7 +198,7 @@ Returns `true` if the SDK has been initialized, `false` otherwise.
 
 **Example:**
 ```swift
-if PulseSDK.shared.isSDKInitialized() {
+if PulseKit.shared.isSDKInitialized() {
     // SDK is ready to use
 }
 ```
@@ -209,7 +209,7 @@ Returns the underlying OpenTelemetry instance, or `nil` if not initialized. This
 
 **Example:**
 ```swift
-if let otel = PulseSDK.shared.getOpenTelemetry() {
+if let otel = PulseKit.shared.getOpenTelemetry() {
     // Access OpenTelemetry APIs directly
     let tracer = otel.tracerProvider.get(instrumentationName: "my-app")
     // ... use OpenTelemetry APIs

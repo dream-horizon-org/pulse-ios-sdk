@@ -24,7 +24,7 @@ Interactions are **server-configured event sequences** that the SDK tracks autom
 ### 1. Enable in SDK Initialization
 
 ```swift
-PulseSDK.shared.initialize(
+PulseKit.shared.initialize(
     endpointBaseUrl: "https://your-backend.com"
 ) { config in
     config.interaction { interactionConfig in
@@ -43,7 +43,7 @@ PulseSDK.shared.initialize(
 ### 2. Track Events
 
 ```swift
-PulseSDK.shared.trackEvent(
+PulseKit.shared.trackEvent(
     name: "cart_viewed",
     observedTimeStampInMs: Int64(Date().timeIntervalSince1970 * 1000),
     params: ["itemCount": 3]
@@ -129,7 +129,7 @@ class CheckoutViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        PulseSDK.shared.trackEvent(
+        PulseKit.shared.trackEvent(
             name: "cart_viewed",
             observedTimeStampInMs: timestamp
         )
@@ -137,7 +137,7 @@ class CheckoutViewController: UIViewController {
     
     func onPaymentSubmit() {
         let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        PulseSDK.shared.trackEvent(
+        PulseKit.shared.trackEvent(
             name: "payment_entered",
             observedTimeStampInMs: timestamp,
             params: ["paymentMethod": "credit_card"]
@@ -146,7 +146,7 @@ class CheckoutViewController: UIViewController {
     
     func onOrderSuccess(orderId: String) {
         let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        PulseSDK.shared.trackEvent(
+        PulseKit.shared.trackEvent(
             name: "order_placed",
             observedTimeStampInMs: timestamp,
             params: ["orderId": orderId]
@@ -173,7 +173,7 @@ Category: normal (5s < 12.5s < 15s)
 ### Data Flow
 
 ```
-PulseSDK.trackEvent() 
+PulseKit.trackEvent() 
   → OpenTelemetry Log
   → InteractionLogListener (LogRecordProcessor)
   → InteractionManager 

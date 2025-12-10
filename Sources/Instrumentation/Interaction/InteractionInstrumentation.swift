@@ -9,7 +9,7 @@ import OpenTelemetrySdk
 
 /// Interaction Instrumentation for tracking user flows across multiple events
 /// 
-/// This instrumentation listens to events tracked via PulseSDK.trackEvent() and matches them
+/// This instrumentation listens to events tracked via PulseKit.trackEvent() and matches them
 /// against server-configured interaction sequences. When a sequence completes, it creates
 /// an OpenTelemetry span with timing and event data.
 public class InteractionInstrumentation {

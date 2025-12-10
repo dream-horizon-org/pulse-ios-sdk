@@ -39,7 +39,7 @@ public class InteractionLogListener: LogRecordProcessor {
             return
         }
         
-        // Check if log body is a string (custom event from PulseSDK.trackEvent())
+        // Check if log body is a string (custom event from PulseKit.trackEvent())
         if case .string(let eventName) = logRecord.body {
             
             // Extract attributes as params

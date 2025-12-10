@@ -149,7 +149,7 @@ class MainViewController: UIViewController {
     @objc private func trackEventTapped() {
         print("trackEventTapped pressed")
         let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        PulseSDK.shared.trackEvent(
+        PulseKit.shared.trackEvent(
             name: "tract_custom_event",
             observedTimeStampInMs: timestamp,
             params: [
@@ -171,7 +171,7 @@ class MainViewController: UIViewController {
         } catch {
             // Track the caught error as a non-fatal error
             let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-            PulseSDK.shared.trackNonFatal(
+            PulseKit.shared.trackNonFatal(
                 error: error,
                 observedTimeStampInMs: timestamp,
                 params: [
@@ -184,7 +184,7 @@ class MainViewController: UIViewController {
     }
     
     @objc private func trackSpanTapped() {
-        let result = PulseSDK.shared.trackSpan(
+        let result = PulseKit.shared.trackSpan(
             name: "track_span",
             params: [
                 "action": "track_span",
@@ -200,7 +200,7 @@ class MainViewController: UIViewController {
     
     @objc private func startSpanTapped() {
         print("startSpanTapped")
-        let span = PulseSDK.shared.startSpan(
+        let span = PulseKit.shared.startSpan(
             name: "manual_created_span",
             params: [
                 "action": "start_span_1",
@@ -238,7 +238,7 @@ class MainViewController: UIViewController {
     @objc private func event1Tapped() {
         print("event1Tapped - Triggering event1")
         let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        PulseSDK.shared.trackEvent(
+        PulseKit.shared.trackEvent(
             name: "event1",
             observedTimeStampInMs: timestamp,
             params: [
@@ -252,7 +252,7 @@ class MainViewController: UIViewController {
     @objc private func event2Tapped() {
         print("event2Tapped - Triggering event2")
         let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        PulseSDK.shared.trackEvent(
+        PulseKit.shared.trackEvent(
             name: "event2",
             observedTimeStampInMs: timestamp,
             params: [

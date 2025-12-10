@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Interaction Instrumentation tracks user flows (sequences of events) in an application. It matches events tracked via `PulseSDK.trackEvent()` against server-configured interaction sequences. When a sequence completes, it creates an OpenTelemetry span with timing and event data.
+The Interaction Instrumentation tracks user flows (sequences of events) in an application. It matches events tracked via `PulseKit.trackEvent()` against server-configured interaction sequences. When a sequence completes, it creates an OpenTelemetry span with timing and event data.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ The Interaction Instrumentation tracks user flows (sequences of events) in an ap
 ### Data Flow
 
 ```
-User Event (PulseSDK.trackEvent())
+User Event (PulseKit.trackEvent())
     ↓
 InteractionLogListener (LogRecordProcessor)
     ↓
@@ -40,10 +40,10 @@ createInteractionSpan() → OpenTelemetry Span
 
 ## Initialization Flow
 
-### 1. SDK Initialization (`PulseSDK.initialize`)
+### 1. SDK Initialization (`PulseKit.initialize`)
 
 ```
-PulseSDK.shared.initialize {
+PulseKit.shared.initialize {
     $0.interaction {
         $0.enabled(true)
         $0.setConfigUrl { "http://..." }
@@ -53,7 +53,7 @@ PulseSDK.shared.initialize {
 
 **Steps:**
 1. User configures interaction instrumentation via DSL
-2. `PulseSDK.initialize()` creates `InteractionInstrumentation` instance early (if enabled)
+2. `PulseKit.initialize()` creates `InteractionInstrumentation` instance early (if enabled)
    - Instance is stored statically via `sharedInstance`
    - This allows processors to access it later
 3. `InteractionInstrumentationConfig.initialize()` is called
@@ -217,10 +217,10 @@ Checks if "network" matches any interaction config
 
 ## Event Flow (When User Taps Event)
 
-### Example: User calls `PulseSDK.shared.trackEvent(name: "event1", ...)`
+### Example: User calls `PulseKit.shared.trackEvent(name: "event1", ...)`
 
 ```
-1. PulseSDK.trackEvent()
+1. PulseKit.trackEvent()
    ↓
    logger.logRecordBuilder()
        .setBody(AttributeValue.string("event1"))
@@ -466,11 +466,11 @@ InteractionInstrumentationConfiguration(
 ### Check if Events Are Being Captured
 
 1. Verify `InteractionLogListener` is registered:
-   - Check `PulseSDK.initialize` logs
+   - Check `PulseKit.initialize` logs
    - Ensure interaction is enabled
 
 2. Check if Manager is Initialized:
-   - Look for `[PulseSDK] Interaction: Failed to initialize` logs
+   - Look for `[PulseKit] Interaction: Failed to initialize` logs
    - Verify configs are fetched (check tracker count)
 
 3. Check Event Flow:

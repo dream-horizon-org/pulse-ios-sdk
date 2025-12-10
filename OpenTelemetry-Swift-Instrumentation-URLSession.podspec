@@ -16,10 +16,10 @@ Pod::Spec.new do |spec|
   spec.tvos.deployment_target = "13.0"
   spec.watchos.deployment_target = "6.0"
   spec.visionos.deployment_target = "1.0"
-  spec.module_name = "URLSession"
+  spec.module_name = "URLSessionInstrumentation"
 
   spec.dependency 'OpenTelemetry-Swift-Instrumentation-NetworkStatus', spec.version.to_s
   spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
-  spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name URLSession -package-name opentelemetry_swift_urlsession" }
+  spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name URLSessionInstrumentation -package-name opentelemetry_swift_urlsession" }
 
 end
