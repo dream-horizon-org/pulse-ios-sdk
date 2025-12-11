@@ -100,8 +100,9 @@ internal enum InteractionUtil {
                     }
                 }
             } else if configEvent.isBlacklisted {
+                // Skip the blacklisted config event, but keep checking the current local event
+                // against the next config event
                 configEventIndex += 1
-                localEventIndex += 1
                 continue
             } else if isMatchOnGoing {
                 isMatchOnGoing = false

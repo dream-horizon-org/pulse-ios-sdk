@@ -410,6 +410,14 @@ extension Package {
           ],
           path: "Tests/InstrumentationTests/MetricKitTests"
         ),
+        .testTarget(
+          name: "InteractionInstrumentationTests",
+          dependencies: [
+            "InteractionInstrumentation",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/InteractionTests"
+        ),
         .executableTarget(
           name: "PrometheusSample",
           dependencies: [

@@ -75,8 +75,8 @@ internal final class InteractionEventsTracker {
             isInteractionClosed = nil
             interactionId = UUID().uuidString
         } else {
-            if case .ongoingMatch(let ongoing) = interactionRunningStatus {
-                interactionId = ongoing.interactionId
+            if case .ongoingMatch(_, let ongoingId, _, _) = interactionRunningStatus {
+                interactionId = ongoingId
             } else {
                 interactionId = UUID().uuidString
             }
@@ -148,7 +148,7 @@ internal final class InteractionEventsTracker {
     
     /// Insert event into sorted list (by timeInNano)
     private func insertEventSorted(_ event: InteractionLocalEvent) {
-        let index = localEvents.firstIndex { $0.timeInNano > event.timeInNano } ?? localEvents.count
+        let index = localEvents.firstIndex { $0.timeInNano >= event.timeInNano } ?? localEvents.count
         localEvents.insert(event, at: index)
     }
     
@@ -156,27 +156,41 @@ internal final class InteractionEventsTracker {
     private func launchResetTimer(_ newValue: InteractionRunningStatus) {
         // Cancel existing timer
         timerTask?.cancel()
+        timerTask = nil
         
         // Only start timer for ongoing matches without completed interaction
         if case .ongoingMatch(let ongoing) = newValue, ongoing.interaction == nil {
-            let timeOfDelay = interactionConfig.thresholdInMs + 10 // Add small buffer
+            let timeOfDelay = interactionConfig.thresholdInMs + 10
+            let timerInteractionId = ongoing.interactionId
             
-            timerTask = Task {
-                try? await Task.sleep(nanoseconds: UInt64(timeOfDelay) * 1_000_000)
+            timerTask = Task { [weak self] in
+                guard let self = self else { return }
                 
-                // Check if still ongoing and not completed
-                if case .ongoingMatch(let current) = interactionRunningStatus,
-                   current.interaction == nil {
-                    // Create error interaction
-                    let errorStatus = createErrorInteraction(
+                let delayNanoseconds = UInt64(timeOfDelay) * 1_000_000
+                
+                guard !Task.isCancelled else { return }
+                
+                do {
+                    try await Task.sleep(nanoseconds: delayNanoseconds)
+                } catch {
+                    return
+                }
+                
+                guard !Task.isCancelled else { return }
+                
+                if case .ongoingMatch(let current) = self.interactionRunningStatus,
+                   current.interaction == nil,
+                   current.interactionId == timerInteractionId {
+                    let errorStatus = self.createErrorInteraction(
                         interactionId: current.interactionId,
-                        interactionConfig: interactionConfig,
-                        localEvents: localEvents,
-                        localMarkers: localMarkers
+                        interactionConfig: self.interactionConfig,
+                        localEvents: self.localEvents,
+                        localMarkers: self.localMarkers
                     )
-                    interactionRunningStatus = errorStatus
-                    isInteractionClosed = true
-                    localEvents.removeAll()
+                    
+                    self.isInteractionClosed = true
+                    self.interactionRunningStatus = errorStatus
+                    self.localEvents.removeAll()
                 }
             }
         }
