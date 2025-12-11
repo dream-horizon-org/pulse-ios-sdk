@@ -5,7 +5,7 @@ import Foundation
 import PackageDescription
 
 let package = Package(
-  name: "opentelemetry-swift",
+  name: "pulse-ios-sdk",
   platforms: [
     .macOS(.v12),
     .iOS(.v13),
