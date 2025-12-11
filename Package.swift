@@ -5,7 +5,7 @@ import Foundation
 import PackageDescription
 
 let package = Package(
-  name: "opentelemetry-swift",
+  name: "pulse-ios-sdk",
   platforms: [
     .macOS(.v12),
     .iOS(.v13),
@@ -249,6 +249,7 @@ extension Package {
         .executable(name: "simpleExporter", targets: ["SimpleExporter"]),
         .library(name: "NetworkStatus", targets: ["NetworkStatus"]),
         .library(name: "URLSessionInstrumentation", targets: ["URLSessionInstrumentation"]),
+        .library(name: "InteractionInstrumentation", targets: ["InteractionInstrumentation"]),
         .library(name: "ZipkinExporter", targets: ["ZipkinExporter"]),
         .executable(name: "OTLPExporter", targets: ["OTLPExporter"]),
         .executable(name: "OTLPHTTPExporter", targets: ["OTLPHTTPExporter"]),
@@ -316,6 +317,15 @@ extension Package {
             "SharedTestUtils",
           ],
           path: "Tests/InstrumentationTests/URLSessionTests"
+        ),
+        .target(
+          name: "InteractionInstrumentation",
+          dependencies: [
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Sources/Instrumentation/Interaction",
+          exclude: ["README.md"]
         ),
         .executableTarget(
           name: "NetworkSample",
@@ -400,6 +410,14 @@ extension Package {
           ],
           path: "Tests/InstrumentationTests/MetricKitTests"
         ),
+        .testTarget(
+          name: "InteractionInstrumentationTests",
+          dependencies: [
+            "InteractionInstrumentation",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/InteractionTests"
+        ),
         .executableTarget(
           name: "PrometheusSample",
           dependencies: [
@@ -419,7 +437,8 @@ extension Package {
             "Sessions",
             "URLSessionInstrumentation",
             "NetworkStatus",
-            "SignPostIntegration"
+            "SignPostIntegration",
+            "InteractionInstrumentation"
           ],
           path: "Sources/PulseKit"
         )

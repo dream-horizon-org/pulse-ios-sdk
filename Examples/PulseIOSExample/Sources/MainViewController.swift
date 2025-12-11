@@ -93,6 +93,31 @@ class MainViewController: UIViewController {
         
         stackView.addArrangedSubview(createSeparator())
         
+        // Interaction Testing Section
+        let interactionHeaderLabel = UILabel()
+        interactionHeaderLabel.text = "Interaction Testing"
+        interactionHeaderLabel.font = .systemFont(ofSize: 18, weight: .semibold)
+        interactionHeaderLabel.textAlignment = .center
+        stackView.addArrangedSubview(interactionHeaderLabel)
+        
+        // Event1 Button
+        let event1Button = createButton(
+            title: "Trigger Event1",
+            action: #selector(event1Tapped)
+        )
+        event1Button.backgroundColor = .systemGreen
+        stackView.addArrangedSubview(event1Button)
+        
+        // Event2 Button
+        let event2Button = createButton(
+            title: "Trigger Event2",
+            action: #selector(event2Tapped)
+        )
+        event2Button.backgroundColor = .systemOrange
+        stackView.addArrangedSubview(event2Button)
+        
+        stackView.addArrangedSubview(createSeparator())
+        
         // Status Label
         let statusLabel = UILabel()
         statusLabel.text = "SDK Status: Initialized"
@@ -123,8 +148,8 @@ class MainViewController: UIViewController {
     
     @objc private func trackEventTapped() {
         print("trackEventTapped pressed")
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-        PulseSDK.shared.trackEvent(
+        let timestamp = Date().timeIntervalSince1970 * 1000
+        PulseKit.shared.trackEvent(
             name: "tract_custom_event",
             observedTimeStampInMs: timestamp,
             params: [
@@ -146,7 +171,7 @@ class MainViewController: UIViewController {
         } catch {
             // Track the caught error as a non-fatal error
             let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-            PulseSDK.shared.trackNonFatal(
+            PulseKit.shared.trackNonFatal(
                 error: error,
                 observedTimeStampInMs: timestamp,
                 params: [
@@ -159,7 +184,7 @@ class MainViewController: UIViewController {
     }
     
     @objc private func trackSpanTapped() {
-        let result = PulseSDK.shared.trackSpan(
+        let result = PulseKit.shared.trackSpan(
             name: "track_span",
             params: [
                 "action": "track_span",
@@ -175,7 +200,7 @@ class MainViewController: UIViewController {
     
     @objc private func startSpanTapped() {
         print("startSpanTapped")
-        let span = PulseSDK.shared.startSpan(
+        let span = PulseKit.shared.startSpan(
             name: "manual_created_span",
             params: [
                 "action": "start_span_1",
@@ -208,6 +233,34 @@ class MainViewController: UIViewController {
             }
         }
         task.resume()
+    }
+    
+    @objc private func event1Tapped() {
+        print("event1Tapped - Triggering event1")
+        let timestamp = Date().timeIntervalSince1970 * 1000
+        PulseKit.shared.trackEvent(
+            name: "event1",
+            observedTimeStampInMs: timestamp,
+            params: [
+                "source": "interaction_test",
+                "button": "event1_button"
+            ]
+        )
+        showAlert(title: "Event1 Triggered", message: "Event 'event1' has been tracked. Trigger 'event2' to complete the interaction sequence.")
+    }
+    
+    @objc private func event2Tapped() {
+        print("event2Tapped - Triggering event2")
+        let timestamp = Date().timeIntervalSince1970 * 1000
+        PulseKit.shared.trackEvent(
+            name: "event2",
+            observedTimeStampInMs: timestamp,
+            params: [
+                "source": "interaction_test",
+                "button": "event2_button"
+            ]
+        )
+        showAlert(title: "Event2 Triggered", message: "Event 'event2' has been tracked. If 'event1' was triggered first, the interaction sequence should be complete!")
     }
     
     private func showAlert(title: String, message: String) {

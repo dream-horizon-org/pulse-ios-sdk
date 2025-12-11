@@ -50,17 +50,57 @@ jobs:
     - name: Test for iOS
       run: make test-without-building-ios
   
+  ExampleApp:
+    needs: should-run
+    if: ${{ needs.should-run.outputs.should-run == 'true' }}
+    runs-on: macos-15
+    steps:
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+    - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+      with:
+        xcode-version: 16.4
+    - name: Install dependencies
+      run: |
+        brew install xcodegen
+        brew install xcbeautify || true
+    - name: Generate Xcode project
+      working-directory: Examples/PulseIOSExample
+      run: xcodegen generate
+    - name: Build Example App
+      working-directory: Examples/PulseIOSExample
+      run: |
+        set -o pipefail
+        if command -v xcbeautify &> /dev/null; then
+          xcodebuild \
+            -project PulseIOSExample.xcodeproj \
+            -scheme PulseIOSExample \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -derivedDataPath ./build \
+            build | xcbeautify
+        else
+          xcodebuild \
+            -project PulseIOSExample.xcodeproj \
+            -scheme PulseIOSExample \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -derivedDataPath ./build \
+            build
+        fi
+  
   required-status-checks:
     needs: 
       - SwiftLint
       - iOS
+      - ExampleApp
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check if all required jobs passed
         run: |
           if [[ ${{ needs.SwiftLint.result }} == 'failure' || \
-          ${{ needs.iOS.result }} == 'failure' ]]; then
+          ${{ needs.iOS.result }} == 'failure' || \
+          ${{ needs.ExampleApp.result }} == 'failure' ]]; then
             echo "One or more required jobs failed. Failing the workflow."
             exit 1
           else

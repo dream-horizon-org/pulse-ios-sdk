@@ -1,14 +1,14 @@
 Pod::Spec.new do |spec|
-  spec.name = "OpenTelemetry-Swift-Instrumentation-MetricKit"
-  spec.version = "2.2.0"
+  spec.name = "Pulse-Swift-Instrumentation-MetricKit"
+  spec.version = "0.0.1"
   spec.summary = "Swift OpenTelemetry MetricKit Instrumentation"
 
-  spec.homepage = "https://github.com/open-telemetry/opentelemetry-swift"
-  spec.documentation_url = "https://opentelemetry.io/docs/languages/swift"
+  spec.homepage = "https://github.com/dream-horizon-org/pulse-ios-sdk"
+  spec.documentation_url = "https://pulse.dreamhorizon.org/docs/sdk/ios"
   spec.license = { :type => "Apache 2.0", :file => "LICENSE" }
-  spec.authors = "OpenTelemetry Authors"
+  spec.authors = "Pulse iOS SDK Authors"
 
-  spec.source = { :git => "https://github.com/open-telemetry/opentelemetry-swift.git", :tag => spec.version.to_s }
+  spec.source = { :git => "https://github.com/dream-horizon-org/pulse-ios-sdk.git", :tag => spec.version.to_s }
   spec.source_files = "Sources/Instrumentation/MetricKit/*.swift"
   spec.exclude_files = "Sources/Instrumentation/MetricKit/README.md"
 
@@ -19,7 +19,7 @@ Pod::Spec.new do |spec|
   spec.visionos.deployment_target = "1.0"
   spec.module_name = "MetricKitInstrumentation"
 
-  spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.1.1'
+  spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name MetricKitInstrumentation -package-name opentelemetry_swift_metrickit_instrumentation" }
 
 end

@@ -1,16 +1,16 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+import InteractionInstrumentation
 import OpenTelemetryProtocolExporterHttp
 import StdoutExporter
 import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
 import NetworkStatus
-import SignPostIntegration
 
-public class PulseSDK {
-    public static let shared = PulseSDK()
+public class PulseKit {
+    public static let shared = PulseKit()
 
     // Thread-safe initialization
     private let initializationQueue = DispatchQueue(label: "com.pulse.ios.sdk.initialization")
@@ -23,14 +23,14 @@ public class PulseSDK {
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseSDK.initialize")
+            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
         return otel.loggerProvider.get(instrumentationScopeName: "com.pulse.ios.sdk")
     }()
 
     private lazy var tracer: Tracer = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseSDK.initialize")
+            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
         return otel.tracerProvider.get(instrumentationName: "com.pulse.ios.sdk", instrumentationVersion: "1.0.0")
     }()
@@ -60,14 +60,15 @@ public class PulseSDK {
                 endpointBaseUrl: endpointBaseUrl,
                 endpointHeaders: endpointHeaders,
                 resource: resource,
-                sessionsConfig: config.sessions
+                config: config
             )
 
             // Install instrumentations
             let installationContext = InstallationContext(
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
-                openTelemetry: openTelemetry
+                openTelemetry: openTelemetry,
+                endpointBaseUrl: endpointBaseUrl
             )
             installInstrumentations(config: config, ctx: installationContext)
 
@@ -93,7 +94,7 @@ public class PulseSDK {
         endpointBaseUrl: String,
         endpointHeaders: [String: String]?,
         resource: Resource,
-        sessionsConfig: SessionsInstrumentationConfig
+        config: InstrumentationConfiguration
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
         // Convert headers to exporter format [(String, String)]?
         let envVarHeaders: [(String, String)]? = endpointHeaders?.map { ($0.key, $0.value) }
@@ -110,11 +111,11 @@ public class PulseSDK {
         let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
         let baseLogProcessor = SimpleLogRecordProcessor(logRecordExporter: otlpHttpLogExporter)
 
-        // Build processors (including Sessions if enabled)
+        // Build processors (including Sessions and Interaction if enabled)
         let (spanProcessors, logProcessors) = buildProcessors(
             baseSpanProcessor: spanProcessor,
             baseLogProcessor: baseLogProcessor,
-            sessionsConfig: sessionsConfig
+            config: config
         )
 
         // Build providers
@@ -144,18 +145,20 @@ public class PulseSDK {
     private func buildProcessors(
         baseSpanProcessor: SpanProcessor,
         baseLogProcessor: LogRecordProcessor,
-        sessionsConfig: SessionsInstrumentationConfig
+        config: InstrumentationConfiguration
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         var spanProcessors: [SpanProcessor] = [baseSpanProcessor]
-        var logProcessors: [LogRecordProcessor]
+        var logProcessors: [LogRecordProcessor] = [baseLogProcessor]
 
-        // Sessions instrumentation requires processors to be added during provider construction
-        // (before providers are built, unlike other instrumentations that use InstallationContext)
-        if let sessionsProcessors = sessionsConfig.createProcessors(baseLogProcessor: baseLogProcessor) {
+        if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: baseLogProcessor) {
             spanProcessors.append(sessionsProcessors.spanProcessor)
             logProcessors = [sessionsProcessors.logProcessor]
-        } else {
-            logProcessors = [baseLogProcessor]
+        }
+        
+        if config.interaction.enabled,
+           let interactionLogProcessor = config.interaction.createLogProcessor(baseLogProcessor: logProcessors.last ?? baseLogProcessor) {
+            // Wrap the last processor in the chain
+            logProcessors = logProcessors.dropLast() + [interactionLogProcessor]
         }
 
         return (spanProcessors, logProcessors)
@@ -172,7 +175,7 @@ public class PulseSDK {
 
     public func trackEvent(
         name: String,
-        observedTimeStampInMs: Int64,
+        observedTimeStampInMs: Double,
         params: [String: Any?] = [:]
     ) {
         guard isInitialized else { return }
@@ -185,7 +188,7 @@ public class PulseSDK {
             attributes[key] = attributeValue(from: value)
         }
 
-        let observedDate = Date(timeIntervalSince1970: Double(observedTimeStampInMs) / 1000.0)
+        let observedDate = Date(timeIntervalSince1970: observedTimeStampInMs / 1000.0)
         logger.logRecordBuilder()
             .setObservedTimestamp(observedDate)
             .setBody(AttributeValue.string(name))
@@ -305,6 +308,17 @@ public class PulseSDK {
 
     public func getOpenTelemetry() -> OpenTelemetry? {
         return openTelemetry
+    }
+    
+    public func getOtelOrNull() -> OpenTelemetry? {
+        return openTelemetry
+    }
+    
+    public func getOtelOrThrow() -> OpenTelemetry {
+        guard let otel = openTelemetry else {
+            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+        }
+        return otel
     }
 
     public func isSDKInitialized() -> Bool {

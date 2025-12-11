@@ -13,4 +13,6 @@ internal struct InstallationContext {
     let loggerProvider: LoggerProvider
 
     let openTelemetry: OpenTelemetry
+    
+    let endpointBaseUrl: String
 }
