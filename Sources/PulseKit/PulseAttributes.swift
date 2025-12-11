@@ -7,7 +7,22 @@ public enum PulseAttributes {
     public static let pulseSpanId = "pulse.span.id"
 
     public enum PulseTypeValues {
+        // Custom events
         public static let customEvent = "custom_event"
         public static let nonFatal = "non_fatal"
+        
+        // Span types
+        public static let network = "network"
+        public static let screenLoad = "screen_load"
+        public static let appStart = "app_start"
+        public static let screenSession = "screen_session"
+        
+        // Log types
+        public static let crash = "crash"
+        public static let anr = "anr"
+        public static let frozen = "frozen"
+        public static let slow = "slow"
+        public static let touch = "touch"
+        public static let networkChange = "network_change"
     }
 }

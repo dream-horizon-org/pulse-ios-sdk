@@ -3,7 +3,6 @@ import OpenTelemetryApi
 import OpenTelemetrySdk
 import InteractionInstrumentation
 import OpenTelemetryProtocolExporterHttp
-import StdoutExporter
 import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
@@ -20,6 +19,10 @@ public class PulseKit {
     }
 
     private var openTelemetry: OpenTelemetry?
+    
+    internal let userPropertiesQueue = DispatchQueue(label: "com.pulse.ios.sdk.userProperties")
+    internal var _userId: String?
+    internal var _userProperties: [String: Any] = [:]
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
@@ -82,6 +85,20 @@ public class PulseKit {
     private func buildResource(globalAttributes: [String: String]?) -> Resource {
         let resource = DefaultResources().get()
         var resourceAttributes = resource.attributes
+        
+        userPropertiesQueue.sync {
+            if !_userProperties.isEmpty {
+                for (key, value) in _userProperties {
+                    let attributeKey = "pulse.user.\(key)"
+                    resourceAttributes[attributeKey] = AttributeValue.string(String(describing: value))
+                }
+            }
+            
+            if let currentUserId = _userId {
+                resourceAttributes["user.id"] = AttributeValue.string(currentUserId)
+            }
+        }
+        
         if let globalAttributes = globalAttributes {
             for (key, value) in globalAttributes {
                 resourceAttributes[key] = AttributeValue.string(value)
@@ -104,8 +121,7 @@ public class PulseKit {
         let logsEndpoint = URL(string: "\(endpointBaseUrl)/v1/logs")!
         let otlpHttpTraceExporter = OtlpHttpTraceExporter(endpoint: tracesEndpoint, envVarHeaders: envVarHeaders)
         let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
-        let stdoutSpanExporter = StdoutSpanExporter()
-        let spanExporter = MultiSpanExporter(spanExporters: [otlpHttpTraceExporter, stdoutSpanExporter])
+        let spanExporter = otlpHttpTraceExporter
 
         // Build base processors
         let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
@@ -147,17 +163,27 @@ public class PulseKit {
         baseLogProcessor: LogRecordProcessor,
         config: InstrumentationConfiguration
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
-        var spanProcessors: [SpanProcessor] = [baseSpanProcessor]
-        var logProcessors: [LogRecordProcessor] = [baseLogProcessor]
+        let pulseSignalProcessor = PulseSignalProcessor()
+        
+        let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
+        let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
+            pulseKit: self,
+            nextProcessor: baseLogProcessor
+        )
+        
+        let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
+        var spanProcessors: [SpanProcessor] = [globalAttributesSpanProcessor, pulseSpanProcessor, baseSpanProcessor]
+        
+        let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: globalAttributesLogProcessor)
+        var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
-        if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: baseLogProcessor) {
+        if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
             spanProcessors.append(sessionsProcessors.spanProcessor)
             logProcessors = [sessionsProcessors.logProcessor]
         }
         
         if config.interaction.enabled,
-           let interactionLogProcessor = config.interaction.createLogProcessor(baseLogProcessor: logProcessors.last ?? baseLogProcessor) {
-            // Wrap the last processor in the chain
+           let interactionLogProcessor = config.interaction.createLogProcessor(baseLogProcessor: logProcessors.last ?? pulseLogProcessor) {
             logProcessors = logProcessors.dropLast() + [interactionLogProcessor]
         }
 
@@ -288,7 +314,7 @@ public class PulseKit {
         return span
     }
 
-    private func attributeValue(from value: Any?) -> AttributeValue? {
+    internal func attributeValue(from value: Any?) -> AttributeValue? {
         guard let value = value else { return nil }
 
         if let string = value as? String {
@@ -324,4 +350,39 @@ public class PulseKit {
     public func isSDKInitialized() -> Bool {
         return isInitialized
     }
+    
+    // MARK: - User Properties
+    
+    /// Set the user ID for all telemetry data
+    /// - Parameter id: The user ID (set to `nil` to clear)
+    public func setUserId(_ id: String?) {
+        userPropertiesQueue.sync {
+            _userId = id
+        }
+    }
+    
+    public func setUserProperty(name: String, value: Any?) {
+        userPropertiesQueue.sync {
+            if let value = value {
+                _userProperties[name] = value
+            } else {
+                _userProperties.removeValue(forKey: name)
+            }
+        }
+    }
+    
+    public func setUserProperties(_ properties: [String: Any]) {
+        userPropertiesQueue.sync {
+            for (key, value) in properties {
+                _userProperties[key] = value
+            }
+        }
+    }
+    
+    public func setUserProperties(_ builderAction: (inout [String: Any]) -> Void) {
+        var properties: [String: Any] = [:]
+        builderAction(&properties)
+        setUserProperties(properties)
+    }
+    
 }
