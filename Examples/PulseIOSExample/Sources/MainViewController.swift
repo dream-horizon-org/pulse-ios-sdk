@@ -148,7 +148,7 @@ class MainViewController: UIViewController {
     
     @objc private func trackEventTapped() {
         print("trackEventTapped pressed")
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let timestamp = Date().timeIntervalSince1970 * 1000
         PulseKit.shared.trackEvent(
             name: "tract_custom_event",
             observedTimeStampInMs: timestamp,
@@ -237,7 +237,7 @@ class MainViewController: UIViewController {
     
     @objc private func event1Tapped() {
         print("event1Tapped - Triggering event1")
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let timestamp = Date().timeIntervalSince1970 * 1000
         PulseKit.shared.trackEvent(
             name: "event1",
             observedTimeStampInMs: timestamp,
@@ -251,7 +251,7 @@ class MainViewController: UIViewController {
     
     @objc private func event2Tapped() {
         print("event2Tapped - Triggering event2")
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let timestamp = Date().timeIntervalSince1970 * 1000
         PulseKit.shared.trackEvent(
             name: "event2",
             observedTimeStampInMs: timestamp,
