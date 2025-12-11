@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = "PulseKit"
-  spec.version = "1.0.0"
+  spec.version = "0.0.1"
   spec.summary = "Pulse iOS SDK - Simplified OpenTelemetry for iOS"
   spec.description = <<-DESC
     Pulse iOS SDK is a simplified, production-ready SDK for instrumenting iOS 
@@ -9,10 +9,10 @@ Pod::Spec.new do |spec|
   DESC
   
   spec.homepage = "https://github.com/dream-horizon-org/pulse-ios-sdk"
+  spec.documentation_url = "https://pulse.dreamhorizon.org/docs/sdk/ios"
   spec.license = { :type => "Apache 2.0", :file => "LICENSE" }
   spec.authors = { "Pulse iOS SDK" => "support@dream-horizon.org" }
   
-  # For local development, this will be overridden by :path in Podfile
   spec.source = { 
     :git => "https://github.com/dream-horizon-org/pulse-ios-sdk.git", 
     :tag => spec.version.to_s 
@@ -30,13 +30,13 @@ Pod::Spec.new do |spec|
   spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
   spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
   spec.dependency 'OpenTelemetry-Swift-StdoutExporter', '~> 2.2'
-  spec.dependency 'OpenTelemetry-Swift-Protocol-Exporter-Http', '~> 2.2'
-  spec.dependency 'OpenTelemetry-Swift-SdkResourceExtension', '~> 2.2'
-  spec.dependency 'OpenTelemetry-Swift-Instrumentation-URLSession', '~> 2.2'
-  spec.dependency 'OpenTelemetry-Swift-Instrumentation-NetworkStatus', '~> 2.2'
-  spec.dependency 'Pulse-Swift-Instrumentation-Interaction', '2.2.1'
-  spec.dependency 'Pulse-Swift-Sessions', '2.2.1'
-  spec.dependency 'Pulse-Swift-SignPostIntegration', '2.2.1'
+  spec.dependency 'Pulse-Swift-Protocol-Exporter-Http', spec.version.to_s
+  spec.dependency 'Pulse-Swift-SdkResourceExtension', spec.version.to_s
+  spec.dependency 'Pulse-Swift-Instrumentation-URLSession', spec.version.to_s
+  spec.dependency 'Pulse-Swift-Instrumentation-NetworkStatus', spec.version.to_s
+  spec.dependency 'Pulse-Swift-Instrumentation-Interaction', spec.version.to_s
+  spec.dependency 'Pulse-Swift-Sessions', spec.version.to_s
+  spec.dependency 'Pulse-Swift-SignPostIntegration', spec.version.to_s
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name PulseKit -package-name pulse_kit" }
 end
 

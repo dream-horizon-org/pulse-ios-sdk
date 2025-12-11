@@ -1,9 +1,10 @@
 Pod::Spec.new do |spec|
   spec.name = "Pulse-Swift-SignPostIntegration"
-  spec.version = "2.2.1"
+  spec.version = "0.0.1"
   spec.summary = "Swift OpenTelemetry SignPost Integration"
   
   spec.homepage = "https://github.com/dream-horizon-org/pulse-ios-sdk"
+  spec.documentation_url = "https://pulse.dreamhorizon.org/docs/sdk/ios"
   spec.license = { :type => "Apache 2.0", :file => "LICENSE" }
   spec.authors = { "Pulse iOS SDK" => "support@dream-horizon.org" }
   

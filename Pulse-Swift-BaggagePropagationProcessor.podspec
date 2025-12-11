@@ -1,14 +1,14 @@
 Pod::Spec.new do |spec|
-  spec.name = "OpenTelemetry-Swift-BaggagePropagationProcessor"
-  spec.version = "2.2.1"
+  spec.name = "Pulse-Swift-BaggagePropagationProcessor"
+  spec.version = "0.0.1"
   spec.summary = "Swift OpenTelemetry Baggage Propagation Processor"
 
-  spec.homepage = "https://github.com/open-telemetry/opentelemetry-swift"
-  spec.documentation_url = "https://opentelemetry.io/docs/languages/swift"
+  spec.homepage = "https://github.com/dream-horizon-org/pulse-ios-sdk"
+  spec.documentation_url = "https://pulse.dreamhorizon.org/docs/sdk/ios"
   spec.license = { :type => "Apache 2.0", :file => "LICENSE" }
-  spec.authors = "OpenTelemetry Authors"
+  spec.authors = "Pulse iOS SDK Authors"
 
-  spec.source = { :git => "https://github.com/open-telemetry/opentelemetry-swift.git", :tag => spec.version.to_s }
+  spec.source = { :git => "https://github.com/dream-horizon-org/pulse-ios-sdk.git", :tag => spec.version.to_s }
   spec.source_files = "Sources/Contrib/Processors/BaggagePropagationProcessor/*.swift"
 
   spec.swift_version = "5.10"

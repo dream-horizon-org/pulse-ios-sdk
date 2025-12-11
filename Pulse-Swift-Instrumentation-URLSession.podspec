@@ -1,14 +1,14 @@
 Pod::Spec.new do |spec|
-  spec.name = "OpenTelemetry-Swift-Instrumentation-URLSession"
-  spec.version = "2.2.1"
+  spec.name = "Pulse-Swift-Instrumentation-URLSession"
+  spec.version = "0.0.1"
   spec.summary = "Swift OpenTelemetry URLSession Instrumentation"
 
-  spec.homepage = "https://github.com/open-telemetry/opentelemetry-swift"
-  spec.documentation_url = "https://opentelemetry.io/docs/languages/swift"
+  spec.homepage = "https://github.com/dream-horizon-org/pulse-ios-sdk"
+  spec.documentation_url = "https://pulse.dreamhorizon.org/docs/sdk/ios"
   spec.license = { :type => "Apache 2.0", :file => "LICENSE" }
-  spec.authors = "OpenTelemetry Authors"
+  spec.authors = "Pulse iOS SDK Authors"
 
-  spec.source = { :git => "https://github.com/open-telemetry/opentelemetry-swift.git", :tag => spec.version.to_s }
+  spec.source = { :git => "https://github.com/dream-horizon-org/pulse-ios-sdk.git", :tag => spec.version.to_s }
   spec.source_files = "Sources/Instrumentation/URLSession/*.swift"
 
   spec.swift_version = "5.10"
@@ -18,7 +18,7 @@ Pod::Spec.new do |spec|
   spec.visionos.deployment_target = "1.0"
   spec.module_name = "URLSessionInstrumentation"
 
-  spec.dependency 'OpenTelemetry-Swift-Instrumentation-NetworkStatus', spec.version.to_s
+  spec.dependency 'Pulse-Swift-Instrumentation-NetworkStatus', spec.version.to_s
   spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name URLSessionInstrumentation -package-name opentelemetry_swift_urlsession" }
 
