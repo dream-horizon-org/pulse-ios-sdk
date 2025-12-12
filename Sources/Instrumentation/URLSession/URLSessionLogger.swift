@@ -14,6 +14,7 @@ import os.log
 class URLSessionLogger {
   static var runningSpans = [String: Span]()
   static var runningSpansQueue = DispatchQueue(label: "io.opentelemetry.URLSessionLogger")
+  private static let RN_TRACKED_HEADER = "x-pulse-rn-tracked"
   #if os(iOS) && !targetEnvironment(macCatalyst)
 
     static var netstatInjector: NetworkStatusInjector? = { () -> NetworkStatusInjector? in
@@ -34,6 +35,10 @@ class URLSessionLogger {
 
   /// This methods creates a Span for a request, and optionally injects tracing headers, returns a  new request if it was needed to create a new one to add the tracing headers
   @discardableResult static func processAndLogRequest(_ request: URLRequest, sessionTaskId: String, instrumentation: URLSessionInstrumentation, shouldInjectHeaders: Bool) -> URLRequest? {
+    if request.value(forHTTPHeaderField: RN_TRACKED_HEADER) != nil {
+      return nil
+    }
+    
     guard instrumentation.configuration.shouldInstrument?(request) ?? true else {
       return nil
     }
