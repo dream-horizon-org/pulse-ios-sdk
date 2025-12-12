@@ -27,8 +27,8 @@ Pod::Spec.new do |spec|
   spec.visionos.deployment_target = "1.0"
   spec.module_name = "PulseKit"
   
-  spec.dependency 'OpenTelemetry-Swift-Api', spec.version.to_s
-  spec.dependency 'OpenTelemetry-Swift-Sdk', spec.version.to_s
+  spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
+  spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
   spec.dependency 'Pulse-Swift-Protocol-Exporter-Http', spec.version.to_s
   spec.dependency 'Pulse-Swift-SdkResourceExtension', spec.version.to_s
   spec.dependency 'Pulse-Swift-Instrumentation-URLSession', spec.version.to_s
