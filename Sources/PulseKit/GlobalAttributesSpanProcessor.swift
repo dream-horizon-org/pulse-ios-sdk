@@ -9,9 +9,8 @@ import OpenTelemetryApi
 
 /// Span processor that appends global attributes to every span.
 /// 
-/// Note: Currently, only user properties (userId and userProperties) can be updated
-/// after initialization. Static global attributes set during initialization cannot
-/// be modified after init (they are set in Resource, which is immutable).
+/// Note: User properties (userId and userProperties) can be updated after initialization.
+/// Static global attributes set during initialization are immutable after init.
 internal class GlobalAttributesSpanProcessor: SpanProcessor {
     var isStartRequired: Bool = true
     var isEndRequired: Bool = false
@@ -25,16 +24,27 @@ internal class GlobalAttributesSpanProcessor: SpanProcessor {
     func onStart(parentContext: SpanContext?, span: ReadableSpan) {
         guard let pulseKit = pulseKit else { return }
         
+        var allAttributes: [String: AttributeValue] = [:]
+        
+        // Add static global attributes (set during initialization)
+        if let globalAttributes = pulseKit._globalAttributes {
+            allAttributes.merge(globalAttributes) { _, new in new }
+        }
+        
+        // Add dynamic user properties (can be updated after initialization)
         pulseKit.userPropertiesQueue.sync {
             if let userId = pulseKit._userId {
-                span.setAttribute(key: "user.id", value: AttributeValue.string(userId))
+                allAttributes["user.id"] = AttributeValue.string(userId)
             }
             
             for (key, value) in pulseKit._userProperties {
-                if let attrValue = pulseKit.attributeValue(from: value) {
-                    span.setAttribute(key: "pulse.user.\(key)", value: attrValue)
-                }
+                allAttributes["pulse.user.\(key)"] = value
             }
+        }
+        
+        // Set all attributes at once (uses extension method)
+        if !allAttributes.isEmpty {
+            span.setAttributes(allAttributes)
         }
     }
     

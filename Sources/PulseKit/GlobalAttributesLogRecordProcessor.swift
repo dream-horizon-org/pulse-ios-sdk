@@ -9,9 +9,8 @@ import OpenTelemetryApi
 
 /// Log processor that appends global attributes to every log record.
 /// 
-/// Note: Currently, only user properties (userId and userProperties) can be updated
-/// after initialization. Static global attributes set during initialization cannot
-/// be modified after init (they are set in Resource, which is immutable).
+/// Note: User properties (userId and userProperties) can be updated after initialization.
+/// Static global attributes set during initialization are immutable after init.
 internal class GlobalAttributesLogRecordProcessor: LogRecordProcessor {
     private weak var pulseKit: PulseKit?
     private let nextProcessor: LogRecordProcessor
@@ -29,15 +28,21 @@ internal class GlobalAttributesLogRecordProcessor: LogRecordProcessor {
         
         var enhancedRecord = logRecord
         
+        // Add static global attributes (set during initialization)
+        if let globalAttributes = pulseKit._globalAttributes {
+            for (key, value) in globalAttributes {
+                enhancedRecord.setAttribute(key: key, value: value)
+            }
+        }
+        
+        // Add dynamic user properties (can be updated after initialization)
         pulseKit.userPropertiesQueue.sync {
             if let userId = pulseKit._userId {
                 enhancedRecord.setAttribute(key: "user.id", value: AttributeValue.string(userId))
             }
             
             for (key, value) in pulseKit._userProperties {
-                if let attrValue = pulseKit.attributeValue(from: value) {
-                    enhancedRecord.setAttribute(key: "pulse.user.\(key)", value: attrValue)
-                }
+                enhancedRecord.setAttribute(key: "pulse.user.\(key)", value: value)
             }
         }
         

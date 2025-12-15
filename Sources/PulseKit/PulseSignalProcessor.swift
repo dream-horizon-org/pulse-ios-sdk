@@ -28,6 +28,7 @@ internal class PulseSignalProcessor {
             }
             
             let pulseType: String?
+            var attributesToSet: [String: AttributeValue] = [:]
             
             if spanData.attributes[SemanticAttributes.httpMethod.rawValue] != nil {
                 pulseType = PulseAttributes.PulseTypeValues.network
@@ -36,7 +37,7 @@ internal class PulseSignalProcessor {
                    case .string(let originalUrl) = httpUrlAttr {
                     let normalizedUrl = PulseSpanTypeAttributesAppender.normalizeUrl(originalUrl)
                     if normalizedUrl != originalUrl {
-                        span.setAttribute(key: SemanticAttributes.httpUrl.rawValue, value: AttributeValue.string(normalizedUrl))
+                        attributesToSet[SemanticAttributes.httpUrl.rawValue] = AttributeValue.string(normalizedUrl)
                     }
                 }
             }
@@ -59,7 +60,12 @@ internal class PulseSignalProcessor {
             }
             
             if let pulseType = pulseType {
-                span.setAttribute(key: PulseAttributes.pulseType, value: AttributeValue.string(pulseType))
+                attributesToSet[PulseAttributes.pulseType] = AttributeValue.string(pulseType)
+            }
+            
+            // Set all attributes at once if any were collected
+            if !attributesToSet.isEmpty {
+                span.setAttributes(attributesToSet)
             }
         }
         
@@ -111,6 +117,7 @@ internal class PulseSignalProcessor {
         
         func onEmit(logRecord: ReadableLogRecord) {
             guard logRecord.attributes[PulseAttributes.pulseType] == nil else {
+                nextProcessor.onEmit(logRecord: logRecord)
                 return
             }
             

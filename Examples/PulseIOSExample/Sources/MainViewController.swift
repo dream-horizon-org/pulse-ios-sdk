@@ -153,8 +153,9 @@ class MainViewController: UIViewController {
             name: "tract_custom_event",
             observedTimeStampInMs: timestamp,
             params: [
-                "button_name": "track_event",
-                "screen": "main"
+                "button_name": AttributeValue.string("track_event"),
+                "bool_attr": AttributeValue.bool(true),
+                "int_attr": AttributeValue.int(123),
             ]
         )
         showAlert(title: "Event Tracked", message: "Custom event 'button_clicked' has been tracked")
@@ -175,8 +176,8 @@ class MainViewController: UIViewController {
                 error: error,
                 observedTimeStampInMs: timestamp,
                 params: [
-                    "error_source": "json_parsing",
-                    "screen": "main"
+                    "error_source": AttributeValue.string("json_parsing"),
+                    "screen": AttributeValue.string("main")
                 ]
             )
             showAlert(title: "Non-Fatal Tracked", message: "Non-fatal error caught and tracked")
@@ -187,8 +188,8 @@ class MainViewController: UIViewController {
         let result = PulseKit.shared.trackSpan(
             name: "track_span",
             params: [
-                "action": "track_span",
-                "method": "closure_based"
+                "action": AttributeValue.string("track_span"),
+                "method": AttributeValue.string("closure_based")
             ]
         ) {
             // Simulate some work
@@ -203,8 +204,8 @@ class MainViewController: UIViewController {
         let span = PulseKit.shared.startSpan(
             name: "manual_created_span",
             params: [
-                "action": "start_span_1",
-                "method": "manual"
+                "action": AttributeValue.string("start_span_1"),
+                "method": AttributeValue.string("manual")
             ]
         )
         span.end()
@@ -227,6 +228,12 @@ class MainViewController: UIViewController {
             DispatchQueue.main.async {
                 if let error = error {
                     self.showAlert(title: "Network Error", message: error.localizedDescription)
+                } else if let httpResponse = response as? HTTPURLResponse {
+                    if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                        self.showAlert(title: "Network Success", message: "Request completed successfully (Status: \(httpResponse.statusCode))")
+                    } else {
+                        self.showAlert(title: "HTTP Error", message: "Request completed with error status: \(httpResponse.statusCode)")
+                    }
                 } else {
                     self.showAlert(title: "Network Success", message: "Request completed successfully")
                 }
@@ -242,8 +249,8 @@ class MainViewController: UIViewController {
             name: "event1",
             observedTimeStampInMs: timestamp,
             params: [
-                "source": "interaction_test",
-                "button": "event1_button"
+                "source": AttributeValue.string("interaction_test"),
+                "button": AttributeValue.string("event1_button")
             ]
         )
         showAlert(title: "Event1 Triggered", message: "Event 'event1' has been tracked. Trigger 'event2' to complete the interaction sequence.")
@@ -256,8 +263,8 @@ class MainViewController: UIViewController {
             name: "event2",
             observedTimeStampInMs: timestamp,
             params: [
-                "source": "interaction_test",
-                "button": "event2_button"
+                "source": AttributeValue.string("interaction_test"),
+                "button": AttributeValue.string("event2_button")
             ]
         )
         showAlert(title: "Event2 Triggered", message: "Event 'event2' has been tracked. If 'event1' was triggered first, the interaction sequence should be complete!")
