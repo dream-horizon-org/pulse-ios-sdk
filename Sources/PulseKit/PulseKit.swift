@@ -151,10 +151,20 @@ public class PulseKit {
             nextProcessor: baseLogProcessor
         )
         
-        let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
-        var spanProcessors: [SpanProcessor] = [globalAttributesSpanProcessor, pulseSpanProcessor, baseSpanProcessor]
+        // Network attributes processors (matches Android's NetworkAttributesSpanAppender pattern)
+        let networkAttributesSpanProcessor = NetworkAttributesSpanProcessor()
+        let networkAttributesLogProcessor = NetworkAttributesLogRecordProcessor(nextProcessor: globalAttributesLogProcessor)
         
-        let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: globalAttributesLogProcessor)
+        let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
+        // Order: GlobalAttributes -> NetworkAttributes -> PulseSignal -> Base
+        var spanProcessors: [SpanProcessor] = [
+            globalAttributesSpanProcessor,
+            networkAttributesSpanProcessor,
+            pulseSpanProcessor,
+            baseSpanProcessor
+        ]
+        
+        let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: networkAttributesLogProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
         if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {

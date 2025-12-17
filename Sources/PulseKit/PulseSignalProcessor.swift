@@ -31,8 +31,9 @@ internal class PulseSignalProcessor {
             var attributesToSet: [String: AttributeValue] = [:]
             
             if spanData.attributes[SemanticAttributes.httpMethod.rawValue] != nil {
-                pulseType = PulseAttributes.PulseTypeValues.network
-                
+                // URL normalization for network spans
+                // pulse.type for network spans is set in URLSessionLogger since spans become immutable after end() is called
+                pulseType = nil
                 if let httpUrlAttr = spanData.attributes[SemanticAttributes.httpUrl.rawValue],
                    case .string(let originalUrl) = httpUrlAttr {
                     let normalizedUrl = PulseSpanTypeAttributesAppender.normalizeUrl(originalUrl)

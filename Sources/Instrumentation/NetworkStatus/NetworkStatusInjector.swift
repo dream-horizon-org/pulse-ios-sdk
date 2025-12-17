@@ -10,6 +10,9 @@
   import Network
   import OpenTelemetryApi
 
+  /// Note: CTCarrier is deprecated in iOS 16+ and returns placeholder values ("--" and "65535").
+  /// On iOS < 16, valid carrier information is captured. Invalid values are filtered out.
+  /// See: https://developer.apple.com/documentation/coretelephony/ctcarrier
   public class NetworkStatusInjector {
     private var netstat: NetworkStatus
 
@@ -26,19 +29,27 @@
       }
 
       if let carrierInfo: CTCarrier = carrier {
-        if let carrierName = carrierInfo.carrierName {
+        if let carrierName = carrierInfo.carrierName,
+           !carrierName.isEmpty,
+           carrierName != "--" {
           span.setAttribute(key: SemanticAttributes.networkCarrierName.rawValue, value: AttributeValue.string(carrierName))
         }
 
-        if let isoCountryCode = carrierInfo.isoCountryCode {
+        if let isoCountryCode = carrierInfo.isoCountryCode,
+           !isoCountryCode.isEmpty,
+           isoCountryCode != "--" {
           span.setAttribute(key: SemanticAttributes.networkCarrierIcc.rawValue, value: AttributeValue.string(isoCountryCode))
         }
 
-        if let mobileCountryCode = carrierInfo.mobileCountryCode {
+        if let mobileCountryCode = carrierInfo.mobileCountryCode,
+           !mobileCountryCode.isEmpty,
+           mobileCountryCode != "65535" {
           span.setAttribute(key: SemanticAttributes.networkCarrierMcc.rawValue, value: AttributeValue.string(mobileCountryCode))
         }
 
-        if let mobileNetworkCode = carrierInfo.mobileNetworkCode {
+        if let mobileNetworkCode = carrierInfo.mobileNetworkCode,
+           !mobileNetworkCode.isEmpty,
+           mobileNetworkCode != "65535" {
           span.setAttribute(key: SemanticAttributes.networkCarrierMnc.rawValue, value: AttributeValue.string(mobileNetworkCode))
         }
       }
