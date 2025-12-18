@@ -34,11 +34,11 @@ internal class GlobalAttributesSpanProcessor: SpanProcessor {
         // Add dynamic user properties (can be updated after initialization)
         pulseKit.userPropertiesQueue.sync {
             if let userId = pulseKit._userId {
-                allAttributes["user.id"] = AttributeValue.string(userId)
+                allAttributes[PulseAttributes.userId] = AttributeValue.string(userId)
             }
             
             for (key, value) in pulseKit._userProperties {
-                allAttributes["pulse.user.\(key)"] = value
+                allAttributes[PulseAttributes.pulseUserParameter(key)] = value
             }
         }
         

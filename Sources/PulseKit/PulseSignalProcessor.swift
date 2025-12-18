@@ -18,7 +18,6 @@ internal class PulseSignalProcessor {
         
         // TODO: iOS-specific - may need to change when iOS app start instrumentation is implemented
         private static let appStartSpanName = "AppStart"
-        private static let startTypeKey = "start.type"
         
         func onStart(parentContext: SpanContext?, span: ReadableSpan) {
             // Only add if pulse.type is not already set
@@ -43,7 +42,7 @@ internal class PulseSignalProcessor {
                 }
             }
             else if span.name == PulseSpanTypeAttributesAppender.appStartSpanName,
-                    let startTypeAttr = spanData.attributes[PulseSpanTypeAttributesAppender.startTypeKey],
+                    let startTypeAttr = spanData.attributes[PulseAttributes.startType],
                     case .string(let startType) = startTypeAttr,
                     startType == "cold" {
                 pulseType = PulseAttributes.PulseTypeValues.appStart

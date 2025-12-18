@@ -265,12 +265,12 @@ public class PulseKit {
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal),
-            "exception.message": AttributeValue.string(error.localizedDescription),
-            "exception.type": AttributeValue.string(String(describing: type(of: error)))
+            PulseAttributes.exceptionMessage: AttributeValue.string(error.localizedDescription),
+            PulseAttributes.exceptionType: AttributeValue.string(String(describing: type(of: error)))
         ]
 
         if let nsError = error as NSError? {
-            attributes["exception.stacktrace"] = AttributeValue.string(nsError.description)
+            attributes[PulseAttributes.exceptionStacktrace] = AttributeValue.string(nsError.description)
         }
 
         attributes.merge(params) { _, new in new }
