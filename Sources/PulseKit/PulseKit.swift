@@ -24,6 +24,7 @@ public class PulseKit {
     internal var _userId: String?
     internal var _userProperties: [String: AttributeValue] = [:]
     internal var _globalAttributes: [String: AttributeValue]? = nil
+    internal var _configuration: PulseKitConfiguration = PulseKitConfiguration()
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
@@ -45,6 +46,7 @@ public class PulseKit {
         endpointBaseUrl: String,
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
+        configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
         instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil
     ) {
         initializationQueue.sync {
@@ -53,7 +55,11 @@ public class PulseKit {
             }
 
             _globalAttributes = globalAttributes
-            // Apply user configured instrumentations
+            // Apply user configured settings
+            var pulseKitConfig = PulseKitConfiguration()
+            configuration?(&pulseKitConfig)
+            _configuration = pulseKitConfig
+            
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
@@ -75,6 +81,12 @@ public class PulseKit {
                 endpointBaseUrl: endpointBaseUrl
             )
             installInstrumentations(config: config, ctx: installationContext)
+            
+            #if os(iOS) || os(tvOS)
+            if _configuration.includeScreenAttributes {
+                UIViewControllerSwizzler.swizzle()
+            }
+            #endif
 
             self.openTelemetry = openTelemetry
             _isInitialized = true
@@ -144,27 +156,38 @@ public class PulseKit {
         config: InstrumentationConfiguration
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         let pulseSignalProcessor = PulseSignalProcessor()
+        var spanProcessors: [SpanProcessor] = []
+        var logProcessor = baseLogProcessor
         
-        let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
-        let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
-            pulseKit: self,
-            nextProcessor: baseLogProcessor
-        )
+        if _configuration.includeGlobalAttributes {
+            let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
+            let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
+                pulseKit: self,
+                nextProcessor: logProcessor
+            )
+            spanProcessors.append(globalAttributesSpanProcessor)
+            logProcessor = globalAttributesLogProcessor
+        }
         
-        // Network attributes processors (matches Android's NetworkAttributesSpanAppender pattern)
-        let networkAttributesSpanProcessor = NetworkAttributesSpanProcessor()
-        let networkAttributesLogProcessor = NetworkAttributesLogRecordProcessor(nextProcessor: globalAttributesLogProcessor)
+        if _configuration.includeScreenAttributes {
+            let screenAttributesSpanProcessor = ScreenAttributesSpanProcessor()
+            let screenAttributesLogProcessor = ScreenAttributesLogRecordProcessor(nextProcessor: logProcessor)
+            spanProcessors.append(screenAttributesSpanProcessor)
+            logProcessor = screenAttributesLogProcessor
+        }
+        
+        if _configuration.includeNetworkAttributes {
+            let networkAttributesSpanProcessor = NetworkAttributesSpanProcessor()
+            let networkAttributesLogProcessor = NetworkAttributesLogRecordProcessor(nextProcessor: logProcessor)
+            spanProcessors.append(networkAttributesSpanProcessor)
+            logProcessor = networkAttributesLogProcessor
+        }
         
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
-        // Order: GlobalAttributes -> NetworkAttributes -> PulseSignal -> Base
-        var spanProcessors: [SpanProcessor] = [
-            globalAttributesSpanProcessor,
-            networkAttributesSpanProcessor,
-            pulseSpanProcessor,
-            baseSpanProcessor
-        ]
+        spanProcessors.append(pulseSpanProcessor)
+        spanProcessors.append(baseSpanProcessor)
         
-        let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: networkAttributesLogProcessor)
+        let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
         if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
