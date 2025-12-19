@@ -18,7 +18,6 @@ internal class PulseSignalProcessor {
         
         // TODO: iOS-specific - may need to change when iOS app start instrumentation is implemented
         private static let appStartSpanName = "AppStart"
-        private static let startTypeKey = "start.type"
         
         func onStart(parentContext: SpanContext?, span: ReadableSpan) {
             // Only add if pulse.type is not already set
@@ -28,20 +27,22 @@ internal class PulseSignalProcessor {
             }
             
             let pulseType: String?
+            var attributesToSet: [String: AttributeValue] = [:]
             
             if spanData.attributes[SemanticAttributes.httpMethod.rawValue] != nil {
-                pulseType = PulseAttributes.PulseTypeValues.network
-                
+                // URL normalization for network spans
+                // pulse.type for network spans is set in URLSessionLogger since spans become immutable after end() is called
+                pulseType = nil
                 if let httpUrlAttr = spanData.attributes[SemanticAttributes.httpUrl.rawValue],
                    case .string(let originalUrl) = httpUrlAttr {
                     let normalizedUrl = PulseSpanTypeAttributesAppender.normalizeUrl(originalUrl)
                     if normalizedUrl != originalUrl {
-                        span.setAttribute(key: SemanticAttributes.httpUrl.rawValue, value: AttributeValue.string(normalizedUrl))
+                        attributesToSet[SemanticAttributes.httpUrl.rawValue] = AttributeValue.string(normalizedUrl)
                     }
                 }
             }
             else if span.name == PulseSpanTypeAttributesAppender.appStartSpanName,
-                    let startTypeAttr = spanData.attributes[PulseSpanTypeAttributesAppender.startTypeKey],
+                    let startTypeAttr = spanData.attributes[PulseAttributes.startType],
                     case .string(let startType) = startTypeAttr,
                     startType == "cold" {
                 pulseType = PulseAttributes.PulseTypeValues.appStart
@@ -59,7 +60,12 @@ internal class PulseSignalProcessor {
             }
             
             if let pulseType = pulseType {
-                span.setAttribute(key: PulseAttributes.pulseType, value: AttributeValue.string(pulseType))
+                attributesToSet[PulseAttributes.pulseType] = AttributeValue.string(pulseType)
+            }
+            
+            // Set all attributes at once if any were collected
+            if !attributesToSet.isEmpty {
+                span.setAttributes(attributesToSet)
             }
         }
         
@@ -111,6 +117,7 @@ internal class PulseSignalProcessor {
         
         func onEmit(logRecord: ReadableLogRecord) {
             guard logRecord.attributes[PulseAttributes.pulseType] == nil else {
+                nextProcessor.onEmit(logRecord: logRecord)
                 return
             }
             

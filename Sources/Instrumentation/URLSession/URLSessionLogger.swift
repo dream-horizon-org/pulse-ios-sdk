@@ -119,6 +119,7 @@ class URLSessionLogger {
     span.setAttribute(key: SemanticAttributes.httpStatusCode.rawValue,
                       value: AttributeValue.int(statusCode))
     span.status = statusForStatusCode(code: statusCode)
+    span.setAttribute(key: "pulse.type", value: AttributeValue.string("network.\(statusCode)"))
 
     if let contentLengthHeader = httpResponse.allHeaderFields["Content-Length"] as? String,
        let contentLength = Int(contentLengthHeader) {
@@ -141,6 +142,10 @@ class URLSessionLogger {
     }
     span.setAttribute(key: SemanticAttributes.httpStatusCode.rawValue, value: AttributeValue.int(statusCode))
     span.status = URLSessionLogger.statusForStatusCode(code: statusCode)
+    
+    // Set pulse.type with status code for network spans (error case)
+    span.setAttribute(key: "pulse.type", value: AttributeValue.string("network.\(statusCode)"))
+    
     instrumentation.configuration.receivedError?(error, dataOrFile, statusCode, span)
 
     span.end()

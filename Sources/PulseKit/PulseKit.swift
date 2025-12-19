@@ -22,7 +22,9 @@ public class PulseKit {
     
     internal let userPropertiesQueue = DispatchQueue(label: "com.pulse.ios.sdk.userProperties")
     internal var _userId: String?
-    internal var _userProperties: [String: Any] = [:]
+    internal var _userProperties: [String: AttributeValue] = [:]
+    internal var _globalAttributes: [String: AttributeValue]? = nil
+    internal var _configuration: PulseKitConfiguration = PulseKitConfiguration()
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
@@ -43,7 +45,8 @@ public class PulseKit {
     public func initialize(
         endpointBaseUrl: String,
         endpointHeaders: [String: String]? = nil,
-        globalAttributes: [String: String]? = nil,
+        globalAttributes: [String: AttributeValue]? = nil,
+        configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
         instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil
     ) {
         initializationQueue.sync {
@@ -51,12 +54,16 @@ public class PulseKit {
                 return
             }
 
-            // Apply user configured instrumentations
+            _globalAttributes = globalAttributes
+            // Apply user configured settings
+            var pulseKitConfig = PulseKitConfiguration()
+            configuration?(&pulseKitConfig)
+            _configuration = pulseKitConfig
+            
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
-            // Build resource
-            let resource = buildResource(globalAttributes: globalAttributes)
+            let resource = buildResource()
 
             // Build OpenTelemetry SDK
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
@@ -74,6 +81,12 @@ public class PulseKit {
                 endpointBaseUrl: endpointBaseUrl
             )
             installInstrumentations(config: config, ctx: installationContext)
+            
+            #if os(iOS) || os(tvOS)
+            if _configuration.includeScreenAttributes {
+                UIViewControllerSwizzler.swizzle()
+            }
+            #endif
 
             self.openTelemetry = openTelemetry
             _isInitialized = true
@@ -82,29 +95,8 @@ public class PulseKit {
 
     // MARK: - Private Helper Methods
 
-    private func buildResource(globalAttributes: [String: String]?) -> Resource {
-        let resource = DefaultResources().get()
-        var resourceAttributes = resource.attributes
-        
-        userPropertiesQueue.sync {
-            if !_userProperties.isEmpty {
-                for (key, value) in _userProperties {
-                    let attributeKey = "pulse.user.\(key)"
-                    resourceAttributes[attributeKey] = AttributeValue.string(String(describing: value))
-                }
-            }
-            
-            if let currentUserId = _userId {
-                resourceAttributes["user.id"] = AttributeValue.string(currentUserId)
-            }
-        }
-        
-        if let globalAttributes = globalAttributes {
-            for (key, value) in globalAttributes {
-                resourceAttributes[key] = AttributeValue.string(value)
-            }
-        }
-        return Resource(attributes: resourceAttributes)
+    private func buildResource() -> Resource {
+        return DefaultResources().get()
     }
 
     private func buildOpenTelemetrySDK(
@@ -164,17 +156,38 @@ public class PulseKit {
         config: InstrumentationConfiguration
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         let pulseSignalProcessor = PulseSignalProcessor()
+        var spanProcessors: [SpanProcessor] = []
+        var logProcessor = baseLogProcessor
         
-        let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
-        let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
-            pulseKit: self,
-            nextProcessor: baseLogProcessor
-        )
+        if _configuration.includeGlobalAttributes {
+            let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
+            let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
+                pulseKit: self,
+                nextProcessor: logProcessor
+            )
+            spanProcessors.append(globalAttributesSpanProcessor)
+            logProcessor = globalAttributesLogProcessor
+        }
+        
+        if _configuration.includeScreenAttributes {
+            let screenAttributesSpanProcessor = ScreenAttributesSpanProcessor()
+            let screenAttributesLogProcessor = ScreenAttributesLogRecordProcessor(nextProcessor: logProcessor)
+            spanProcessors.append(screenAttributesSpanProcessor)
+            logProcessor = screenAttributesLogProcessor
+        }
+        
+        if _configuration.includeNetworkAttributes {
+            let networkAttributesSpanProcessor = NetworkAttributesSpanProcessor()
+            let networkAttributesLogProcessor = NetworkAttributesLogRecordProcessor(nextProcessor: logProcessor)
+            spanProcessors.append(networkAttributesSpanProcessor)
+            logProcessor = networkAttributesLogProcessor
+        }
         
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
-        var spanProcessors: [SpanProcessor] = [globalAttributesSpanProcessor, pulseSpanProcessor, baseSpanProcessor]
+        spanProcessors.append(pulseSpanProcessor)
+        spanProcessors.append(baseSpanProcessor)
         
-        let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: globalAttributesLogProcessor)
+        let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
         if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
@@ -202,7 +215,7 @@ public class PulseKit {
     public func trackEvent(
         name: String,
         observedTimeStampInMs: Double,
-        params: [String: Any?] = [:]
+        params: [String: AttributeValue] = [:]
     ) {
         guard isInitialized else { return }
 
@@ -210,9 +223,7 @@ public class PulseKit {
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.customEvent)
         ]
 
-        for (key, value) in params {
-            attributes[key] = attributeValue(from: value)
-        }
+        attributes.merge(params) { _, new in new }
 
         let observedDate = Date(timeIntervalSince1970: observedTimeStampInMs / 1000.0)
         logger.logRecordBuilder()
@@ -226,7 +237,7 @@ public class PulseKit {
     public func trackNonFatal(
         name: String,
         observedTimeStampInMs: Int64,
-        params: [String: Any?] = [:]
+        params: [String: AttributeValue] = [:]
     ) {
         guard isInitialized else { return }
 
@@ -234,9 +245,7 @@ public class PulseKit {
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal)
         ]
 
-        for (key, value) in params {
-            attributes[key] = attributeValue(from: value)
-        }
+        attributes.merge(params) { _, new in new }
 
         let observedDate = Date(timeIntervalSince1970: Double(observedTimeStampInMs) / 1000.0)
         logger.logRecordBuilder()
@@ -250,23 +259,21 @@ public class PulseKit {
     public func trackNonFatal(
         error: Error,
         observedTimeStampInMs: Int64,
-        params: [String: Any?] = [:]
+        params: [String: AttributeValue] = [:]
     ) {
         guard isInitialized else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal),
-            "exception.message": AttributeValue.string(error.localizedDescription),
-            "exception.type": AttributeValue.string(String(describing: type(of: error)))
+            PulseAttributes.exceptionMessage: AttributeValue.string(error.localizedDescription),
+            PulseAttributes.exceptionType: AttributeValue.string(String(describing: type(of: error)))
         ]
 
         if let nsError = error as NSError? {
-            attributes["exception.stacktrace"] = AttributeValue.string(nsError.description)
+            attributes[PulseAttributes.exceptionStacktrace] = AttributeValue.string(nsError.description)
         }
 
-        for (key, value) in params {
-            attributes[key] = attributeValue(from: value)
-        }
+        attributes.merge(params) { _, new in new }
 
         let body = error.localizedDescription.isEmpty ? "Non fatal error of type \(String(describing: type(of: error)))" : error.localizedDescription
 
@@ -281,7 +288,7 @@ public class PulseKit {
 
     public func trackSpan<T>(
         name: String,
-        params: [String: Any?] = [:],
+        params: [String: AttributeValue] = [:],
         action: () throws -> T
     ) rethrows -> T {
         guard isInitialized else {
@@ -291,45 +298,19 @@ public class PulseKit {
         let span = tracer.spanBuilder(spanName: name).startSpan()
         defer { span.end() }
 
-        for (key, value) in params {
-            if let attrValue = attributeValue(from: value) {
-                span.setAttribute(key: key, value: attrValue)
-            }
-        }
+        span.setAttributes(params)
 
         return try action()
     }
 
     public func startSpan(
         name: String,
-        params: [String: Any?] = [:]
+        params: [String: AttributeValue] = [:]
     ) -> Span {
         let span = tracer.spanBuilder(spanName: name).startSpan()
-        for (key, value) in params {
-            if let attrValue = attributeValue(from: value) {
-                span.setAttribute(key: key, value: attrValue)
-            }
-        }
+        span.setAttributes(params)
 
         return span
-    }
-
-    internal func attributeValue(from value: Any?) -> AttributeValue? {
-        guard let value = value else { return nil }
-
-        if let string = value as? String {
-            return AttributeValue.string(string)
-        } else if let int = value as? Int {
-            return AttributeValue.int(int)
-        } else if let int64 = value as? Int64 {
-            return AttributeValue.int(Int(int64))
-        } else if let double = value as? Double {
-            return AttributeValue.double(double)
-        } else if let bool = value as? Bool {
-            return AttributeValue.bool(bool)
-        } else {
-            return AttributeValue.string(String(describing: value))
-        }
     }
 
     public func getOpenTelemetry() -> OpenTelemetry? {
@@ -361,7 +342,7 @@ public class PulseKit {
         }
     }
     
-    public func setUserProperty(name: String, value: Any?) {
+    public func setUserProperty(name: String, value: AttributeValue?) {
         userPropertiesQueue.sync {
             if let value = value {
                 _userProperties[name] = value
@@ -371,7 +352,7 @@ public class PulseKit {
         }
     }
     
-    public func setUserProperties(_ properties: [String: Any]) {
+    public func setUserProperties(_ properties: [String: AttributeValue]) {
         userPropertiesQueue.sync {
             for (key, value) in properties {
                 _userProperties[key] = value
@@ -379,8 +360,8 @@ public class PulseKit {
         }
     }
     
-    public func setUserProperties(_ builderAction: (inout [String: Any]) -> Void) {
-        var properties: [String: Any] = [:]
+    public func setUserProperties(_ builderAction: (inout [String: AttributeValue]) -> Void) {
+        var properties: [String: AttributeValue] = [:]
         builderAction(&properties)
         setUserProperties(properties)
     }
