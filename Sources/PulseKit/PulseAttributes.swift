@@ -36,5 +36,8 @@ public enum PulseAttributes {
         public static let slow = "slow"
         public static let touch = "touch"
         public static let networkChange = "network_change"
+        public static func isNetworkType(_ pulseType: String) -> Bool {
+            return pulseType == network || pulseType.hasPrefix("\(network).")
+        }
     }
 }

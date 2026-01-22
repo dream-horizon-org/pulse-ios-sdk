@@ -18,6 +18,9 @@ internal enum PulseAttributes {
         static let screenLoad = "screen_load"
         static let appStart = "app_start"
         static let screenSession = "screen_session"
+        static func isNetworkType(_ pulseType: String) -> Bool {
+            return pulseType == network || pulseType.hasPrefix("\(network).")
+        }
     }
 }
 
@@ -35,8 +38,8 @@ internal class InteractionAttributesSpanAppender: SpanProcessor {
     var isEndRequired: Bool = true
     
     /// Span pulse types that should be added as events to interactions
+    /// Note: Network types are checked separately via isNetworkType() to handle "network.XXX" patterns
     private static let listOfSpanPulseTypeToAddInInteraction = [
-        PulseAttributes.PulseTypeValues.network,
         PulseAttributes.PulseTypeValues.screenLoad,
         PulseAttributes.PulseTypeValues.appStart,
         PulseAttributes.PulseTypeValues.screenSession
@@ -72,7 +75,7 @@ internal class InteractionAttributesSpanAppender: SpanProcessor {
         // Check if span has a pulse type that should be added to interactions
         if let pulseTypeAttr = spanData.attributes[PulseAttributes.pulseType],
            case .string(let pulseTypeString) = pulseTypeAttr,
-           Self.listOfSpanPulseTypeToAddInInteraction.contains(pulseTypeString) {
+           Self.shouldAddToInteraction(pulseType: pulseTypeString) {
             
             var params: [String: Any?] = [:]
             // Add span ID (use span context directly)
@@ -87,6 +90,18 @@ internal class InteractionAttributesSpanAppender: SpanProcessor {
                 eventTimeInNano: endTimeNanos
             )
         }
+    }
+    
+    /// Check if a pulse type should be added to interactions
+    /// Handles exact matches and network types (including "network.XXX" patterns)
+    private static func shouldAddToInteraction(pulseType: String) -> Bool {
+        // Check if it's a network type (handles both "network" and "network.XXX")
+        if PulseAttributes.PulseTypeValues.isNetworkType(pulseType) {
+            return true
+        }
+        
+        // Check exact matches for other types
+        return listOfSpanPulseTypeToAddInInteraction.contains(pulseType)
     }
     
     func shutdown(explicitTimeout: TimeInterval?) {
