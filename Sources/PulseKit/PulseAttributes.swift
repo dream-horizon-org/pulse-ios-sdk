@@ -17,6 +17,11 @@ public enum PulseAttributes {
     public static func pulseUserParameter(_ key: String) -> String {
         return "\(pulseUserPrefix).\(key)"
     }
+    
+    public enum PulseSdkNames {
+        public static let iosSwift = "pulse_ios_swift"
+        public static let iosRn = "pulse_ios_rn"
+    }
 
     public enum PulseTypeValues {
         // Custom events
