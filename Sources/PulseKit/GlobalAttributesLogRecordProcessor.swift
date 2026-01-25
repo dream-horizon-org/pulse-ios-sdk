@@ -36,14 +36,12 @@ internal class GlobalAttributesLogRecordProcessor: LogRecordProcessor {
         }
         
         // Add dynamic user properties (can be updated after initialization)
-        pulseKit.userPropertiesQueue.sync {
-            if let userId = pulseKit._userId {
-                enhancedRecord.setAttribute(key: PulseAttributes.userId, value: AttributeValue.string(userId))
-            }
-            
-            for (key, value) in pulseKit._userProperties {
-                enhancedRecord.setAttribute(key: PulseAttributes.pulseUserParameter(key), value: value)
-            }
+        if let userId = pulseKit.userSessionEmitter.userId {
+            enhancedRecord.setAttribute(key: PulseAttributes.userId, value: AttributeValue.string(userId))
+        }
+        
+        for (key, value) in pulseKit.userSessionEmitter.userProperties {
+            enhancedRecord.setAttribute(key: PulseAttributes.pulseUserParameter(key), value: value)
         }
         
         nextProcessor.onEmit(logRecord: enhancedRecord)

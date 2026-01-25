@@ -8,6 +8,9 @@ public enum PulseAttributes {
     public static let screenName = "screen.name"
     public static let userId = "user.id"
     public static let pulseUserPrefix = "pulse.user"
+    public static let pulseUserPreviousId = "pulse.user.previous_id"
+    public static let pulseUserSessionStartEventName = "pulse.user.session.start"
+    public static let pulseUserSessionEndEventName = "pulse.user.session.end"
     public static let startType = "start.type"
     
     public static let exceptionMessage = "exception.message"
