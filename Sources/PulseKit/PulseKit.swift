@@ -47,7 +47,9 @@ public class PulseKit {
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
         configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
-        instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil
+        instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil,
+        tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)? = nil,
+        loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])? = nil
     ) {
         initializationQueue.sync {
             guard !_isInitialized else {
@@ -55,7 +57,6 @@ public class PulseKit {
             }
 
             _globalAttributes = globalAttributes
-            // Apply user configured settings
             var pulseKitConfig = PulseKitConfiguration()
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
@@ -65,12 +66,13 @@ public class PulseKit {
 
             let resource = buildResource()
 
-            // Build OpenTelemetry SDK
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
                 endpointBaseUrl: endpointBaseUrl,
                 endpointHeaders: endpointHeaders,
                 resource: resource,
-                config: config
+                config: config,
+                tracerProviderCustomizer: tracerProviderCustomizer,
+                loggerProviderCustomizer: loggerProviderCustomizer
             )
 
             // Install instrumentations
@@ -103,7 +105,9 @@ public class PulseKit {
         endpointBaseUrl: String,
         endpointHeaders: [String: String]?,
         resource: Resource,
-        config: InstrumentationConfiguration
+        config: InstrumentationConfiguration,
+        tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
+        loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
         // Convert headers to exporter format [(String, String)]?
         let envVarHeaders: [(String, String)]? = endpointHeaders?.map { ($0.key, $0.value) }
@@ -119,27 +123,31 @@ public class PulseKit {
         let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
         let baseLogProcessor = SimpleLogRecordProcessor(logRecordExporter: otlpHttpLogExporter)
 
-        // Build processors (including Sessions and Interaction if enabled)
         let (spanProcessors, logProcessors) = buildProcessors(
             baseSpanProcessor: spanProcessor,
             baseLogProcessor: baseLogProcessor,
-            config: config
+            config: config,
+            loggerProviderCustomizer: loggerProviderCustomizer
         )
 
-        // Build providers
         var tracerProviderBuilder = TracerProviderBuilder()
             .with(resource: resource)
 
         for processor in spanProcessors {
             tracerProviderBuilder = tracerProviderBuilder.add(spanProcessor: processor)
         }
+        
+        if let customizer = tracerProviderCustomizer {
+            tracerProviderBuilder = customizer(tracerProviderBuilder)
+        }
 
         let tracerProvider = tracerProviderBuilder.build()
 
-        let loggerProvider = LoggerProviderBuilder()
+        let loggerProviderBuilder = LoggerProviderBuilder()
             .with(resource: resource)
             .with(processors: logProcessors)
-            .build()
+        
+        let loggerProvider = loggerProviderBuilder.build()
 
         // Register providers
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
@@ -153,12 +161,22 @@ public class PulseKit {
     private func buildProcessors(
         baseSpanProcessor: SpanProcessor,
         baseLogProcessor: LogRecordProcessor,
-        config: InstrumentationConfiguration
+        config: InstrumentationConfiguration,
+        loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         let pulseSignalProcessor = PulseSignalProcessor()
         var spanProcessors: [SpanProcessor] = []
         var logProcessor = baseLogProcessor
         
+        // Apply customizer first, right after baseLogProcessor
+        if let customizer = loggerProviderCustomizer {
+            let modified = customizer([logProcessor])
+            if let firstModified = modified.first {
+                logProcessor = firstModified
+            }
+        }
+        
+        // Build SDK processor chain
         if _configuration.includeGlobalAttributes {
             let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
             let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
