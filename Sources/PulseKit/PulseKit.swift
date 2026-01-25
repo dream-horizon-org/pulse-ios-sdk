@@ -20,9 +20,18 @@ public class PulseKit {
 
     private var openTelemetry: OpenTelemetry?
     
-    internal let userPropertiesQueue = DispatchQueue(label: "com.pulse.ios.sdk.userProperties")
-    internal var _userId: String?
-    internal var _userProperties: [String: AttributeValue] = [:]
+    // User session emitter (matches Android's PulseUserSessionEmitter)
+    internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
+        PulseUserSessionEmitter(
+            loggerProvider: { [weak self] in
+                guard let self = self, let otel = self.openTelemetry else {
+                    fatalError("Pulse SDK is not initialized")
+                }
+                return otel.loggerProvider.get(instrumentationScopeName: "com.pulse.ios.sdk")
+            }
+        )
+    }()
+    
     internal var _globalAttributes: [String: AttributeValue]? = nil
     internal var _configuration: PulseKitConfiguration = PulseKitConfiguration()
 
@@ -361,36 +370,20 @@ public class PulseKit {
         return isInitialized
     }
     
-    // MARK: - User Properties
-    
-    /// Set the user ID for all telemetry data
-    /// - Parameter id: The user ID (set to `nil` to clear)
     public func setUserId(_ id: String?) {
-        userPropertiesQueue.sync {
-            _userId = id
-        }
+        userSessionEmitter.userId = id
     }
     
     public func setUserProperty(name: String, value: AttributeValue?) {
-        userPropertiesQueue.sync {
-            if let value = value {
-                _userProperties[name] = value
-            } else {
-                _userProperties.removeValue(forKey: name)
-            }
-        }
+        userSessionEmitter.setUserProperty(name: name, value: value)
     }
     
-    public func setUserProperties(_ properties: [String: AttributeValue]) {
-        userPropertiesQueue.sync {
-            for (key, value) in properties {
-                _userProperties[key] = value
-            }
-        }
+    public func setUserProperties(_ properties: [String: AttributeValue?]) {
+        userSessionEmitter.setUserProperties(properties)
     }
-    
-    public func setUserProperties(_ builderAction: (inout [String: AttributeValue]) -> Void) {
-        var properties: [String: AttributeValue] = [:]
+
+    public func setUserProperties(_ builderAction: (inout [String: AttributeValue?]) -> Void) {
+        var properties: [String: AttributeValue?] = [:]
         builderAction(&properties)
         setUserProperties(properties)
     }
