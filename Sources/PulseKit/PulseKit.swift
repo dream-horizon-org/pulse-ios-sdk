@@ -46,6 +46,7 @@ public class PulseKit {
         endpointBaseUrl: String,
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
+        resource: ((inout [String: AttributeValue]) -> Void)? = nil,
         configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
         instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil,
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)? = nil,
@@ -64,7 +65,7 @@ public class PulseKit {
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
-            let resource = buildResource()
+            let resource = buildResource(resource: resource)
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
                 endpointBaseUrl: endpointBaseUrl,
@@ -97,8 +98,18 @@ public class PulseKit {
 
     // MARK: - Private Helper Methods
 
-    private func buildResource() -> Resource {
-        return DefaultResources().get()
+    private func buildResource(resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
+        let defaultResource = DefaultResources().get()
+        
+        var attributes = defaultResource.attributes
+        
+        attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
+        
+        if let resourceCustomizer = resource {
+            resourceCustomizer(&attributes)
+        }
+        
+        return Resource(attributes: attributes)
     }
 
     private func buildOpenTelemetrySDK(
