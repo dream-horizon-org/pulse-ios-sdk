@@ -7,8 +7,6 @@ import Foundation
 import OpenTelemetryApi
 
 /// Tracks app startup time from SDK initialization to first screen appearance.
-/// Similar to Android's AppStartupTimer - starts when SDK is initialized,
-/// ends when first viewDidAppear is called.
 internal class AppStartupTimer {
     static let shared = AppStartupTimer()
     
