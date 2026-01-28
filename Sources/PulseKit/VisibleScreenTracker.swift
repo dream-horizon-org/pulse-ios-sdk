@@ -12,6 +12,7 @@ internal class VisibleScreenTracker {
     static let shared = VisibleScreenTracker()
     
     private var currentViewController: String?
+    private var isFirstScreen: Bool = true
     private let queue = DispatchQueue(label: "com.pulse.ios.sdk.visiblescreen")
     
     private init() {}
@@ -23,8 +24,21 @@ internal class VisibleScreenTracker {
     #if os(iOS) || os(tvOS)
     func viewControllerDidAppear(_ viewController: UIViewController) {
         let screenName = String(describing: type(of: viewController))
+        
+        var shouldEndAppStart = false
         queue.sync { [weak self] in
-            self?.currentViewController = screenName
+            guard let self = self else { return }
+            self.currentViewController = screenName
+            
+            // End app start span on first screen appearance
+            if self.isFirstScreen {
+                self.isFirstScreen = false
+                shouldEndAppStart = true
+            }
+        }
+        
+        if shouldEndAppStart {
+            AppStartupTimer.shared.end()
         }
     }
     #endif
