@@ -8,6 +8,12 @@ import Sessions
 import URLSessionInstrumentation
 import NetworkStatus
 
+// MARK: - SDK Constants
+internal enum PulseKitConstants {
+    static let instrumentationScopeName = "com.pulse.ios.sdk"
+    static let instrumentationVersion = "1.0.0"
+}
+
 public class PulseKit {
     public static let shared = PulseKit()
 
@@ -27,7 +33,7 @@ public class PulseKit {
                 guard let self = self, let otel = self.openTelemetry else {
                     fatalError("Pulse SDK is not initialized")
                 }
-                return otel.loggerProvider.get(instrumentationScopeName: "com.pulse.ios.sdk")
+                return otel.loggerProvider.get(instrumentationScopeName: PulseKitConstants.instrumentationScopeName)
             }
         )
     }()
@@ -39,14 +45,14 @@ public class PulseKit {
         guard let otel = openTelemetry else {
             fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
-        return otel.loggerProvider.get(instrumentationScopeName: "com.pulse.ios.sdk")
+        return otel.loggerProvider.get(instrumentationScopeName: PulseKitConstants.instrumentationScopeName)
     }()
 
     private lazy var tracer: Tracer = {
         guard let otel = openTelemetry else {
             fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
-        return otel.tracerProvider.get(instrumentationName: "com.pulse.ios.sdk", instrumentationVersion: "1.0.0")
+        return otel.tracerProvider.get(instrumentationName: PulseKitConstants.instrumentationScopeName, instrumentationVersion: PulseKitConstants.instrumentationVersion)
     }()
 
     private init() {}
@@ -96,6 +102,13 @@ public class PulseKit {
             
             #if os(iOS) || os(tvOS)
             if _configuration.includeScreenAttributes {
+                AppStartupTimer.shared.start(
+                    tracer: tracerProvider.get(
+                        instrumentationName: PulseKitConstants.instrumentationScopeName,
+                        instrumentationVersion: PulseKitConstants.instrumentationVersion
+                    )
+                )
+                
                 UIViewControllerSwizzler.swizzle()
             }
             #endif
