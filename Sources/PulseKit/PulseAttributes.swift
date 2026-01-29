@@ -46,6 +46,9 @@ public enum PulseAttributes {
         public static let touch = "touch"
         public static let networkChange = "network_change"
         public static let appInstallationStart = "pulse.app.installation.start"
+        /// App session lifecycle (matches Otel semantic convention event names)
+        public static let appSessionStart = "session.start"
+        public static let appSessionEnd = "session.end"
         public static func isNetworkType(_ pulseType: String) -> Bool {
             return pulseType == network || pulseType.hasPrefix("\(network).")
         }

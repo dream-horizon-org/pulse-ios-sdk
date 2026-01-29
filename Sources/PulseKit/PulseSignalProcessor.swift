@@ -6,6 +6,7 @@
 import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
+import Sessions
 
 internal class PulseSignalProcessor {
     private var recordedRelevantLogEvents: [String: Int64] = [:]
@@ -152,11 +153,14 @@ internal class PulseSignalProcessor {
                 case "network.change":
                     pulseType = PulseAttributes.PulseTypeValues.networkChange
                     
-                case "session.end":
+                case SessionConstants.sessionStartEvent:
+                    pulseType = PulseAttributes.PulseTypeValues.appSessionStart
+                    
+                case SessionConstants.sessionEndEvent:
                     parent.recordedEventsQueue.sync {
                         parent.recordedRelevantLogEvents.removeAll()
                     }
-                    pulseType = nil
+                    pulseType = PulseAttributes.PulseTypeValues.appSessionEnd
                     
                 default:
                     pulseType = nil
