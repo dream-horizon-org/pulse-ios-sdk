@@ -35,6 +35,12 @@ internal class GlobalAttributesLogRecordProcessor: LogRecordProcessor {
             }
         }
         
+        // Add installation ID (persists across app launches until uninstall)
+        enhancedRecord.setAttribute(
+            key: PulseAttributes.appInstallationId,
+            value: AttributeValue.string(pulseKit.installationIdManager.installationId)
+        )
+        
         // Add dynamic user properties (can be updated after initialization)
         if let userId = pulseKit.userSessionEmitter.userId {
             enhancedRecord.setAttribute(key: PulseAttributes.userId, value: AttributeValue.string(userId))

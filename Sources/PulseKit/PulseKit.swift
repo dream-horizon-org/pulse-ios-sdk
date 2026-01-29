@@ -38,6 +38,17 @@ public class PulseKit {
         )
     }()
     
+    internal lazy var installationIdManager: PulseInstallationIdManager = {
+        PulseInstallationIdManager(
+            loggerProvider: { [weak self] in
+                guard let self = self, let otel = self.openTelemetry else {
+                    fatalError("Pulse SDK is not initialized")
+                }
+                return otel.loggerProvider.get(instrumentationScopeName: PulseKitConstants.instrumentationScopeName)
+            }
+        )
+    }()
+    
     internal var _globalAttributes: [String: AttributeValue]? = nil
     internal var _configuration: PulseKitConfiguration = PulseKitConfiguration()
 
