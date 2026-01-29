@@ -31,6 +31,9 @@ internal class GlobalAttributesSpanProcessor: SpanProcessor {
             allAttributes.merge(globalAttributes) { _, new in new }
         }
         
+        // Add installation ID (persists across app launches until uninstall)
+        allAttributes[PulseAttributes.appInstallationId] = AttributeValue.string(pulseKit.installationIdManager.installationId)
+        
         // Add dynamic user properties (can be updated after initialization)
         if let userId = pulseKit.userSessionEmitter.userId {
             allAttributes[PulseAttributes.userId] = AttributeValue.string(userId)
