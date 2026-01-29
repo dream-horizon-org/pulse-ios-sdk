@@ -124,6 +124,7 @@ public class SessionEventInstrumentation {
     /// Create `session.start` log record according to otel semantic convention
     /// https://opentelemetry.io/docs/specs/semconv/general/session/
     logger.logRecordBuilder()
+      .setEventName(SessionConstants.sessionStartEvent)
       .setBody(AttributeValue.string(SessionConstants.sessionStartEvent))
       .setAttributes(attributes)
       .emit()
@@ -151,9 +152,10 @@ public class SessionEventInstrumentation {
       attributes[SessionConstants.previousId] = AttributeValue.string(previousId)
     }
 
-    /// Create `session.end`` log record according to otel semantic convention
+    /// Create `session.end` log record according to otel semantic convention
     /// https://opentelemetry.io/docs/specs/semconv/general/session/
     logger.logRecordBuilder()
+      .setEventName(SessionConstants.sessionEndEvent)
       .setBody(AttributeValue.string(SessionConstants.sessionEndEvent))
       .setAttributes(attributes)
       .emit()

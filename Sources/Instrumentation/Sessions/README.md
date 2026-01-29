@@ -237,3 +237,17 @@ All components are designed for concurrent access:
 - `SessionManager` uses locks for thread-safe session access
 - `SessionManagerProvider` provides thread-safe singleton access
 - `SessionStore` handles concurrent persistence operations safely
+
+---
+
+## iOS Session Behavior
+
+Short summary of how iOS sessions behave compared to common expectations:
+
+- **When do session events fire?** Session events are emitted only when `getSession()` is called (by the first span or log) and the SDK creates or replaces a session. They are **not** fired on every app launch.
+- **First launch:** No session in memory/disk → first activity triggers `getSession()` → new session → only **session.start** (no **session.end**).
+- **Expiry:** A session is expired when **current time ≥ session’s `expireTime`**. `expireTime` is set when the session is created (`now + sessionTimeout`, e.g. 30 min) and is **extended** (rolling) every time `getSession()` is called while the session is still valid.
+- **Kill + relaunch:** Session can be restored from disk. On first activity, `refreshSession()` checks if the restored session is expired. If **expired** → **session.end** (old) + **session.start** (new). If **not expired** → same session is extended; no events.
+- **Persistence:** Sessions are stored in UserDefaults and restored on launch, so a session can survive process kill and be ended explicitly (with **session.end** and duration) on the next launch if it has expired.
+- **Single timeout:** iOS uses one inactivity timeout (no separate “background” vs “foreground” or “max lifetime” cap). As long as the app calls `getSession()` within the timeout window, the session keeps extending.
+- **Pulse integration:** Session logs set **event name** and **pulse.type** (`session.start` / `session.end`).
