@@ -48,8 +48,4 @@ public enum PulseAttributes {
             return pulseType == network || pulseType.hasPrefix("\(network).")
         }
     }
-    
-    // Resource attributes for Android parity (not in official ResourceAttributes)
-    public static let appBuildId = "app.build_id"
-    public static let appBuildName = "app.build_name"
 }

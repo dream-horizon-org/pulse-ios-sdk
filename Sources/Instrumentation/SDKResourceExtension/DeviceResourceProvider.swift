@@ -6,10 +6,8 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-#if os(iOS) || os(tvOS)
+#if os(iOS)
 import UIKit
-#elseif os(watchOS)
-import WatchKit
 #endif
 
 public class DeviceResourceProvider: ResourceProvider {
@@ -30,19 +28,21 @@ public class DeviceResourceProvider: ResourceProvider {
       attributes[ResourceAttributes.deviceId.rawValue] = AttributeValue.string(deviceId)
     }
     
-    // device.manufacturer (official ResourceAttributes - iOS apps SHOULD hardcode "Apple")
+    // device.manufacturer (official ResourceAttributes - iOS/macOS apps SHOULD hardcode "Apple")
     // OpenTelemetry spec: https://opentelemetry.io/docs/specs/semconv/resource/device/#manufacturer
-    #if os(iOS) || os(tvOS) || os(watchOS) || os(macOS)
+    #if os(iOS) || os(macOS)
     attributes[ResourceAttributes.deviceManufacturer.rawValue] = AttributeValue.string("Apple")
     #endif
     
-    // device.model.name (official ResourceAttributes - user-friendly model name)
-    // UIDevice.model: https://developer.apple.com/documentation/uikit/uidevice
-    #if os(iOS) || os(tvOS)
+    // OpenTelemetry spec: https://opentelemetry.io/docs/specs/semconv/resource/device/#model
+    #if os(iOS)
+    // iOS: Use UIDevice for user-friendly names (required by OpenTelemetry spec)
     attributes[ResourceAttributes.deviceModelName.rawValue] = AttributeValue.string(UIDevice.current.model)
-    #elseif os(watchOS)
-    // WKInterfaceDevice.model: https://developer.apple.com/documentation/watchkit/wkinterfacedevice
-    attributes[ResourceAttributes.deviceModelName.rawValue] = AttributeValue.string(WKInterfaceDevice.current().model)
+    #elseif os(macOS)
+    // macOS: sysctl returns hardware identifier (limitation - no user-friendly API available)
+    if let model = deviceSource.model {
+      attributes[ResourceAttributes.deviceModelName.rawValue] = AttributeValue.string(model)
+    }
     #endif
 
     return attributes
