@@ -441,6 +441,14 @@ extension Package {
             "InteractionInstrumentation"
           ],
           path: "Sources/PulseKit"
+        ),
+        .testTarget(
+          name: "PulseKitTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/PulseKitTests"
         )
       ])
     #endif

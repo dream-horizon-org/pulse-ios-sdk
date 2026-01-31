@@ -160,8 +160,8 @@ public class PulseKit {
         let tracesEndpoint = URL(string: "\(endpointBaseUrl)/v1/traces")!
         let logsEndpoint = URL(string: "\(endpointBaseUrl)/v1/logs")!
         let otlpHttpTraceExporter = OtlpHttpTraceExporter(endpoint: tracesEndpoint, envVarHeaders: envVarHeaders)
-        let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
-        let spanExporter = otlpHttpTraceExporter
+        let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)        
+        let spanExporter = FilteringSpanExporter(delegate: otlpHttpTraceExporter)
 
         // Build base processors
         let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
