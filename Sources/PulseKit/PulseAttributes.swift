@@ -39,7 +39,7 @@ public enum PulseAttributes {
         public static let screenSession = "screen_session"
         
         // Log types
-        public static let crash = "crash"
+        public static let crash = "device.crash"
         public static let anr = "anr"
         public static let frozen = "frozen"
         public static let slow = "slow"
