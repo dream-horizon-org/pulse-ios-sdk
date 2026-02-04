@@ -116,13 +116,13 @@ internal class InteractionAttributesSpanAppender: SpanProcessor {
     static func createInteractionAttributes(_ manager: InteractionManager) -> [String: AttributeValue]? {
         let states = manager.currentStates
         let runningIds = states.compactMap { state -> String? in
-            if case .ongoingMatch(_, let id, _, _) = state {
+            if case .ongoingMatch(_, let id, _, let interaction) = state, interaction == nil {
                 return id
             }
             return nil
         }
         let runningNames = states.compactMap { state -> String? in
-            if case .ongoingMatch(_, _, let config, _) = state {
+            if case .ongoingMatch(_, _, let config, let interaction) = state, interaction == nil {
                 return config.name
             }
             return nil
