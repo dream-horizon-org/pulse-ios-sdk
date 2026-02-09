@@ -334,7 +334,8 @@ extension Package {
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
-          path: "Sources/Instrumentation/Location"
+          path: "Sources/Instrumentation/Location",
+          exclude: ["README.md"]
         ),
         .executableTarget(
           name: "NetworkSample",
@@ -426,6 +427,15 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/InteractionTests"
+        ),
+        .testTarget(
+          name: "LocationTests",
+          dependencies: [
+            "Location",
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/LocationTests"
         ),
         .executableTarget(
           name: "PrometheusSample",
