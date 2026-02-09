@@ -169,8 +169,6 @@ public class InteractionInstrumentation {
         // Set span status
         if interaction.isErrored {
             span.status = Status.error(description: "Interaction timed out or was interrupted")
-        } else {
-            span.status = Status.ok
         }
         
         // End span
