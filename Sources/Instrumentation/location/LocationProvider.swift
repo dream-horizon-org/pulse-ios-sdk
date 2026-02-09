@@ -89,14 +89,31 @@ public final class LocationProvider: NSObject {
     // MARK: - Caching
 
     private func saveLocation(_ cached: CachedLocation) {
+        // Update in-memory cache first (fast, no locking needed)
+        CachedLocationSaver.shared.cachedLocation = cached
+        
+        // Then persist to UserDefaults
         if let data = try? JSONEncoder().encode(cached) {
             userDefaults.set(data, forKey: cacheKey)
         }
     }
 
     private func loadCachedLocation() -> CachedLocation? {
-        guard let data = userDefaults.data(forKey: cacheKey) else { return nil }
-        return try? JSONDecoder().decode(CachedLocation.self, from: data)
+        // Try in-memory cache first (fast path)
+        if let memCached = CachedLocationSaver.shared.cachedLocation,
+           !memCached.isExpired(cacheInvalidationTime) {
+            return memCached
+        }
+        
+        // Fallback to UserDefaults if in-memory cache is null or expired
+        guard let data = userDefaults.data(forKey: cacheKey),
+              let cached = try? JSONDecoder().decode(CachedLocation.self, from: data) else {
+            return nil
+        }
+        
+        // Update in-memory cache from UserDefaults
+        CachedLocationSaver.shared.cachedLocation = cached
+        return cached
     }
 
     // MARK: - Reverse Geocoding (Apple-approved)
