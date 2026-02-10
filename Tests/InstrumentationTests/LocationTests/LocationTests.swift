@@ -2,6 +2,7 @@ import XCTest
 import CoreLocation
 @testable import Location
 import OpenTelemetryApi
+import OpenTelemetrySdk
 
 final class LocationTests: XCTestCase {
     var userDefaults: UserDefaults!
@@ -114,7 +115,7 @@ final class LocationTests: XCTestCase {
     
     func testLocationConstants() {
         XCTAssertEqual(LocationConstants.locationCacheKey, "location_cache")
-        XCTAssertEqual(LocationConstants.defaultCacheInvalidationTime, 30)
+        XCTAssertEqual(LocationConstants.defaultCacheInvalidationTime, 3600)
     }
     
     // MARK: - CachedLocationSaver Tests
@@ -525,16 +526,16 @@ final class LocationTests: XCTestCase {
             cacheKey: "test_key"
         )
         
-        let logRecord = MockReadableLogRecord()
+        let logRecord = makeTestLogRecord()
         processor.onEmit(logRecord: logRecord)
         
         XCTAssertEqual(mockNextProcessor.emitCallCount, 1)
         
         let processedRecord = mockNextProcessor.lastEmittedRecord
         XCTAssertNotNil(processedRecord)
-        XCTAssertFalse(processedRecord!.capturedAttributes.isEmpty)
+        XCTAssertFalse(processedRecord!.attributes.isEmpty)
         
-        if case let .string(country) = processedRecord!.capturedAttributes["geo.country.iso_code"] {
+        if case let .string(country) = processedRecord!.attributes["geo.country.iso_code"] {
             XCTAssertEqual(country, "AU")
         } else {
             XCTFail("Expected country attribute on log record")
@@ -549,7 +550,7 @@ final class LocationTests: XCTestCase {
             cacheKey: "test_key"
         )
         
-        let logRecord = MockReadableLogRecord()
+        let logRecord = makeTestLogRecord()
         processor.onEmit(logRecord: logRecord)
         
         XCTAssertEqual(mockNextProcessor.emitCallCount, 1)
@@ -565,11 +566,11 @@ final class LocationTests: XCTestCase {
             cacheKey: "test_key"
         )
         
-        let logRecord = MockReadableLogRecord()
+        let logRecord = makeTestLogRecord()
         processor.onEmit(logRecord: logRecord)
         
         XCTAssertEqual(mockNextProcessor.emitCallCount, 1)
-        XCTAssertTrue(mockNextProcessor.lastEmittedRecord!.capturedAttributes.isEmpty)
+        XCTAssertTrue(mockNextProcessor.lastEmittedRecord!.attributes.isEmpty)
     }
     
     func testLogProcessorShutdownAndFlush() {
@@ -580,11 +581,11 @@ final class LocationTests: XCTestCase {
             cacheKey: "test_key"
         )
         
-        let shutdownResult = processor.shutdown(explicitTimeout: nil)
-        XCTAssertEqual(shutdownResult, .success)
+        let shutdownResult = processor.shutdown(explicitTimeout: nil as TimeInterval?)
+        XCTAssertEqual(shutdownResult, ExportResult.success)
         
-        let flushResult = processor.forceFlush(explicitTimeout: nil)
-        XCTAssertEqual(flushResult, .success)
+        let flushResult = processor.forceFlush(explicitTimeout: nil as TimeInterval?)
+        XCTAssertEqual(flushResult, ExportResult.success)
     }
 }
 
@@ -593,15 +594,32 @@ final class LocationTests: XCTestCase {
 class MockReadableSpan: ReadableSpan {
     var capturedAttributes: [String: AttributeValue] = [:]
     
+    var instrumentationScopeInfo: InstrumentationScopeInfo = InstrumentationScopeInfo(name: "test")
+    var hasEnded: Bool = false
+    var latency: TimeInterval { 0 }
+    
+    func getAttributes() -> [String: AttributeValue] { capturedAttributes }
+    func toSpanData() -> SpanData { fatalError("Not implemented for test") }
+    
     func setAttribute(key: String, value: AttributeValue?) {
-        if let value = value {
-            capturedAttributes[key] = value
-        }
+        if let value = value { capturedAttributes[key] = value }
+    }
+    func setAttributes(_ attributes: [String: AttributeValue]) {
+        for (k, v) in attributes { capturedAttributes[k] = v }
     }
     
-    func toSpanData() -> SpanData {
-        fatalError("Not implemented for test")
-    }
+    func addEvent(name: String) {}
+    func addEvent(name: String, timestamp: Date) {}
+    func addEvent(name: String, attributes: [String: AttributeValue]) {}
+    func addEvent(name: String, attributes: [String: AttributeValue], timestamp: Date) {}
+    
+    func recordException(_ exception: SpanException) {}
+    func recordException(_ exception: SpanException, timestamp: Date) {}
+    func recordException(_ exception: SpanException, attributes: [String: AttributeValue]) {}
+    func recordException(_ exception: SpanException, attributes: [String: AttributeValue], timestamp: Date) {}
+    
+    func end() {}
+    func end(time: Date) {}
     
     var name: String = "test-span"
     var context: SpanContext = SpanContext.create(
@@ -612,42 +630,33 @@ class MockReadableSpan: ReadableSpan {
     )
     var kind: SpanKind = .internal
     var status: Status = .ok
-    var hasEnded: Bool = false
+    var isRecording: Bool = true
+    
+    var description: String { "MockReadableSpan(\(name))" }
 }
 
-class MockReadableLogRecord: ReadableLogRecord {
-    var capturedAttributes: [String: AttributeValue] = [:]
-    
-    func setAttribute(key: String, value: AttributeValue) {
-        capturedAttributes[key] = value
-    }
-    
-    var resource: Resource = Resource()
-    var instrumentationScopeInfo: InstrumentationScopeInfo = InstrumentationScopeInfo(name: "test")
-    var timestamp: Date = Date()
-    var observedTimestamp: Date? = Date()
-    var spanContext: SpanContext? = nil
-    var severity: Severity = .info
-    var body: AttributeValue? = nil
-    var attributes: [String: AttributeValue] = [:]
-    var eventName: String? = nil
+/// Helper to build a ReadableLogRecord for tests (SDK type is a struct, not a protocol).
+func makeTestLogRecord(attributes: [String: AttributeValue] = [:]) -> ReadableLogRecord {
+    ReadableLogRecord(
+        resource: Resource(),
+        instrumentationScopeInfo: InstrumentationScopeInfo(name: "test"),
+        timestamp: Date(),
+        observedTimestamp: Date(),
+        spanContext: nil,
+        severity: .info,
+        body: nil,
+        attributes: attributes,
+        eventName: nil
+    )
 }
 
 class MockLogRecordProcessor: LogRecordProcessor {
     var emitCallCount = 0
-    var lastEmittedRecord: MockReadableLogRecord?
+    var lastEmittedRecord: ReadableLogRecord?
     
     func onEmit(logRecord: ReadableLogRecord) {
         emitCallCount += 1
-        
-        // Create a mock record with the enhanced attributes
-        let mock = MockReadableLogRecord()
-        if let readableRecord = logRecord as? MockReadableLogRecord {
-            mock.capturedAttributes = readableRecord.capturedAttributes
-        } else {
-            mock.capturedAttributes = logRecord.attributes
-        }
-        lastEmittedRecord = mock
+        lastEmittedRecord = logRecord
     }
     
     func shutdown(explicitTimeout: TimeInterval?) -> ExportResult {
