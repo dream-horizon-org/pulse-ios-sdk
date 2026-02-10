@@ -26,7 +26,7 @@ final class CachedLocationSaver {
     var cachedLocation: CachedLocation?
 }
 
-/// Internal utility for reading location attributes from cache (mirrors Android LocationAttributesUtils).
+/// Internal utility for reading location attributes from cache
 enum LocationAttributesUtils {
     /// Retrieves location attributes from the in-memory cache or UserDefaults.
     /// Returns empty dictionary if cache is null or expired.

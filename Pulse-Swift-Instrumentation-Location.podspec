@@ -23,7 +23,7 @@ Pod::Spec.new do |spec|
   spec.osx.deployment_target = "12.0"
   spec.module_name = "Location"
   
-  spec.frameworks = "CoreLocation", "MapKit"
+  spec.frameworks = "CoreLocation"
   
   spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
   spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'

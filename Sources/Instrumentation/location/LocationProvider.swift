@@ -5,7 +5,6 @@
 
 import Foundation
 import CoreLocation
-import MapKit
 
 /// Provides device location with caching and periodic refresh; mimics Android LocationProvider.kt.
 /// Writes cached location to UserDefaults for use by LocationAttributesSpanAppender and LocationAttributesLogRecordProcessor.
@@ -14,6 +13,7 @@ public final class LocationProvider: NSObject {
     // MARK: - Core Services
 
     private let locationManager = CLLocationManager()
+    private let reverseGeocoder = LocationReverseGeocoding()
     private let userDefaults: UserDefaults
     private let cacheKey: String
     private let cacheInvalidationTime: TimeInterval
@@ -44,7 +44,9 @@ public final class LocationProvider: NSObject {
         stopPeriodicRefresh()
 
         let cached = loadCachedLocation()
-        let shouldFetchNow = cached == nil || cached!.isExpired(cacheInvalidationTime)
+        let isExpired = cached == nil || cached!.isExpired(cacheInvalidationTime)
+        let isMissingGeoAttributes = cached != nil && cached!.countryIsoCode == nil
+        let shouldFetchNow = isExpired || isMissingGeoAttributes
 
         if shouldFetchNow {
             requestLocation()
@@ -79,9 +81,15 @@ public final class LocationProvider: NSObject {
             return
         }
 
+        #if os(iOS) || os(watchOS) || os(tvOS)
         guard status == .authorizedWhenInUse || status == .authorizedAlways else {
             return
         }
+        #elseif os(macOS)
+        guard status == .authorizedAlways else {
+            return
+        }
+        #endif
 
         locationManager.requestLocation()
     }
@@ -91,7 +99,7 @@ public final class LocationProvider: NSObject {
     private func saveLocation(_ cached: CachedLocation) {
         // Update in-memory cache first (fast, no locking needed)
         CachedLocationSaver.shared.cachedLocation = cached
-        
+
         // Then persist to UserDefaults
         if let data = try? JSONEncoder().encode(cached) {
             userDefaults.set(data, forKey: cacheKey)
@@ -104,49 +112,37 @@ public final class LocationProvider: NSObject {
            !memCached.isExpired(cacheInvalidationTime) {
             return memCached
         }
-        
+
         // Fallback to UserDefaults if in-memory cache is null or expired
         guard let data = userDefaults.data(forKey: cacheKey),
               let cached = try? JSONDecoder().decode(CachedLocation.self, from: data) else {
             return nil
         }
-        
+
         // Update in-memory cache from UserDefaults
         CachedLocationSaver.shared.cachedLocation = cached
         return cached
     }
 
-    // MARK: - Reverse Geocoding (Apple-approved)
+    // MARK: - Reverse Geocoding
 
     private func resolveGeoAttributes(for location: CLLocation) {
-        let request = MKLocalSearch.Request()
-        request.region = MKCoordinateRegion(
-            center: location.coordinate,
-            latitudinalMeters: 300,
-            longitudinalMeters: 300
-        )
+        reverseGeocoder.resolve(location: location) { [weak self] result in
+            guard let self = self, let result = result else { return }
 
-        let search = MKLocalSearch(request: request)
-        search.start { [weak self] response, error in
-            guard
-                error == nil,
-                let item = response?.mapItems.first,
-                let self = self
-            else { return }
-
-            let address = item.placemark
+            let regionIsoCode = self.formatRegion(
+                country: result.countryIsoCode,
+                region: result.administrativeArea
+            )
 
             let updated = CachedLocation(
                 latitude: location.coordinate.latitude,
                 longitude: location.coordinate.longitude,
                 timestamp: Date().timeIntervalSince1970,
-                countryIsoCode: address.isoCountryCode,
-                regionIsoCode: self.formatRegion(
-                    country: address.isoCountryCode,
-                    region: address.administrativeArea
-                ),
-                localityName: address.locality,
-                postalCode: address.postalCode
+                countryIsoCode: result.countryIsoCode,
+                regionIsoCode: regionIsoCode,
+                localityName: result.locality,
+                postalCode: result.postalCode
             )
 
             self.saveLocation(updated)
@@ -187,6 +183,26 @@ extension LocationProvider: CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didFailWithError error: Error
     ) {
-        // Log if needed
+        // Silently handle location errors
+    }
+
+    public func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status: CLAuthorizationStatus
+        if #available(iOS 14.0, macOS 11.0, *) {
+            status = manager.authorizationStatus
+        } else {
+            status = CLLocationManager.authorizationStatus()
+        }
+
+        // Retry requesting location if authorized
+        #if os(iOS) || os(watchOS) || os(tvOS)
+        if status == .authorizedWhenInUse || status == .authorizedAlways {
+            requestLocation()
+        }
+        #elseif os(macOS)
+        if status == .authorizedAlways {
+            requestLocation()
+        }
+        #endif
     }
 }

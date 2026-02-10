@@ -1,14 +1,8 @@
-/*
- * Copyright The OpenTelemetry Authors
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
 
 /// LogRecordProcessor that appends location attributes to log records by reading from the same cache as LocationProvider.
-/// Mirrors Android LocationAttributesLogRecordAppender.
 public final class LocationAttributesLogRecordProcessor: LogRecordProcessor {
 
     private let nextProcessor: LogRecordProcessor
@@ -20,8 +14,7 @@ public final class LocationAttributesLogRecordProcessor: LogRecordProcessor {
         nextProcessor: LogRecordProcessor,
         userDefaults: UserDefaults = .standard,
         cacheKey: String = LocationConstants.locationCacheKey,
-        cacheInvalidationTime: TimeInterval = LocationConstants.
-        defaultCacheInvalidationTime
+        cacheInvalidationTime: TimeInterval = LocationConstants.defaultCacheInvalidationTime
     ) {
         self.nextProcessor = nextProcessor
         self.userDefaults = userDefaults

@@ -1,8 +1,3 @@
-/*
- * Copyright The OpenTelemetry Authors
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import Foundation
 
 #if canImport(UIKit)
@@ -10,134 +5,131 @@ import UIKit
 #endif
 
 /// Location instrumentation: holds and starts LocationProvider when enabled.
-
+/// provides singleton-style static APIs with install/uninstall lifecycle.
 public final class LocationInstrumentation {
+    // MARK: - Singleton/static API surface expected by tests and config
+
     private static let shared = LocationInstrumentation()
-    private static let queue = DispatchQueue(label: "com.pulse.ios.location.instrumentation")
-    
-    private var _provider: LocationProvider?
-    
-    #if canImport(UIKit)
-    private var lifecycleObservers: [NSObjectProtocol] = []
-    #endif
 
-    private init() {}
-
-    /// Shared LocationProvider used when instrumentation is enabled. Started by install().
-    /// **ASYNC** - Returns immediately, reads from queue in background.
+    /// The currently initialized LocationProvider, if any.
     public static var provider: LocationProvider? {
-        get async {
-            await withCheckedContinuation { continuation in
-                queue.async {
-                    continuation.resume(returning: shared._provider)
-                }
-            }
-        }
+        return shared.initializedLocationProvider
     }
 
     /// Installs location instrumentation: creates LocationProvider and registers app lifecycle listeners.
-    /// **BLOCKING** - matches Android's synchronous install() behavior.
-    /// Call this when the SDK initializes and location instrumentation is enabled.
-    ///
-    /// Note: Unlike Android which starts on foreground, iOS starts immediately if already in foreground.
+
     public static func install(
         userDefaults: UserDefaults = .standard,
         cacheInvalidationTime: TimeInterval = LocationConstants.defaultCacheInvalidationTime
     ) {
-        queue.sync {
-            shared.installProviderSync(
-                userDefaults: userDefaults,
-                cacheInvalidationTime: cacheInvalidationTime
-            )
-        }
+        shared.install(userDefaults: userDefaults, cacheInvalidationTime: cacheInvalidationTime)
     }
 
-    private func installProviderSync(
-        userDefaults: UserDefaults,
-        cacheInvalidationTime: TimeInterval
+    /// Stops periodic refresh and clears the provider (e.g. for tests or shutdown).
+
+    public static func uninstall() {
+        shared.uninstall()
+    }
+
+    // MARK: - Instance-backed implementation
+
+    private var initializedLocationProvider: LocationProvider?
+
+    #if canImport(UIKit)
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    #endif
+
+    public init() {}
+
+    // Instance install used by static forwarder
+    public func install(
+        userDefaults: UserDefaults = .standard,
+        cacheInvalidationTime: TimeInterval = LocationConstants.defaultCacheInvalidationTime
     ) {
-        // Matches Android: just create provider and register listeners, don't start yet
-        guard _provider == nil else { return }
-        
-        let p = LocationProvider(
+        // If already installed, reuse existing provider (idempotent)
+        if let existing = initializedLocationProvider {
+            #if canImport(UIKit)
+            DispatchQueue.main.async { [weak self] in
+                if UIApplication.shared.applicationState == .active {
+                    existing.startPeriodicRefresh()
+                } else {
+                    existing.stopPeriodicRefresh()
+                }
+                self?.ensureLifecycleListenersRegistered()
+            }
+            #else
+            existing.startPeriodicRefresh()
+            #endif
+            return
+        }
+
+        let locationProvider = LocationProvider(
             userDefaults: userDefaults,
             cacheInvalidationTime: cacheInvalidationTime
         )
-        _provider = p
-        
+        initializedLocationProvider = locationProvider
+
         // Register app lifecycle listeners (mirrors Android's ApplicationStateListener)
         #if canImport(UIKit)
         registerLifecycleListeners()
-        
+
         // Start immediately if app is already in foreground (Android starts on first foreground)
-        // This handles the case where install() is called after app is already active
-        DispatchQueue.main.async {
+        DispatchQueue.main.async { [weak self] in
             if UIApplication.shared.applicationState == .active {
-                LocationInstrumentation.queue.async {
-                    shared._provider?.startPeriodicRefresh()
-                }
+                self?.initializedLocationProvider?.startPeriodicRefresh()
             }
         }
         #else
         // On non-UIKit platforms (macOS without UIKit), start immediately
-        p.startPeriodicRefresh()
+        locationProvider.startPeriodicRefresh()
         #endif
     }
-    
+
     #if canImport(UIKit)
+    private func ensureLifecycleListenersRegistered() {
+        if lifecycleObservers.isEmpty {
+            registerLifecycleListeners()
+        }
+    }
+
     private func registerLifecycleListeners() {
+        // Listen for app becoming active - start location refresh
+        let activeObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.initializedLocationProvider?.startPeriodicRefresh()
+        }
+
         // Listen for app entering background - pause location refresh (battery saving)
-        // Matches Android's onApplicationBackgrounded()
         let backgroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            LocationInstrumentation.queue.async {
-                self?.onApplicationBackgrounded()
-            }
+            self?.initializedLocationProvider?.stopPeriodicRefresh()
         }
-        
+
         // Listen for app entering foreground - resume location refresh
-        // Matches Android's onApplicationForegrounded()
         let foregroundObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            LocationInstrumentation.queue.async {
-                self?.onApplicationForegrounded()
-            }
+            self?.initializedLocationProvider?.startPeriodicRefresh()
         }
-        
-        lifecycleObservers = [backgroundObserver, foregroundObserver]
-    }
-    
-    private func onApplicationForegrounded() {
-        // Matches Android: initializedLocationProvider?.startPeriodicRefresh()
-        _provider?.startPeriodicRefresh()
-    }
-    
-    private func onApplicationBackgrounded() {
-        // Matches Android: initializedLocationProvider?.stopPeriodicRefresh()
-        _provider?.stopPeriodicRefresh()
+
+        lifecycleObservers = [activeObserver, backgroundObserver, foregroundObserver]
     }
     #endif
 
-    /// Stops periodic refresh and clears the provider (e.g. for tests or shutdown).
-    /// **BLOCKING** - matches Android's synchronous uninstall() behavior.
-    public static func uninstall() {
-        queue.sync {
-            shared.uninstallProviderSync()
-        }
-    }
+    // Instance uninstall used by static forwarder
+    public func uninstall() {
+        initializedLocationProvider?.stopPeriodicRefresh()
+        initializedLocationProvider = nil
 
-    private func uninstallProviderSync() {
-        _provider?.stopPeriodicRefresh()
-        _provider = nil
-        
         #if canImport(UIKit)
-        // Remove lifecycle observers
         for observer in lifecycleObservers {
             NotificationCenter.default.removeObserver(observer)
         }

@@ -1,12 +1,6 @@
-/*
- * Copyright The OpenTelemetry Authors
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import Foundation
 
 /// Cached location model used by LocationProvider and location attribute processors.
-/// Mirrors Android's CachedLocation (timestamp in seconds for iOS).
 struct CachedLocation: Codable {
     let latitude: Double
     let longitude: Double

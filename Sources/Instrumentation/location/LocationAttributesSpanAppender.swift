@@ -1,14 +1,8 @@
-/*
- * Copyright The OpenTelemetry Authors
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
 
 /// SpanProcessor that appends location attributes to every span by reading from the same cache as LocationProvider.
-/// Mirrors Android LocationAttributesSpanAppender.
 public final class LocationAttributesSpanAppender: SpanProcessor {
 
     private let userDefaults: UserDefaults

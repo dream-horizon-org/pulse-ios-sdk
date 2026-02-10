@@ -1,11 +1,6 @@
-/*
- * Copyright The OpenTelemetry Authors
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import Foundation
 
-/// Constants for location instrumentation (mirrors Android LocationConstants / LocationInstrumentationConstants).
+/// Constants for location instrumentation 
 public enum LocationConstants {
     /// UserDefaults / SharedPreferences key for cached location (matches Android LOCATION_CACHE_KEY).
     public static let locationCacheKey = "location_cache"
