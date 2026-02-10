@@ -14,6 +14,23 @@
     var connection: Connection = .unavailable
     let monitorQueue = DispatchQueue(label: "OTel-Network-Monitor")
     let lock = NSLock()
+    private let callbackLock = NSLock()
+    private var _onConnectionChange: ((Connection) -> Void)?
+
+    /// Optional callback invoked when the network path changes (e.g. wifi ↔ cellular ↔ unavailable).
+    /// Set by instrumentations that emit `network.change` events. Called on the monitor queue.
+    public var onConnectionChange: ((Connection) -> Void)? {
+      get {
+        callbackLock.lock()
+        defer { callbackLock.unlock() }
+        return _onConnectionChange
+      }
+      set {
+        callbackLock.lock()
+        _onConnectionChange = newValue
+        callbackLock.unlock()
+      }
+    }
 
     deinit {
       monitor.cancel()
@@ -41,6 +58,12 @@
           fatalError()
         }
         self.lock.unlock()
+        self.callbackLock.lock()
+        let callback = self._onConnectionChange
+        self.callbackLock.unlock()
+        if let callback = callback {
+          callback(self.connection)
+        }
       }
       monitor.pathUpdateHandler = pathHandler
       monitor.start(queue: monitorQueue)

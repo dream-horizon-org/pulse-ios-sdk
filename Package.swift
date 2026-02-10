@@ -290,7 +290,8 @@ extension Package {
         .target(
           name: "NetworkStatus",
           dependencies: [
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core")
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Sources/Instrumentation/NetworkStatus",
           linkerSettings: [.linkedFramework("CoreTelephony", .when(platforms: [.iOS]))]
