@@ -334,7 +334,7 @@ extension Package {
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
-          path: "Sources/Instrumentation/Location",
+          path: "Sources/Instrumentation/location",
           exclude: ["README.md"]
         ),
         .executableTarget(
@@ -457,8 +457,7 @@ extension Package {
             "URLSessionInstrumentation",
             "NetworkStatus",
             "SignPostIntegration",
-            "InteractionInstrumentation",
-            "Location"
+            "InteractionInstrumentation"
           ],
           path: "Sources/PulseKit"
         ),

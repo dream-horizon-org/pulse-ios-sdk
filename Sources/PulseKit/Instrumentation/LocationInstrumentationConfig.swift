@@ -1,13 +1,11 @@
-/*
- * Copyright The OpenTelemetry Authors
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import Foundation
+#if canImport(Location)
 import Location
+#endif
 
 /// Configuration for location instrumentation (feature flag and behavior).
-/// When enabled, geo attributes are added to spans and log records; mirrors Android location feature flag.
+/// When enabled, geo attributes are added to spans and log records;
+/// Requires the Location module to be linked (e.g. optional pod / SPM dependency); no-op if not present.
 public struct LocationInstrumentationConfig {
     public private(set) var enabled: Bool = false
 
@@ -23,6 +21,8 @@ public struct LocationInstrumentationConfig {
 extension LocationInstrumentationConfig: InstrumentationInitializer {
     internal func initialize(ctx: InstallationContext) {
         guard enabled else { return }
+        #if canImport(Location)
         LocationInstrumentation.install()
+        #endif
     }
 }

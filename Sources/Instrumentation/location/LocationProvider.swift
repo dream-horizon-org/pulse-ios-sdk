@@ -1,12 +1,7 @@
-/*
- * Copyright The OpenTelemetry Authors
- * SPDX-License-Identifier: Apache-2.0
- */
-
 import Foundation
 import CoreLocation
 
-/// Provides device location with caching and periodic refresh; mimics Android LocationProvider.kt.
+/// Provides device location with caching and periodic refresh
 /// Writes cached location to UserDefaults for use by LocationAttributesSpanAppender and LocationAttributesLogRecordProcessor.
 public final class LocationProvider: NSObject {
 
@@ -64,6 +59,7 @@ public final class LocationProvider: NSObject {
     public func stopPeriodicRefresh() {
         refreshTimer?.cancel()
         refreshTimer = nil
+        reverseGeocoder.cancel()
     }
 
     // MARK: - Location

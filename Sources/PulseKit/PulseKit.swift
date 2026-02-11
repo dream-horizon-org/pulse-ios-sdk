@@ -7,7 +7,9 @@ import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
 import NetworkStatus
+#if canImport(Location)
 import Location
+#endif
 
 // MARK: - SDK Constants
 internal enum PulseKitConstants {
@@ -246,12 +248,14 @@ public class PulseKit {
             logProcessor = networkAttributesLogProcessor
         }
 
+        #if canImport(Location)
         if config.location.enabled {
             let locationAttributesSpanProcessor = LocationAttributesSpanAppender()
             let locationAttributesLogProcessor = LocationAttributesLogRecordProcessor(nextProcessor: logProcessor)
             spanProcessors.append(locationAttributesSpanProcessor)
             logProcessor = locationAttributesLogProcessor
         }
+        #endif
 
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
         spanProcessors.append(pulseSpanProcessor)

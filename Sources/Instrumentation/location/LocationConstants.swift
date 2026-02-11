@@ -2,9 +2,9 @@ import Foundation
 
 /// Constants for location instrumentation 
 public enum LocationConstants {
-    /// UserDefaults / SharedPreferences key for cached location (matches Android LOCATION_CACHE_KEY).
+    /// UserDefaults key for cached location.
     public static let locationCacheKey = "location_cache"
 
-    /// Default cache invalidation time: 1 hour (matches Android DEFAULT_CACHE_INVALIDATION_TIME_MS when not DEBUG).
+    /// Default cache invalidation time: 1 hour.
     public static let defaultCacheInvalidationTime: TimeInterval = 60 * 60
 }

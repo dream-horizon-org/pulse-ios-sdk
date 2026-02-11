@@ -69,11 +69,10 @@ public final class LocationInstrumentation {
         )
         initializedLocationProvider = locationProvider
 
-        // Register app lifecycle listeners (mirrors Android's ApplicationStateListener)
         #if canImport(UIKit)
         registerLifecycleListeners()
 
-        // Start immediately if app is already in foreground (Android starts on first foreground)
+        // Start immediately if app is already in foreground
         DispatchQueue.main.async { [weak self] in
             if UIApplication.shared.applicationState == .active {
                 self?.initializedLocationProvider?.startPeriodicRefresh()
@@ -135,5 +134,8 @@ public final class LocationInstrumentation {
         }
         lifecycleObservers.removeAll()
         #endif
+    }
+}
+        lifecycleObservers.removeAll()
     }
 }
