@@ -465,6 +465,7 @@ extension Package {
           name: "PulseKitTests",
           dependencies: [
             "PulseKit",
+            "Location",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/PulseKitTests"
