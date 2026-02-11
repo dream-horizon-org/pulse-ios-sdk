@@ -136,6 +136,4 @@ public final class LocationInstrumentation {
         #endif
     }
 }
-        lifecycleObservers.removeAll()
-    }
-}
+     
