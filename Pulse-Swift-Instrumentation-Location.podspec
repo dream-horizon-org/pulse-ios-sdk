@@ -12,8 +12,8 @@ Pod::Spec.new do |spec|
     :git => "https://github.com/dream-horizon-org/pulse-ios-sdk.git", 
     :tag => spec.version.to_s 
   }
-  spec.source_files = "Sources/Instrumentation/Location/*.swift"
-  spec.exclude_files = "Sources/Instrumentation/Location/README.md"
+  spec.source_files = "Sources/Instrumentation/location/*.swift"
+  spec.exclude_files = "Sources/Instrumentation/location/README.md"
   
   spec.swift_version = "5.10"
   spec.ios.deployment_target = "13.0"
@@ -23,7 +23,7 @@ Pod::Spec.new do |spec|
   spec.osx.deployment_target = "12.0"
   spec.module_name = "Location"
   
-  spec.frameworks = "CoreLocation"
+  spec.ios.frameworks = "CoreLocation"
   
   spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
   spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
