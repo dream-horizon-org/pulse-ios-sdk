@@ -11,7 +11,7 @@ enum PulseUploadTask {
         versionCode: Int,
         fileType: String,
         fileName: String,
-        bundleId: String?
+        debugMode: Bool = false
     ) async throws {
         // Replace localhost with 127.0.0.1 for fixing localhost DNS resolution issue on macOS
         let normalizedUrl = PulseUploadUtils.normalizeURL(apiUrl)
@@ -25,15 +25,12 @@ enum PulseUploadTask {
         let type = fileType
         
         // Build metadata JSON
-        // Use manual JSON construction to ensure bundleId is always included (even as null)
-        // Swift's JSONEncoder omits nil optional values, but backend expects bundleId field
         let metadataDict: [String: Any] = [
             "type": type,
             "appVersion": appVersion,
             "versionCode": String(versionCode),
             "platform": platform,
-            "fileName": fileName,
-            "bundleId": bundleId ?? NSNull()
+            "fileName": fileName
         ]
         let metadataArray = [metadataDict]
         let metadataJSON = try JSONSerialization.data(withJSONObject: metadataArray)
@@ -89,10 +86,12 @@ enum PulseUploadTask {
                 throw PulseUploadError.uploadFailed("Upload failed with HTTP \(statusCode): \(errorMessage)")
             }
             
-            print("\n📥 Backend Response:")
-            print("   Status: \(statusCode)")
-            if let responseString = String(data: data, encoding: .utf8), !responseString.isEmpty {
-                print("   Response: \(responseString)")
+            if debugMode {
+                print("\nBackend Response:")
+                print("   Status: \(statusCode)")
+                if let responseString = String(data: data, encoding: .utf8), !responseString.isEmpty {
+                    print("   Response: \(responseString)")
+                }
             }
         } catch let error as URLError {
             // Provide better error messages for common network issues

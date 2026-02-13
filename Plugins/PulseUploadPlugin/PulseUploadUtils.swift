@@ -1,4 +1,5 @@
 import Foundation
+import PackagePlugin
 
 // MARK: - Utility Functions
 
@@ -26,7 +27,6 @@ enum PulseUploadUtils {
         // Remove existing zip if present
         try? FileManager.default.removeItem(at: zipURL)
         
-        // Use Process to call zip command (more reliable than Foundation's zip)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/zip")
         process.arguments = ["-r", "-q", zipURL.path, directory.lastPathComponent]
@@ -47,22 +47,74 @@ enum PulseUploadUtils {
     }
     
     /// Auto-detect file type from file extension
-    static func detectFileType(from fileURL: URL, defaultType: String) -> String {
+    /// Only checks for "dsym", returns "unknown" for everything else
+    static func detectFileType(from fileURL: URL) -> String {
         let fileExtension = fileURL.pathExtension.lowercased()
         let fileNameLower = fileURL.lastPathComponent.lowercased()
         
         if fileNameLower.hasSuffix(".dsym") || fileExtension == "dsym" {
-            return "DSYM"
-        } else if fileExtension == "map" || fileNameLower.contains(".map") {
-            return "JS"
+            return "dsym"
         }
         
-        return defaultType
+        return "unknown"
     }
     
     /// Normalize localhost URL to 127.0.0.1 for DNS resolution
     static func normalizeURL(_ url: String) -> String {
         return url.replacingOccurrences(of: "localhost", with: "127.0.0.1")
+    }
+    
+    /// Resolve file path (absolute or relative to package directory)
+    static func resolveFilePath(_ path: String, packageDirectory: Path) -> URL {
+        if path.hasPrefix("/") {
+            return URL(fileURLWithPath: path)
+        } else {
+            let packagePath = packageDirectory.appending(path)
+            return URL(fileURLWithPath: packagePath.string)
+        }
+    }
+    
+    /// Validate and determine file type
+    static func validateFileType(_ fileType: String, fileURL: URL) throws -> String {
+        if fileType == "dsym" {
+            return "dsym"
+        } else if fileType == "unknown" {
+            let detected = detectFileType(from: fileURL)
+            if detected == "dsym" {
+                return "dsym"
+            } else {
+                print("Warning: File type detected as 'unknown' for: \(fileURL.lastPathComponent)")
+                print("   Expected: dSYM file (.dSYM extension or directory)")
+                print("   Upload will proceed but may be rejected by backend.")
+                print("   Fix: Use a dSYM file or set --type=dsym if this is a dSYM file.\n")
+                return "unknown"
+            }
+        } else {
+            throw PulseUploadError.invalidArgument("Only 'dsym' type is currently supported. Got: \(fileType). Use --help for usage.")
+        }
+    }
+    
+    /// Prepare file for upload (zip if directory, validate size)
+    static func prepareFileForUpload(_ fileURL: URL, fileType: String) throws -> (uploadURL: URL, fileName: String, fileSize: Int64, isTemporary: Bool) {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) else {
+            throw PulseUploadError.fileNotFound("File or directory not found at: \(fileURL.path)")
+        }
+        
+        if isDirectory.boolValue {
+            let zipURL = try createZipArchive(from: fileURL)
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: zipURL.path)
+            guard let size = fileAttributes[.size] as? Int64, size > 0 else {
+                throw PulseUploadError.invalidFile("Zip archive is empty: \(zipURL.path)")
+            }
+            return (zipURL, "\(fileURL.lastPathComponent).zip", size, true)
+        } else {
+            let fileAttributes = try FileManager.default.attributesOfItem(atPath: fileURL.path)
+            guard let size = fileAttributes[.size] as? Int64, size > 0 else {
+                throw PulseUploadError.invalidFile("File is empty: \(fileURL.path)")
+            }
+            return (fileURL, fileURL.lastPathComponent, size, false)
+        }
     }
     
     /// Print usage information
@@ -71,53 +123,37 @@ enum PulseUploadUtils {
         Pulse Upload Plugin
         
         Usage:
-          swift package plugin upload-symbols \\
-            --api-url=<url> \\
-            --file-path=<path> \\
-            --app-version=<version> \\
-            --version-code=<code> \\
-            [--type=<type>] \\
-            [--bundle-id=<id>]
+          swift package plugin uploadSourceMaps \\
+            -u <url> | --api-url=<url> \\
+            -p <path> | --dsym-path=<path> \\
+            -v <version> | --app-version=<version> \\
+            -c <code> | --version-code=<code> \\
+            [-t dsym | --type=dsym] \\
+            [-d | --debug]
         
-        Arguments:
-          --api-url=<url>        API URL for uploading files (required)
-          --file-path=<path>     Path to file or directory to upload (required)
-          --app-version=<version> App version (e.g., 1.0.0) (required)
-          --version-code=<code>   Version code (positive integer, e.g., 1) (required)
-          --type=<type>          File type (default: "JS", options: "JS", "MAPPING", "DSYM", etc. - auto-uppercased)
-          --bundle-id=<id>       Bundle ID (optional, e.g., com.example.app)
-          --help, -h             Show this help message
+        Required Arguments:
+          -u, --api-url=<url>           API URL for uploading files
+          -p, --dsym-path=<path>       Path to dSYM file or directory to upload
+          -v, --app-version=<version>  App version (e.g., 1.0.0)
+          -c, --version-code=<code>    Version code (positive integer, e.g., 1)
         
-        Legacy Arguments (still supported):
-          --dsym-path=<path>     Alias for --file-path (for backward compatibility)
+        Optional Arguments:
+          -t, --type=dsym              File type (default: unknown, auto-detected if dSYM)
+          -d, --debug                  Show debug information including metadata
+          -h, --help                   Show this help message
         
-        Examples:
-          # Upload a JS source map file (default type)
-          swift package plugin upload-symbols \\
-            --api-url=http://localhost:8080/v1/symbolicate/file/upload \\
-            --file-path=/path/to/index.js.map \\
-            --app-version=1.0.0 \\
-            --version-code=1 \\
-            --type=JS
-          
-          # Upload a dSYM file
-          swift package plugin upload-symbols \\
-            --api-url=http://localhost:8080/v1/symbolicate/file/upload \\
-            --file-path=/path/to/App.dSYM \\
-            --app-version=1.0.0 \\
-            --version-code=1 \\
-            --type=DSYM
-        
-          # Upload with bundle ID
-          swift package plugin upload-symbols \\
-            --api-url=http://localhost:8080/v1/symbolicate/file/upload \\
-            --file-path=./build/App.dSYM \\
-            --app-version=1.0.0 \\
-            --version-code=1 \\
-            --bundle-id=com.example.app
+        Example:
+          swift package plugin uploadSourceMaps \\
+            -u http://localhost:8080/v1/symbolicate/file/upload \\
+            -p ~/Library/Developer/Xcode/DerivedData/YourApp-*/Build/Products/Release-iphoneos/YourApp.app.dSYM \\
+            -v 1.0.0 \\
+            -c 1 \\
+            -d
         
         Note: The file path can be absolute or relative to the package directory.
               Directories (like dSYM bundles) will be automatically zipped.
+              Currently only "dsym" file type is supported; other types default to "unknown".
+              NetworkStorageDB warnings are harmless and can be ignored (URLSession cache initialization).
         """)
     }
 }
