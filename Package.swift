@@ -26,7 +26,8 @@ let package = Package(
     .library(name: "BaggagePropagationProcessor", targets: ["BaggagePropagationProcessor"]),
     .library(name: "Sessions", targets: ["Sessions"]),
     .executable(name: "loggingTracer", targets: ["LoggingTracer"]),
-    .executable(name: "StableMetricSample", targets: ["StableMetricSample"])
+    .executable(name: "StableMetricSample", targets: ["StableMetricSample"]),
+    .plugin(name: "PulseUploadPlugin", targets: ["PulseUploadPlugin"])
   ],
   dependencies: [
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.3.0"),
@@ -206,6 +207,22 @@ let package = Package(
       ],
       path: "Examples/Stable Metric Sample",
       exclude: ["README.md"]
+    ),
+    .plugin(
+      name: "PulseUploadPlugin",
+      capability: .command(
+        intent: .custom(verb: "upload-symbols", description: "Upload symbol files (dSYM, source maps, etc.) to Pulse backend"),
+        permissions: [
+          // Network permission is required because SPM command plugins run in a sandbox
+          // that blocks network access by default. This permission allows the plugin
+          // to make HTTP POST requests to upload files to the backend server.
+          // Supports both localhost (127.0.0.1) and remote backend URLs.
+          .allowNetworkConnections(scope: .all(ports: []), reason: "Upload symbol files to Pulse backend via HTTP POST"),
+          // Write permission for logging upload status and creating temporary zip files
+          .writeToPackageDirectory(reason: "Log upload status and results")
+        ]
+      ),
+      path: "Plugins/PulseUploadPlugin"
     )
   ]
 ).addPlatformSpecific()
