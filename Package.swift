@@ -334,7 +334,7 @@ extension Package {
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
-          path: "Sources/Instrumentation/location",
+          path: "Sources/Instrumentation/Location",
           exclude: ["README.md"]
         ),
         .executableTarget(

@@ -3,9 +3,7 @@ import Foundation
 import Location
 #endif
 
-/// Configuration for location instrumentation (feature flag and behavior).
-/// When enabled, geo attributes are added to spans and log records;
-/// Requires the Location module to be linked (e.g. optional pod / SPM dependency); no-op if not present.
+/// Configuration for location instrumentation
 public struct LocationInstrumentationConfig {
     public private(set) var enabled: Bool = false
 
