@@ -4,7 +4,15 @@ import PackagePlugin
 // MARK: - Utility Functions
 
 enum PulseUploadUtils {
-    /// Format file size in human-readable format
+    private enum ANSIColor {
+        static let yellow = "\u{001B}[33m"
+        static let reset = "\u{001B}[0m"
+    }
+    
+    static func warn(_ message: String) {
+        fputs("\(ANSIColor.yellow)warning: \(message)\(ANSIColor.reset)\n", stderr)
+    }
+
     static func formatFileSize(_ bytes: Int64) -> String {
         let kb = Double(bytes) / 1024.0
         let mb = kb / 1024.0
@@ -76,10 +84,10 @@ enum PulseUploadUtils {
             if detected == "dsym" {
                 return "dsym"
             } else {
-                print("Warning: File type detected as 'unknown' for: \(fileURL.lastPathComponent)")
-                print("   Expected: dSYM file (.dSYM extension or directory)")
-                print("   Upload will proceed but may be rejected by backend.")
-                print("   Fix: Use a dSYM file or set --type=dsym if this is a dSYM file.\n")
+                warn("File type detected as 'unknown' for: \(fileURL.lastPathComponent)")
+                warn("   Expected: dSYM file (.dSYM extension or directory)")
+                warn("   Upload will proceed but may be rejected by backend.")
+                warn("   Fix: Use a dSYM file or set --type=dsym if this is a dSYM file.")
                 return "unknown"
             }
         } else {
