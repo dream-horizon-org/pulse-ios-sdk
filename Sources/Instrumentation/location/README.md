@@ -114,3 +114,17 @@ The Location pod depends on:
 | `LocationConstants` | Cache key and default cache invalidation interval (1 hour). |
 | `LocationReverseGeocoding` | Reverse geocoding (coordinates → placemark) for country, region, locality, and postal code. |
 | `CachedLocation` | Codable model for cached location (lat/lon, timestamp, optional geo fields). |
+
+## Advanced: internals
+
+### Location tracking
+
+Location is obtained via Apple's **CoreLocation** framework (`CLLocationManager`). The provider uses `requestLocation()` for one-shot fixes (not continuous GPS tracking) with `kCLLocationAccuracyHundredMeters` to balance accuracy and battery. A `DispatchSourceTimer` fires every cache-invalidation interval (default 1 hour) to re-request location in the background queue.
+
+### Reverse geocoding
+
+Reverse geocoding is performed by Apple's **CoreLocation** `CLGeocoder.reverseGeocodeLocation(_:)` — no third-party service is involved. The first `CLPlacemark` from the response is used to extract `isoCountryCode`, `administrativeArea`, `locality`, and `postalCode`. The region ISO code is formatted as `{country}-{region}` (e.g. `US-CA`).
+
+### Caching
+
+Location data is cached in two layers: an in-memory singleton (`CachedLocationSaver`) for fast reads by span/log processors, and `UserDefaults` for persistence across app launches. Both are updated together on every successful location fix. The cache model (`CachedLocation`) is `Codable` and includes a timestamp so expiry can be checked against the configurable TTL.
