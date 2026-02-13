@@ -72,9 +72,11 @@ struct PulseUploadPlugin: CommandPlugin {
         
         let apiUrlFinal = apiUrlValue.trimmingCharacters(in: .whitespaces)
         
-        guard apiUrlFinal.hasPrefix("http://") || apiUrlFinal.hasPrefix("https://") else {
+        guard let testURL = URL(string: apiUrlFinal),
+              let scheme = testURL.scheme,
+              (scheme == "http" || scheme == "https") else {
             PulseUploadUtils.printUsage()
-            throw PulseUploadError.invalidURL("API URL must start with http:// or https://")
+            throw PulseUploadError.invalidURL("API URL must be a valid HTTP or HTTPS URL")
         }
         
         guard let filePathValue = filePath, !filePathValue.trimmingCharacters(in: .whitespaces).isEmpty else {
