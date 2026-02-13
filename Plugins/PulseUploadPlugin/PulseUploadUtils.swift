@@ -24,7 +24,6 @@ enum PulseUploadUtils {
         let zipName = "\(directory.lastPathComponent).zip"
         let zipURL = tempDir.appendingPathComponent(zipName)
         
-        // Remove existing zip if present
         try? FileManager.default.removeItem(at: zipURL)
         
         let process = Process()
@@ -46,8 +45,6 @@ enum PulseUploadUtils {
         return zipURL
     }
     
-    /// Auto-detect file type from file extension
-    /// Only checks for "dsym", returns "unknown" for everything else
     static func detectFileType(from fileURL: URL) -> String {
         let fileExtension = fileURL.pathExtension.lowercased()
         let fileNameLower = fileURL.lastPathComponent.lowercased()
@@ -59,12 +56,10 @@ enum PulseUploadUtils {
         return "unknown"
     }
     
-    /// Normalize localhost URL to 127.0.0.1 for DNS resolution
     static func normalizeURL(_ url: String) -> String {
         return url.replacingOccurrences(of: "localhost", with: "127.0.0.1")
     }
     
-    /// Resolve file path (absolute or relative to package directory)
     static func resolveFilePath(_ path: String, packageDirectory: Path) -> URL {
         if path.hasPrefix("/") {
             return URL(fileURLWithPath: path)
@@ -73,7 +68,6 @@ enum PulseUploadUtils {
         return URL(fileURLWithPath: packagePath.string)
     }
     
-    /// Validate and determine file type
     static func validateFileType(_ fileType: String, fileURL: URL) throws -> String {
         if fileType == "dsym" {
             return "dsym"
@@ -93,7 +87,6 @@ enum PulseUploadUtils {
         }
     }
     
-    /// Prepare file for upload (zip if directory, validate size)
     static func prepareFileForUpload(_ fileURL: URL, fileType: String) throws -> (uploadURL: URL, fileName: String, fileSize: Int64, isTemporary: Bool) {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory) else {
@@ -116,7 +109,6 @@ enum PulseUploadUtils {
         }
     }
     
-    /// Print usage information
     static func printUsage() {
         print("""
         Pulse Upload Plugin
@@ -152,7 +144,6 @@ enum PulseUploadUtils {
         Note: The file path can be absolute or relative to the package directory.
               Directories (like dSYM bundles) will be automatically zipped.
               Currently only "dsym" file type is supported; other types default to "unknown".
-              NetworkStorageDB warnings are harmless and can be ignored (URLSession cache initialization).
         """)
     }
 }
