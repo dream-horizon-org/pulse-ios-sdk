@@ -211,15 +211,10 @@ let package = Package(
     .plugin(
       name: "PulseUploadPlugin",
       capability: .command(
-        intent: .custom(verb: "upload-symbols", description: "Upload symbol files (dSYM, source maps, etc.) to Pulse backend"),
+        intent: .custom(verb: "uploadSourceMaps", description: "Upload source maps (dSYM files) to Pulse backend"),
         permissions: [
-          // Network permission is required because SPM command plugins run in a sandbox
-          // that blocks network access by default. This permission allows the plugin
-          // to make HTTP POST requests to upload files to the backend server.
-          // Supports both localhost (127.0.0.1) and remote backend URLs.
-          .allowNetworkConnections(scope: .all(ports: []), reason: "Upload symbol files to Pulse backend via HTTP POST"),
-          // Write permission for logging upload status and creating temporary zip files
-          .writeToPackageDirectory(reason: "Log upload status and results")
+          // Network permission is required because SPM command plugins run in a sandbox that blocks network access by default. 
+          .allowNetworkConnections(scope: .all(ports: []), reason: "Upload dSYM files to Pulse backend via HTTP POST")
         ]
       ),
       path: "Plugins/PulseUploadPlugin"

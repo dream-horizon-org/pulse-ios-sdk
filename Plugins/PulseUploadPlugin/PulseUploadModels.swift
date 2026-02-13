@@ -8,5 +8,4 @@ struct PulseUploadMetadata: Codable {
     let versionCode: String
     let platform: String
     let fileName: String
-    let bundleId: String?
 }
