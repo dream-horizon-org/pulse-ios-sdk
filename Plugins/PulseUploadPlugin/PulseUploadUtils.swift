@@ -68,10 +68,9 @@ enum PulseUploadUtils {
     static func resolveFilePath(_ path: String, packageDirectory: Path) -> URL {
         if path.hasPrefix("/") {
             return URL(fileURLWithPath: path)
-        } else {
-            let packagePath = packageDirectory.appending(path)
-            return URL(fileURLWithPath: packagePath.string)
         }
+        let packagePath = packageDirectory.appending(path)
+        return URL(fileURLWithPath: packagePath.string)
     }
     
     /// Validate and determine file type
