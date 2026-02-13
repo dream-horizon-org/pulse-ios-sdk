@@ -15,13 +15,11 @@ struct PulseUploadPlugin: CommandPlugin {
         
         var iterator = arguments.makeIterator()
         while let arg = iterator.next() {
-            // Handle --help first
             if arg == "--help" || arg == "-h" {
                 PulseUploadUtils.printUsage()
                 return
             }
             
-            // Parse arguments - handle both --key=value and --key value formats
             if arg.contains("=") {
                 let parts = arg.split(separator: "=", maxSplits: 1)
                 guard parts.count == 2 else {
@@ -43,7 +41,6 @@ struct PulseUploadPlugin: CommandPlugin {
                     throw PulseUploadError.invalidArgument("Unknown argument: \(key). Use --help for usage.")
                 }
             } else {
-                // Parse arguments without = (e.g., --api-url value)
                 switch arg {
                 case "--api-url", "-u": apiUrl = iterator.next()
                 case "--dsym-path", "-p": filePath = iterator.next()
@@ -64,7 +61,6 @@ struct PulseUploadPlugin: CommandPlugin {
             }
         }
         
-        // Validate required arguments (show help on error)
         guard let apiUrlValue = apiUrl, !apiUrlValue.trimmingCharacters(in: .whitespaces).isEmpty else {
             PulseUploadUtils.printUsage()
             throw PulseUploadError.missingArgument("--api-url is required")

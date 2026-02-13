@@ -3,7 +3,13 @@ import Foundation
 // MARK: - Upload Task
 
 enum PulseUploadTask {
-    /// Upload a file to the Pulse backend
+    private static let uploadSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.urlCache = nil
+        return URLSession(configuration: config)
+    }()
+    
     static func upload(
         apiUrl: String,
         fileURL: URL,
@@ -50,7 +56,7 @@ enum PulseUploadTask {
         request.timeoutInterval = 300.0
         
         let (data, response) = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in
-            let task = URLSession.shared.uploadTask(with: request, fromFile: bodyFileURL) { data, response, error in
+            let task = uploadSession.uploadTask(with: request, fromFile: bodyFileURL) { data, response, error in
                 if let error = error {
                     continuation.resume(throwing: error)
                     return
@@ -84,7 +90,6 @@ enum PulseUploadTask {
         }
     }
     
-    /// Create multipart body file by streaming data (memory-efficient for large files)
     private static func createMultipartBodyFile(
         boundary: String,
         metadataJSON: Data,
