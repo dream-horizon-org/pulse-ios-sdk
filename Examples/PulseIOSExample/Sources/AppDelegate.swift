@@ -24,6 +24,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         PulseKit.shared.initialize(
             endpointBaseUrl: "http://127.0.0.1:4318",
+            tenantId: "your-tenant-id",
             endpointHeaders: nil,
             globalAttributes: globalAttributes
         )
@@ -33,7 +34,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let mainViewController = MainViewController()
         window?.rootViewController = UINavigationController(rootViewController: mainViewController)
         window?.makeKeyAndVisible()
-        print("SDK Initialised")
         return true
     }
 }
