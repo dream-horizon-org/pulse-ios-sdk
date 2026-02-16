@@ -13,9 +13,9 @@ public enum PulseAttributes {
     public static let pulseUserSessionStartEventName = "pulse.user.session.start"
     public static let pulseUserSessionEndEventName = "pulse.user.session.end"
     public static let startType = "start.type"
-    public static let tenantId = "tenant.id"
+    public static let tenantId = "project.id"
     
-    internal static let tenantIdHeaderKey = "tenant-id"
+    internal static let tenantIdHeaderKey = "X-API-KEY"
     
     public static let exceptionMessage = "exception.message"
     public static let exceptionType = "exception.type"
