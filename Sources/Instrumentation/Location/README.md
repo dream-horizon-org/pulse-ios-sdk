@@ -68,7 +68,31 @@ Then run:
 pod install
 ```
 
-### 2. Enable in PulseKit
+### 2. Add Info.plist location permission keys
+
+Your app must declare a location usage description in its `Info.plist`, otherwise iOS will silently deny location access (or crash on older versions). Add the key that matches the authorization level you request:
+
+#### When In Use (recommended)
+
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>This app uses your location to attach geo attributes to telemetry data.</string>
+```
+
+#### Always (only if your app needs background location)
+
+If your app also needs location updates while in the background, add both keys:
+
+```xml
+<key>NSLocationWhenInUseUsageDescription</key>
+<string>This app uses your location to attach geo attributes to telemetry data.</string>
+<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+<string>This app uses your location in the background to keep telemetry geo attributes up to date.</string>
+```
+
+> **Note:** The Location instrumentation uses `requestWhenInUseAuthorization()` by default, so `NSLocationWhenInUseUsageDescription` is sufficient for most apps. The string value is shown to the user in the system permission dialog — customize it to explain why your app needs location.
+
+### 3. Enable in PulseKit
 
 Location is **off** by default. Enable it during initialization:
 
