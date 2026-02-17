@@ -92,15 +92,15 @@ public class PulseKit {
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
-            // Merge tenant ID header with user-provided headers
+            // Merge ProjectID  header with user-provided headers
             let projectIdHeader = [PulseAttributes.projectIdHeaderKey: projectId]
-            let endpointHeadersWithTenant = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
+            let endpointHeadersWithProjectID = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
 
             let resource = buildResource(projectId: projectId, resource: resource)
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
                 endpointBaseUrl: endpointBaseUrl,
-                endpointHeaders: endpointHeadersWithTenant,
+                endpointHeaders: endpointHeadersWithProjectID,
                 resource: resource,
                 config: config,
                 tracerProviderCustomizer: tracerProviderCustomizer,
