@@ -250,6 +250,7 @@ extension Package {
         .library(name: "NetworkStatus", targets: ["NetworkStatus"]),
         .library(name: "URLSessionInstrumentation", targets: ["URLSessionInstrumentation"]),
         .library(name: "InteractionInstrumentation", targets: ["InteractionInstrumentation"]),
+        .library(name: "Location", targets: ["Location"]),
         .library(name: "ZipkinExporter", targets: ["ZipkinExporter"]),
         .executable(name: "OTLPExporter", targets: ["OTLPExporter"]),
         .executable(name: "OTLPHTTPExporter", targets: ["OTLPHTTPExporter"]),
@@ -325,6 +326,15 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Sources/Instrumentation/Interaction",
+          exclude: ["README.md"]
+        ),
+        .target(
+          name: "Location",
+          dependencies: [
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Sources/Instrumentation/Location",
           exclude: ["README.md"]
         ),
         .executableTarget(
@@ -418,6 +428,15 @@ extension Package {
           ],
           path: "Tests/InstrumentationTests/InteractionTests"
         ),
+        .testTarget(
+          name: "LocationTests",
+          dependencies: [
+            "Location",
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/LocationTests"
+        ),
         .executableTarget(
           name: "PrometheusSample",
           dependencies: [
@@ -446,6 +465,7 @@ extension Package {
           name: "PulseKitTests",
           dependencies: [
             "PulseKit",
+            "Location",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/PulseKitTests"
