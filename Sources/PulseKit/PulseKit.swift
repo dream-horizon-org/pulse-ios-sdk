@@ -70,7 +70,7 @@ public class PulseKit {
 
     public func initialize(
         endpointBaseUrl: String,
-        tenantId: String,
+        projectId: String,
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
@@ -93,10 +93,10 @@ public class PulseKit {
             instrumentations?(&config)
 
             // Merge tenant ID header with user-provided headers
-            let tenantIdHeader = [PulseAttributes.tenantIdHeaderKey: tenantId]
-            let endpointHeadersWithTenant = (endpointHeaders ?? [:]).merging(tenantIdHeader) { _, new in new }
+            let projectIdHeader = [PulseAttributes.projectIdHeaderKey: projectId]
+            let endpointHeadersWithTenant = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
 
-            let resource = buildResource(tenantId: tenantId, resource: resource)
+            let resource = buildResource(projectId: projectId, resource: resource)
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
                 endpointBaseUrl: endpointBaseUrl,
@@ -136,13 +136,13 @@ public class PulseKit {
 
     // MARK: - Private Helper Methods
 
-    private func buildResource(tenantId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
+    private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
         
         var attributes = defaultResource.attributes
         
         attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
-        attributes[PulseAttributes.tenantId] = AttributeValue.string(tenantId)
+        attributes[PulseAttributes.projectId] = AttributeValue.string(projectId)
         
         if let resourceCustomizer = resource {
             resourceCustomizer(&attributes)
