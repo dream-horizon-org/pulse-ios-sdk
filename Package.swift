@@ -251,6 +251,7 @@ extension Package {
         .library(name: "NetworkStatus", targets: ["NetworkStatus"]),
         .library(name: "URLSessionInstrumentation", targets: ["URLSessionInstrumentation"]),
         .library(name: "InteractionInstrumentation", targets: ["InteractionInstrumentation"]),
+        .library(name: "Location", targets: ["Location"]),
         .library(name: "Crashes", targets: ["Crashes"]),
         .library(name: "ZipkinExporter", targets: ["ZipkinExporter"]),
         .executable(name: "OTLPExporter", targets: ["OTLPExporter"]),
@@ -327,6 +328,15 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Sources/Instrumentation/Interaction",
+          exclude: ["README.md"]
+        ),
+        .target(
+          name: "Location",
+          dependencies: [
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Sources/Instrumentation/Location",
           exclude: ["README.md"]
         ),
         .target(
@@ -432,6 +442,15 @@ extension Package {
           path: "Tests/InstrumentationTests/InteractionTests"
         ),
         .testTarget(
+          name: "LocationTests",
+          dependencies: [
+            "Location",
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/LocationTests"
+        ),
+        .testTarget(
           name: "CrashInstrumentationTests",
           dependencies: [
             "Crashes",
@@ -468,6 +487,7 @@ extension Package {
           name: "PulseKitTests",
           dependencies: [
             "PulseKit",
+            "Location",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/PulseKitTests"
