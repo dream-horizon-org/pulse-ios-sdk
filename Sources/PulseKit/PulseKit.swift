@@ -52,6 +52,16 @@ public class PulseKit {
     internal var _globalAttributes: [String: AttributeValue]? = nil
     internal var _configuration: PulseKitConfiguration = PulseKitConfiguration()
 
+    /// Config loaded from persistence at init; used for this launch. Nil when none persisted or decode failed.
+    /// New config from API is persisted for next launch only (see LLD §2).
+    private var _currentSdkConfig: PulseSdkConfig?
+    private let configStorageQueue = DispatchQueue(label: "com.pulse.ios.sdk.sampling.config", qos: .utility)
+
+    /// Current SDK config for this launch (from persistence at init). Nil if none available; then use Pulse.initialize defaults.
+    internal var currentSdkConfig: PulseSdkConfig? {
+        configStorageQueue.sync { _currentSdkConfig }
+    }
+
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
             fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
@@ -70,6 +80,7 @@ public class PulseKit {
 
     public func initialize(
         endpointBaseUrl: String,
+        configEndpointUrl: String? = nil,
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
@@ -87,7 +98,21 @@ public class PulseKit {
             var pulseKitConfig = PulseKitConfiguration()
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
-            
+
+            // Config: load from persistence (sync)
+            let configCoordinator = PulseSdkConfigCoordinator()
+            configStorageQueue.sync {
+                _currentSdkConfig = configCoordinator.loadCurrentConfig()
+            }
+            PulseSdkConfigLogger.logLoaded(currentVersion: _currentSdkConfig?.version)
+
+            let resolvedConfigEndpointUrl = configEndpointUrl ?? Self.defaultConfigEndpointUrl(from: endpointBaseUrl)
+            configCoordinator.startBackgroundFetch(
+                configEndpointUrl: resolvedConfigEndpointUrl,
+                endpointHeaders: endpointHeaders ?? [:],
+                currentConfigVersion: _currentSdkConfig?.version
+            )
+
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
@@ -110,7 +135,7 @@ public class PulseKit {
                 endpointBaseUrl: endpointBaseUrl
             )
             installInstrumentations(config: config, ctx: installationContext)
-            
+
             #if os(iOS) || os(tvOS)
             if _configuration.includeScreenAttributes {
                 AppStartupTimer.shared.start(
@@ -130,6 +155,15 @@ public class PulseKit {
     }
 
     // MARK: - Private Helper Methods
+
+    /// Default config endpoint URL when not provided (matches Android PulseSDKImpl: endpointBaseUrl with port 8080 + v1/configs/active/).
+    private static func defaultConfigEndpointUrl(from endpointBaseUrl: String) -> String {
+        let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
+        var base = withPort
+        while base.hasSuffix("/") { base.removeLast() }
+        base += "/"
+        return base + "v1/configs/active/"
+    }
 
     private func buildResource(resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
@@ -160,8 +194,8 @@ public class PulseKit {
         let tracesEndpoint = URL(string: "\(endpointBaseUrl)/v1/traces")!
         let logsEndpoint = URL(string: "\(endpointBaseUrl)/v1/logs")!
         let otlpHttpTraceExporter = OtlpHttpTraceExporter(endpoint: tracesEndpoint, envVarHeaders: envVarHeaders)
-        let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)        
-        let spanExporter = FilteringSpanExporter(delegate: otlpHttpTraceExporter)
+        let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
+        let spanExporter = otlpHttpTraceExporter
 
         // Build base processors
         let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
