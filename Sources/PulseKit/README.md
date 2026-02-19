@@ -10,20 +10,22 @@ The Pulse iOS SDK provides a simple, unified API for instrumenting iOS applicati
 import PulseKit
 
 // Initialize the SDK
-PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com")
+PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com", projectId: "your-project-id")
 ```
 
 ## API Reference
 
 ### Initialization
 
-#### `initialize(endpointBaseUrl:endpointHeaders:globalAttributes:instrumentations:)`
+#### `initialize(endpointBaseUrl:projectId:configEndpointUrl:endpointHeaders:...)`
 
-Initializes the Pulse SDK with the specified configuration.
+Initializes the Pulse SDK with the specified configuration. **projectId** is sent as the `X-API-KEY` header on all API calls (config, traces, logs); optional **endpointHeaders** are merged with it (projectId wins for X-API-KEY). Matches Android behavior.
 
 **Parameters:**
 - `endpointBaseUrl: String` - **Required**. The base URL for the OTLP endpoint (e.g., `"https://your-backend.com"` or `"http://localhost:4318"`)
-- `endpointHeaders: [String: String]?` - **Optional**. HTTP headers to include with all OTLP requests (e.g., authentication headers)
+- `projectId: String` - **Required**. Project identifier; sent as `X-API-KEY` header and as resource attribute `project.id`.
+- `configEndpointUrl: String?` - **Optional**. Config API URL; when nil, defaults to `{endpointBaseUrl with port 8080}/v1/configs/active/`.
+- `endpointHeaders: [String: String]?` - **Optional**. Extra HTTP headers; merged with X-API-KEY (projectId) for all requests.
 - `globalAttributes: [String: String]?` - **Optional**. Global attributes to add to all telemetry data
 - `instrumentations: ((inout InstrumentationConfiguration) -> Void)?` - **Optional**. Closure to configure instrumentations using DSL syntax
 
@@ -31,9 +33,9 @@ Initializes the Pulse SDK with the specified configuration.
 ```swift
 PulseKit.shared.initialize(
     endpointBaseUrl: "https://your-backend.com",
+    projectId: "your-project-id",
     endpointHeaders: [
-        "Authorization": "Bearer your-token",
-        "X-API-Key": "your-api-key"
+        "Authorization": "Bearer your-token"
     ],
     globalAttributes: [
         "app.version": "1.0.0",

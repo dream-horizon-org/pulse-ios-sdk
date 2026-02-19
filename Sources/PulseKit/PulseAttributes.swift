@@ -13,14 +13,15 @@ public enum PulseAttributes {
     public static let pulseUserSessionStartEventName = "pulse.user.session.start"
     public static let pulseUserSessionEndEventName = "pulse.user.session.end"
     public static let startType = "start.type"
-    public static let projectId = "project.id"
-    
-    internal static let projectIdHeaderKey = "X-API-KEY"
     
     public static let exceptionMessage = "exception.message"
     public static let exceptionType = "exception.type"
     public static let exceptionStacktrace = "exception.stacktrace"
-    
+
+    /// Project identifier; used as resource attribute "project.id" and in HTTP header X-API-KEY (matches Android).
+    public static let projectId = "project.id"
+    internal static let projectIdHeaderKey = "X-API-KEY"
+
     public static func pulseUserParameter(_ key: String) -> String {
         return "\(pulseUserPrefix).\(key)"
     }
