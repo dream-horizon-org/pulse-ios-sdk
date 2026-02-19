@@ -7,6 +7,9 @@ import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
 import NetworkStatus
+#if canImport(Location)
+import Location
+#endif
 
 // MARK: - SDK Constants
 internal enum PulseKitConstants {
@@ -80,6 +83,7 @@ public class PulseKit {
 
     public func initialize(
         endpointBaseUrl: String,
+        projectId: String,
         configEndpointUrl: String? = nil,
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
@@ -99,6 +103,10 @@ public class PulseKit {
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
 
+            // Merge projectId with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP; matches Android: X-API-KEY header).
+            let projectIdHeader = [PulseAttributes.projectIdHeaderKey: projectId]
+            let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
+
             // Config: load from persistence (sync)
             let configCoordinator = PulseSdkConfigCoordinator()
             configStorageQueue.sync {
@@ -109,18 +117,18 @@ public class PulseKit {
             let resolvedConfigEndpointUrl = configEndpointUrl ?? Self.defaultConfigEndpointUrl(from: endpointBaseUrl)
             configCoordinator.startBackgroundFetch(
                 configEndpointUrl: resolvedConfigEndpointUrl,
-                endpointHeaders: endpointHeaders ?? [:],
+                endpointHeaders: endpointHeadersWithProject,
                 currentConfigVersion: _currentSdkConfig?.version
             )
 
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
-            let resource = buildResource(resource: resource)
+            let resource = buildResource(projectId: projectId, resource: resource)
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
                 endpointBaseUrl: endpointBaseUrl,
-                endpointHeaders: endpointHeaders,
+                endpointHeaders: endpointHeadersWithProject,
                 resource: resource,
                 config: config,
                 tracerProviderCustomizer: tracerProviderCustomizer,
@@ -165,12 +173,13 @@ public class PulseKit {
         return base + "v1/configs/active/"
     }
 
-    private func buildResource(resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
+    private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
         
         var attributes = defaultResource.attributes
         
         attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
+        attributes[PulseAttributes.projectId] = AttributeValue.string(projectId)
         
         if let resourceCustomizer = resource {
             resourceCustomizer(&attributes)
@@ -278,7 +287,16 @@ public class PulseKit {
             spanProcessors.append(networkAttributesSpanProcessor)
             logProcessor = networkAttributesLogProcessor
         }
-        
+
+        #if canImport(Location)
+        if config.location.enabled {
+            let locationAttributesSpanProcessor = LocationAttributesSpanAppender()
+            let locationAttributesLogProcessor = LocationAttributesLogRecordProcessor(nextProcessor: logProcessor)
+            spanProcessors.append(locationAttributesSpanProcessor)
+            logProcessor = locationAttributesLogProcessor
+        }
+        #endif
+
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
         spanProcessors.append(pulseSpanProcessor)
         spanProcessors.append(baseSpanProcessor)
