@@ -34,7 +34,8 @@ let package = Package(
     .package(url: "https://github.com/grpc/grpc-swift.git", exact: "1.27.0"),
     .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.33.3"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.6.4"),
-    .package(url: "https://github.com/apple/swift-metrics.git", from: "2.7.1")
+    .package(url: "https://github.com/apple/swift-metrics.git", from: "2.7.1"),
+    .package(url: "https://github.com/kstenerud/KSCrash.git", .upToNextMajor(from: "2.5.1"))
   ],
   targets: [
     .target(
@@ -251,6 +252,7 @@ extension Package {
         .library(name: "URLSessionInstrumentation", targets: ["URLSessionInstrumentation"]),
         .library(name: "InteractionInstrumentation", targets: ["InteractionInstrumentation"]),
         .library(name: "Location", targets: ["Location"]),
+        .library(name: "Crashes", targets: ["Crashes"]),
         .library(name: "ZipkinExporter", targets: ["ZipkinExporter"]),
         .executable(name: "OTLPExporter", targets: ["OTLPExporter"]),
         .executable(name: "OTLPHTTPExporter", targets: ["OTLPHTTPExporter"]),
@@ -335,6 +337,18 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Sources/Instrumentation/Location",
+          exclude: ["README.md"]
+        ),
+        .target(
+          name: "Crashes",
+          dependencies: [
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            .product(name: "Recording", package: "KSCrash"),
+            .product(name: "Filters", package: "KSCrash"),
+            "Sessions"
+          ],
+          path: "Sources/Instrumentation/Crashes",
           exclude: ["README.md"]
         ),
         .executableTarget(
@@ -437,6 +451,15 @@ extension Package {
           ],
           path: "Tests/InstrumentationTests/LocationTests"
         ),
+        .testTarget(
+          name: "CrashInstrumentationTests",
+          dependencies: [
+            "Crashes",
+            "Sessions",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/CrashTests"
+        ),
         .executableTarget(
           name: "PrometheusSample",
           dependencies: [
@@ -457,7 +480,8 @@ extension Package {
             "URLSessionInstrumentation",
             "NetworkStatus",
             "SignPostIntegration",
-            "InteractionInstrumentation"
+            "InteractionInstrumentation",
+            "Crashes"
           ],
           path: "Sources/PulseKit"
         ),

@@ -14,8 +14,8 @@ public enum SessionEventType {
 
 /// Represents a session event with its associated session and event type
 public struct SessionEvent {
-  let session: Session
-  let eventType: SessionEventType
+  public let session: Session
+  public let eventType: SessionEventType
 }
 
 /// Instrumentation for tracking and logging session lifecycle events.

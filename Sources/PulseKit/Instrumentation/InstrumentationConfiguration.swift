@@ -11,6 +11,7 @@ public struct InstrumentationConfiguration {
     private var _signPost: SignPostInstrumentationConfig = SignPostInstrumentationConfig()
     private var _interaction: InteractionInstrumentationConfig = InteractionInstrumentationConfig()
     private var _location: LocationInstrumentationConfig = LocationInstrumentationConfig()
+    private var _crash: CrashInstrumentationConfig = CrashInstrumentationConfig()
 
     public init() {}
 
@@ -34,11 +35,16 @@ public struct InstrumentationConfiguration {
         configure(&_location)
     }
 
+    public mutating func crash(_ configure: (inout CrashInstrumentationConfig) -> Void) {
+        configure(&_crash)
+    }
+
     internal var urlSession: URLSessionInstrumentationConfig { _urlSession }
     internal var sessions: SessionsInstrumentationConfig { _sessions }
     internal var signPost: SignPostInstrumentationConfig { _signPost }
     internal var interaction: InteractionInstrumentationConfig { _interaction }
     internal var location: LocationInstrumentationConfig { _location }
+    internal var crash: CrashInstrumentationConfig { _crash }
 
     internal var initializers: [InstrumentationInitializer] {
         [
@@ -46,7 +52,8 @@ public struct InstrumentationConfiguration {
             _sessions,
             _signPost,
             _interaction,
-            _location
+            _location,
+            _crash
         ]
     }
 }

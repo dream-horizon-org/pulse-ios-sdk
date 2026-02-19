@@ -36,6 +36,7 @@ Pod::Spec.new do |spec|
   spec.dependency 'Pulse-Swift-Instrumentation-Interaction', spec.version.to_s
   spec.dependency 'Pulse-Swift-Sessions', spec.version.to_s
   spec.dependency 'Pulse-Swift-SignPostIntegration', spec.version.to_s
+  spec.dependency 'Pulse-Swift-Instrumentation-Crashes', spec.version.to_s
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name PulseKit -package-name pulse_kit" }
 end
 
