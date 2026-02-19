@@ -47,7 +47,7 @@ public final class CrashInstrumentation {
     public init(
         loggerProvider: LoggerProvider,
         instrumentationScopeName: String = "com.pulse.ios.sdk.crash",
-        instrumentationVersion: String = "1.0.0"
+        instrumentationVersion: String = "0.0.1"
     ) {
         self.loggerProvider = loggerProvider
         self.instrumentationScopeName = instrumentationScopeName
@@ -65,6 +65,7 @@ public final class CrashInstrumentation {
             try CrashInstrumentation.reporter.install(with: KSCrashConfiguration())
             CrashInstrumentation.isInstalled = true
         } catch {
+            print("Failed to install KSCrash: \(error)")
             return
         }
 
@@ -178,10 +179,10 @@ public final class CrashInstrumentation {
         log: LogRecordBuilder,
         attributes: [String: AttributeValue]
     ) -> [String: AttributeValue] {
-        guard let report = rawCrash["report"] as? [String: Any],
-              let timestampString = report["timestamp"] as? String,
+        guard let report = rawCrash[CrashAttributes.reportKey] as? [String: Any],
+              let timestampString = report[CrashAttributes.timestampKey] as? String,
               let timestamp = timestampFormatter.date(from: timestampString),
-              let userInfo = rawCrash["user"] as? [String: Any],
+              let userInfo = rawCrash[CrashAttributes.userKey] as? [String: Any],
               let sessionId = userInfo[SessionConstants.id] as? String
         else {
             _ = log.setTimestamp(Date())
@@ -248,4 +249,9 @@ enum CrashAttributes {
     static let exceptionStacktrace = "exception.stacktrace"
     static let threadId = "thread.id"
     static let threadName = "thread.name"
+
+    // KSCrash JSON report keys
+    static let reportKey = "report"
+    static let timestampKey = "timestamp"
+    static let userKey = "user"
 }
