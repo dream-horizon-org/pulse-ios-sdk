@@ -6,7 +6,62 @@
 import XCTest
 import OpenTelemetrySdk
 import OpenTelemetryApi
+import Sessions
 @testable import Crashes
+
+// MARK: - Mock LogRecordBuilder
+
+private class MockLogRecordBuilder: LogRecordBuilder {
+    var timestamp: Date?
+    var observedTimestamp: Date?
+    var spanContext: SpanContext?
+    var severity: Severity?
+    var body: AttributeValue?
+    var attributes: [String: AttributeValue] = [:]
+    var eventName: String?
+    var emitCalled = false
+
+    func setTimestamp(_ timestamp: Date) -> Self {
+        self.timestamp = timestamp
+        return self
+    }
+
+    func setObservedTimestamp(_ observed: Date) -> Self {
+        self.observedTimestamp = observed
+        return self
+    }
+
+    func setSpanContext(_ context: SpanContext) -> Self {
+        self.spanContext = context
+        return self
+    }
+
+    func setSeverity(_ severity: Severity) -> Self {
+        self.severity = severity
+        return self
+    }
+
+    func setBody(_ body: AttributeValue) -> Self {
+        self.body = body
+        return self
+    }
+
+    func setAttributes(_ attributes: [String: AttributeValue]) -> Self {
+        self.attributes = attributes
+        return self
+    }
+
+    func setEventName(_ eventName: String) -> Self {
+        self.eventName = eventName
+        return self
+    }
+
+    func emit() {
+        emitCalled = true
+    }
+}
+
+// MARK: - Tests
 
 final class CrashInstrumentationTests: XCTestCase {
 
@@ -245,7 +300,6 @@ final class CrashInstrumentationTests: XCTestCase {
 
         let parsed = CrashReportParser.parse(dictionary: json)
         XCTAssertNotNil(parsed)
-        // Falls back to first thread when none marked crashed
         XCTAssertEqual(parsed?.threadId, "0")
         XCTAssertEqual(parsed?.threadName, "com.apple.main-thread")
     }
@@ -277,7 +331,143 @@ final class CrashInstrumentationTests: XCTestCase {
         XCTAssertEqual(parsed?.exceptionMessage, "Test reason")
     }
 
-    // MARK: - CrashAttributes
+    func testParseFromInvalidJsonString() {
+        XCTAssertNil(CrashReportParser.parse(jsonString: "not json"))
+        XCTAssertNil(CrashReportParser.parse(jsonString: ""))
+    }
+
+    // MARK: - recoverCrashContext
+
+    func testRecoverCrashContextWithSessionAndTimestamp() {
+        let mockLog = MockLogRecordBuilder()
+        let rawCrash: [String: Any] = [
+            "report": ["timestamp": "2025-06-15T10:30:00.000Z"],
+            "user": [
+                "session.id": "crash-session-abc",
+                "session.previous_id": "prev-session-xyz"
+            ]
+        ]
+        let inputAttrs: [String: AttributeValue] = [
+            CrashAttributes.exceptionType: .string("SIGABRT")
+        ]
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: rawCrash, log: mockLog, attributes: inputAttrs
+        )
+
+        XCTAssertNotNil(mockLog.timestamp)
+        XCTAssertEqual(result[SessionConstants.id], .string("crash-session-abc"))
+        XCTAssertEqual(result[SessionConstants.previousId], .string("prev-session-xyz"))
+        XCTAssertEqual(result[CrashAttributes.exceptionType], .string("SIGABRT"))
+    }
+
+    func testRecoverCrashContextWithSessionNoPreviousId() {
+        let mockLog = MockLogRecordBuilder()
+        let rawCrash: [String: Any] = [
+            "report": ["timestamp": "2025-06-15T10:30:00.000Z"],
+            "user": ["session.id": "session-only"]
+        ]
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: rawCrash, log: mockLog, attributes: [:]
+        )
+
+        XCTAssertNotNil(mockLog.timestamp)
+        XCTAssertEqual(result[SessionConstants.id], .string("session-only"))
+        XCTAssertNil(result[SessionConstants.previousId])
+    }
+
+    func testRecoverCrashContextMissingUserInfo() {
+        let mockLog = MockLogRecordBuilder()
+        let rawCrash: [String: Any] = [
+            "report": ["timestamp": "2025-06-15T10:30:00.000Z"]
+        ]
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: rawCrash, log: mockLog, attributes: [:]
+        )
+
+        XCTAssertNotNil(mockLog.timestamp, "Should fall back to Date()")
+        XCTAssertNil(result[SessionConstants.id])
+    }
+
+    func testRecoverCrashContextMissingSessionId() {
+        let mockLog = MockLogRecordBuilder()
+        let rawCrash: [String: Any] = [
+            "report": ["timestamp": "2025-06-15T10:30:00.000Z"],
+            "user": ["some_other_key": "value"]
+        ]
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: rawCrash, log: mockLog, attributes: [:]
+        )
+
+        XCTAssertNil(result[SessionConstants.id])
+    }
+
+    func testRecoverCrashContextMissingReport() {
+        let mockLog = MockLogRecordBuilder()
+        let rawCrash: [String: Any] = [
+            "user": ["session.id": "orphan-session"]
+        ]
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: rawCrash, log: mockLog, attributes: [:]
+        )
+
+        XCTAssertNil(result[SessionConstants.id], "Should not recover session without report timestamp")
+    }
+
+    func testRecoverCrashContextInvalidTimestamp() {
+        let mockLog = MockLogRecordBuilder()
+        let rawCrash: [String: Any] = [
+            "report": ["timestamp": "not-a-date"],
+            "user": ["session.id": "session-123"]
+        ]
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: rawCrash, log: mockLog, attributes: [:]
+        )
+
+        XCTAssertNil(result[SessionConstants.id], "Should not recover session with unparseable timestamp")
+    }
+
+    func testRecoverCrashContextEmptyDictionary() {
+        let mockLog = MockLogRecordBuilder()
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: [:], log: mockLog, attributes: [:]
+        )
+
+        XCTAssertNotNil(mockLog.timestamp, "Should fall back to Date()")
+        XCTAssertNil(result[SessionConstants.id])
+    }
+
+    func testRecoverCrashContextPreservesExistingAttributes() {
+        let mockLog = MockLogRecordBuilder()
+        let rawCrash: [String: Any] = [
+            "report": ["timestamp": "2025-06-15T10:30:00.000Z"],
+            "user": ["session.id": "crash-session"]
+        ]
+        let inputAttrs: [String: AttributeValue] = [
+            CrashAttributes.exceptionType: .string("NSRangeException"),
+            CrashAttributes.exceptionMessage: .string("index out of bounds"),
+            CrashAttributes.threadId: .string("0"),
+            CrashAttributes.threadName: .string("main")
+        ]
+
+        let result = CrashInstrumentation.recoverCrashContext(
+            from: rawCrash, log: mockLog, attributes: inputAttrs
+        )
+
+        XCTAssertEqual(result[CrashAttributes.exceptionType], .string("NSRangeException"))
+        XCTAssertEqual(result[CrashAttributes.exceptionMessage], .string("index out of bounds"))
+        XCTAssertEqual(result[CrashAttributes.threadId], .string("0"))
+        XCTAssertEqual(result[CrashAttributes.threadName], .string("main"))
+        XCTAssertEqual(result[SessionConstants.id], .string("crash-session"))
+    }
+
+    // MARK: - Constants
 
     func testCrashAttributeKeys() {
         XCTAssertEqual(CrashAttributes.exceptionMessage, "exception.message")
@@ -285,5 +475,13 @@ final class CrashInstrumentationTests: XCTestCase {
         XCTAssertEqual(CrashAttributes.exceptionStacktrace, "exception.stacktrace")
         XCTAssertEqual(CrashAttributes.threadId, "thread.id")
         XCTAssertEqual(CrashAttributes.threadName, "thread.name")
+    }
+
+    func testCrashEventName() {
+        XCTAssertEqual(CrashEventName.deviceCrash, "device.crash")
+    }
+
+    func testMaxStackTraceBytes() {
+        XCTAssertEqual(CrashInstrumentation.maxStackTraceBytes, 25 * 1024)
     }
 }

@@ -24,14 +24,16 @@ public class SessionLogRecordProcessor: LogRecordProcessor {
   public func onEmit(logRecord: ReadableLogRecord) {
     var enhancedRecord = logRecord
 
-    // For session.start and session.end events, preserve existing session attributes
+    // Skip if the record already carries session context (session lifecycle events,
+    // crash reports with the original crash-time session, etc.)
+    let hasSessionId = logRecord.attributes[SessionConstants.id] != nil
     if let body = logRecord.body,
        case let .string(bodyString) = body,
        bodyString == SessionConstants.sessionStartEvent || bodyString == SessionConstants.sessionEndEvent {
-      // Session start and end events already have their intended session ids
-      // Overwriting them would cause session end to have wrong current and previous session ids
+      // Session start/end events already have their intended session ids
+    } else if hasSessionId {
+      // Record was pre-populated with a specific session (e.g. crash from a prior session)
     } else {
-      // For other log records, add current session attributes
       let session = sessionManager.getSession()
       enhancedRecord.setAttribute(key: SessionConstants.id, value: AttributeValue.string(session.id))
       if let previousId = session.previousId {

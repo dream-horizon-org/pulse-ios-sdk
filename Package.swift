@@ -345,7 +345,8 @@ extension Package {
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             .product(name: "Recording", package: "KSCrash"),
-            .product(name: "Filters", package: "KSCrash")
+            .product(name: "Filters", package: "KSCrash"),
+            "Sessions"
           ],
           path: "Sources/Instrumentation/Crashes",
           exclude: ["README.md"]
@@ -454,6 +455,7 @@ extension Package {
           name: "CrashInstrumentationTests",
           dependencies: [
             "Crashes",
+            "Sessions",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/CrashTests"

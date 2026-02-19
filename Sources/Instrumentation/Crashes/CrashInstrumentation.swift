@@ -6,6 +6,7 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+import Sessions
 
 #if canImport(KSCrashRecording)
   import KSCrashRecording
@@ -22,10 +23,7 @@ public enum CrashEventName {
 }
 
 /// Captures native crashes via KSCrash and emits them as `device.crash` OTel log events.
-///
-/// On install, KSCrash registers low-level handlers (Mach exceptions, UNIX signals,
-/// NSException) that write a JSON report to disk at crash time. On the next app launch,
-/// pending reports are parsed and emitted through the OTel log pipeline, then deleted.
+
 public final class CrashInstrumentation {
     static let maxStackTraceBytes = 25 * 1024
 
@@ -33,7 +31,14 @@ public final class CrashInstrumentation {
 
     private static var logger: Logger?
     static let reporter = KSCrash.shared
+    static var observers: [NSObjectProtocol] = []
     private static let queue = DispatchQueue(label: "com.pulse.ios.sdk.crash", qos: .utility)
+
+    private static let timestampFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
 
     private let loggerProvider: LoggerProvider
     private let instrumentationScopeName: String
@@ -63,22 +68,53 @@ public final class CrashInstrumentation {
             return
         }
 
+        // Seed KSCrash userInfo with the current session so it's included in any crash report
+        CrashInstrumentation.cacheCrashContext()
+        CrashInstrumentation.setupNotificationObservers()
+
         CrashInstrumentation.queue.async {
             CrashInstrumentation.processStoredCrashes()
         }
     }
 
+    // MARK: - Session Context Caching
+
+    /// Writes the current session ID into `KSCrash.shared.userInfo`.
+    /// KSCrash persists this dict alongside every crash report it writes,
+    /// so the session that was active at crash time can be recovered on next launch.
+    static func cacheCrashContext(session: Session? = nil) {
+        var userInfo: [String: Any] = [:]
+
+        let sessionManager = SessionManagerProvider.getInstance()
+        if let session = session ?? sessionManager.peekSession() {
+            userInfo[SessionConstants.id] = session.id
+            if let prevId = session.previousId {
+                userInfo[SessionConstants.previousId] = prevId
+            }
+        }
+
+        reporter.userInfo = userInfo
+    }
+
+    /// Listens for session rotation so `userInfo` always reflects the active session.
+    static func setupNotificationObservers() {
+        let observer = NotificationCenter.default.addObserver(
+            forName: Notification.Name(SessionConstants.sessionEventNotification),
+            object: nil,
+            queue: nil
+        ) { notification in
+            if let event = notification.object as? SessionEvent {
+                queue.async {
+                    cacheCrashContext(session: event.session)
+                }
+            }
+        }
+        observers.append(observer)
+    }
+
     // MARK: - Report Processing
 
     static func processStoredCrashes() {
-        do {
-            try processStoredCrashesUnsafe()
-        } catch {
-            // Swallow to prevent crash-loop; reports stay on disk for next attempt.
-        }
-    }
-
-    private static func processStoredCrashesUnsafe() throws {
         guard let logger = logger,
               let reportStore = reporter.reportStore else { return }
 
@@ -110,6 +146,9 @@ public final class CrashInstrumentation {
             attributes[CrashAttributes.exceptionType] = .string("crash")
         }
 
+        // Recover session context that was cached in userInfo at crash time
+        attributes = recoverCrashContext(from: rawCrash, log: log, attributes: attributes)
+
         CrashReportFilterAppleFmt().filterReports([crashReport]) { reports, _ in
             var appleReport = (reports?.first as? CrashReportString)?.value
                 ?? "Failed to format crash report"
@@ -129,6 +168,35 @@ public final class CrashInstrumentation {
             _ = log.setAttributes(attributes)
             log.emit()
         }
+    }
+
+    /// Recovers the session ID and timestamp from the crash report's `user` section.
+    /// If recovery succeeds, the log timestamp is set to the original crash time so
+    /// the event is stitched to the correct session. Otherwise falls back to now.
+    static func recoverCrashContext(
+        from rawCrash: [String: Any],
+        log: LogRecordBuilder,
+        attributes: [String: AttributeValue]
+    ) -> [String: AttributeValue] {
+        guard let report = rawCrash["report"] as? [String: Any],
+              let timestampString = report["timestamp"] as? String,
+              let timestamp = timestampFormatter.date(from: timestampString),
+              let userInfo = rawCrash["user"] as? [String: Any],
+              let sessionId = userInfo[SessionConstants.id] as? String
+        else {
+            _ = log.setTimestamp(Date())
+            return attributes
+        }
+
+        var result = attributes
+        _ = log.setTimestamp(timestamp)
+        result[SessionConstants.id] = .string(sessionId)
+
+        if let previousId = userInfo[SessionConstants.previousId] as? String {
+            result[SessionConstants.previousId] = .string(previousId)
+        }
+
+        return result
     }
 
     // MARK: - Helpers

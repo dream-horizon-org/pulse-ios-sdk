@@ -25,5 +25,6 @@ Pod::Spec.new do |spec|
   spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
   spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
   spec.dependency 'KSCrash', '~> 2.5'
+  spec.dependency 'Pulse-Swift-Sessions', spec.version.to_s
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name Crashes -package-name pulse_swift_instrumentation_crashes" }
 end
