@@ -446,34 +446,6 @@ public class PulseKit {
         builderAction(&properties)
         setUserProperties(properties)
     }
-
-    // MARK: - Background Flush
-    // Call this in order to flush batch immediately when app state changes
-    private func registerBackgroundFlushObserver() {
-        #if os(iOS)
-        backgroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
-            object: nil,
-            queue: nil
-        ) { [weak self] _ in
-            self?.flushOnBackground()
-        }
-        #endif
-    }
-
-    #if os(iOS)
-    private func flushOnBackground() {
-        var taskId = UIBackgroundTaskIdentifier.invalid
-        taskId = UIApplication.shared.beginBackgroundTask {
-            UIApplication.shared.endBackgroundTask(taskId)
-        }
-        guard taskId != .invalid else { return }
-
-        batchSpanProcessor?.forceFlush()
-        batchLogProcessor?.forceFlush()
-        UIApplication.shared.endBackgroundTask(taskId)
-    }
-    #endif
 }
 
 // MARK: - Batch Processor Constants
