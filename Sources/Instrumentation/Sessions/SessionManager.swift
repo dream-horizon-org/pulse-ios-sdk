@@ -21,8 +21,7 @@ public class SessionManager {
     restoreSessionFromDisk()
   }
 
-  /// Gets the current session, creating or extending it as needed
-  /// This method is thread-safe and will extend the session expireTime time
+  /// This method is thread-safe 
   /// - Returns: The current active session
   @discardableResult
   public func getSession() -> Session {
@@ -67,16 +66,16 @@ public class SessionManager {
     SessionEventInstrumentation.addSession(session: session!, eventType: .start)
   }
 
-  /// Refreshes the current session, creating new one if expired or extending existing one
+  /// Refreshes the current session, creating new one if expired\
   private func refreshSession() {
     if session == nil || session!.isExpired() {
       // Start new session if none exists or expired
       startSession()
     } else {
-      // Otherwise, extend the existing session but preserve the startTime
+      // Otherwise, use existing session
       session = Session(
         id: session!.id,
-        expireTime: Date(timeIntervalSinceNow: Double(configuration.sessionTimeout)),
+        expireTime: session!.expireTime,
         previousId: session!.previousId,
         startTime: session!.startTime,
         sessionTimeout: TimeInterval(configuration.sessionTimeout)
