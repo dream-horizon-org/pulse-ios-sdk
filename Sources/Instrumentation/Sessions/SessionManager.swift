@@ -4,6 +4,7 @@
  */
 
 import Foundation
+import OpenTelemetryApi
 
 /// Manages OpenTelemetry sessions with automatic expiration and persistence.
 /// Provides thread-safe access to session information and handles session lifecycle.
@@ -39,10 +40,15 @@ public class SessionManager {
   }
 
   /// Creates a new session with a unique identifier
+  /// **Session ID Format:** Matches Android TraceId format - 32-character hex string (no hyphens)
+  /// Example: "3e041e0beaa74bc8d9e7b58c53efe646"
+
   private func startSession() {
     let now = Date()
     let previousId = session?.id
-    let newId = UUID().uuidString
+    /// **Implementation:** Uses OpenTelemetry's TraceId.random() to generate session ID
+    /// This matches Android's approach: TraceId.fromLongs(random.nextLong(), random.nextLong())
+    let newId = TraceId.random().hexString
 
     /// Queue the previous session for a `session.end` event
     if session != nil {
