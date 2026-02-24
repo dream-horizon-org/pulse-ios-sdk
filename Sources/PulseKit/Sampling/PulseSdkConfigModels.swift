@@ -137,7 +137,7 @@ public struct PulseSignalConfig: Codable, Equatable {
     public let metricCollectorUrl: String
     public let spanCollectorUrl: String
     public let customEventCollectorUrl: String
-    public let attributesToDrop: [PulseSignalMatchCondition]
+    public let attributesToDrop: [PulseAttributesToDropEntry]
     public let attributesToAdd: [PulseAttributesToAddEntry]
     public let filters: PulseSignalFilter
 
@@ -159,7 +159,7 @@ public struct PulseSignalConfig: Codable, Equatable {
         metricCollectorUrl = try c.decode(String.self, forKey: .metricCollectorUrl)
         spanCollectorUrl = try c.decode(String.self, forKey: .spanCollectorUrl)
         customEventCollectorUrl = try c.decode(String.self, forKey: .customEventCollectorUrl)
-        attributesToDrop = (try? c.decode([PulseSignalMatchCondition].self, forKey: .attributesToDrop)) ?? []
+        attributesToDrop = (try? c.decode([PulseAttributesToDropEntry].self, forKey: .attributesToDrop)) ?? []
         attributesToAdd = (try? c.decode([PulseAttributesToAddEntry].self, forKey: .attributesToAdd)) ?? []
         filters = try c.decode(PulseSignalFilter.self, forKey: .filters)
     }
@@ -170,7 +170,7 @@ public struct PulseSignalConfig: Codable, Equatable {
         metricCollectorUrl: String,
         spanCollectorUrl: String,
         customEventCollectorUrl: String,
-        attributesToDrop: [PulseSignalMatchCondition],
+        attributesToDrop: [PulseAttributesToDropEntry],
         attributesToAdd: [PulseAttributesToAddEntry],
         filters: PulseSignalFilter
     ) {
@@ -256,6 +256,11 @@ public struct PulseProp: Codable, Equatable {
 
 public struct PulseAttributesToAddEntry: Codable, Equatable {
     public let values: [PulseAttributeValue]
+    public let condition: PulseSignalMatchCondition
+}
+
+public struct PulseAttributesToDropEntry: Codable, Equatable {
+    public let values: [String]
     public let condition: PulseSignalMatchCondition
 }
 

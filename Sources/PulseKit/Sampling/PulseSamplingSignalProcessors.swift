@@ -46,9 +46,9 @@ public final class PulseSamplingSignalProcessors {
 
     // MARK: - Attribute config (scoped)
 
-    private func getDroppedAttributesConfig(scope: PulseSignalScope) -> [PulseSignalMatchCondition] {
+    private func getDroppedAttributesConfig(scope: PulseSignalScope) -> [PulseAttributesToDropEntry] {
         sdkConfig.signals.attributesToDrop.filter {
-            $0.scopes.contains(scope) && $0.sdks.contains(currentSdkName)
+            $0.condition.scopes.contains(scope) && $0.condition.sdks.contains(currentSdkName)
         }
     }
 
@@ -69,7 +69,7 @@ public final class PulseSamplingSignalProcessors {
             self.delegateExporter = delegateExporter
         }
 
-        private var attributesToDrop: [PulseSignalMatchCondition] {
+        private var attributesToDrop: [PulseAttributesToDropEntry] {
             parent?.getDroppedAttributesConfig(scope: .traces) ?? []
         }
 
@@ -95,6 +95,7 @@ public final class PulseSamplingSignalProcessors {
                     if let dropped = parent.filterAttributes(
                         signalName: span.name,
                         signalAttributes: currentAttrs,
+                        scope: .traces,
                         attributesToDrop: attributesToDrop,
                         regexCache: parent.regexCache
                     ) {
@@ -144,7 +145,7 @@ public final class PulseSamplingSignalProcessors {
             self.delegateExporter = delegateExporter
         }
 
-        private var attributesToDrop: [PulseSignalMatchCondition] {
+        private var attributesToDrop: [PulseAttributesToDropEntry] {
             parent?.getDroppedAttributesConfig(scope: .logs) ?? []
         }
 
@@ -173,6 +174,7 @@ public final class PulseSamplingSignalProcessors {
                     if let dropped = parent.filterAttributes(
                         signalName: logName,
                         signalAttributes: currentAttrs,
+                        scope: .logs,
                         attributesToDrop: attributesToDrop,
                         regexCache: parent.regexCache
                     ) {
@@ -383,38 +385,36 @@ public final class PulseSamplingSignalProcessors {
 
     // MARK: - Attribute drop
 
+    /// Drops attributes whose names are in matching entries' values. Condition matching is same as attributesToAdd.
     private func filterAttributes(
         signalName: String,
         signalAttributes: [String: AttributeValue],
-        attributesToDrop: [PulseSignalMatchCondition],
+        scope: PulseSignalScope,
+        attributesToDrop: [PulseAttributesToDropEntry],
         regexCache: SamplingRegexCache
     ) -> [String: AttributeValue]? {
-        var finalDrop: [String: [String?]] = [:]
-        for condition in attributesToDrop where regexCache.matches(string: signalName, pattern: condition.name) {
-            for prop in condition.props {
-                finalDrop[prop.name, default: []].append(prop.value)
-            }
+        guard !attributesToDrop.isEmpty else { return nil }
+        let propsMap = attributesToMap(signalAttributes)
+        let matching = attributesToDrop.filter {
+            regexCache.matches(string: signalName, pattern: $0.condition.name)
         }
-        guard !finalDrop.isEmpty else { return nil }
-        guard finalDrop.keys.contains(where: { signalAttributes[$0] != nil }) else {
+        let entriesThatMatch = matching.filter { entry in
+            signalMatcher.matches(
+                scope: scope,
+                name: signalName,
+                props: propsMap,
+                condition: entry.condition,
+                sdkName: currentSdkName
+            )
+        }
+        // Collect attribute names to drop; entries with empty values contribute nothing
+        let keysToDrop = Set(entriesThatMatch.flatMap(\.values).filter { !$0.isEmpty })
+        guard !keysToDrop.isEmpty, keysToDrop.contains(where: { signalAttributes[$0] != nil }) else {
             return nil
         }
         var newAttrs = signalAttributes
-        var droppedKeys: [String] = []
-        for (key, dropValues) in finalDrop {
-            guard let current = newAttrs[key] else { continue }
-            let currentStr = stringFromAttributeValue(current)
-            let shouldDrop = dropValues.contains { opt in
-                if opt == nil {
-                    return true  // value: null = drop regardless of attribute value (per Batch 4 doc)
-                }
-                // Non-null: treat as regex (with normalization) to support patterns like .*global.*
-                return regexCache.matches(string: currentStr, pattern: opt!)
-            }
-            if shouldDrop {
-                newAttrs.removeValue(forKey: key)
-                droppedKeys.append(key)
-            }
+        for key in keysToDrop {
+            newAttrs.removeValue(forKey: key)
         }
         return newAttrs
     }
