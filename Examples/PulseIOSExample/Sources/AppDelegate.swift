@@ -24,7 +24,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         PulseKit.shared.initialize(
             endpointBaseUrl: "http://127.0.0.1:4318",
-            projectId: "your-project-id",
+            projectId: "default",
             endpointHeaders: nil,
             globalAttributes: globalAttributes
         )

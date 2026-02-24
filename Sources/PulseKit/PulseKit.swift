@@ -102,8 +102,10 @@ public class PulseKit {
     ) {
         initializationQueue.sync {
             guard !_isInitialized else {
+                PulseLogger.log("Already initialized, skipping.")
                 return
             }
+            PulseLogger.log("Initializing...")
 
             _globalAttributes = globalAttributes
             var pulseKitConfig = PulseKitConfiguration()
@@ -119,7 +121,11 @@ public class PulseKit {
             configStorageQueue.sync {
                 _currentSdkConfig = configCoordinator.loadCurrentConfig()
             }
-            PulseSdkConfigLogger.logLoaded(currentVersion: _currentSdkConfig?.version)
+            if let v = _currentSdkConfig?.version {
+                PulseLogger.log("Config loaded from persistence (version \(v)).")
+            } else {
+                PulseLogger.log("No persisted config, using defaults.")
+            }
 
             let resolvedConfigEndpointUrl = configEndpointUrl ?? Self.defaultConfigEndpointUrl(from: endpointBaseUrl)
             configCoordinator.startBackgroundFetch(
@@ -186,16 +192,17 @@ public class PulseKit {
             self.openTelemetry = openTelemetry
             _isInitialized = true
             let configVersion = configStorageQueue.sync { _currentSdkConfig?.version }
-            PulseSdkConfigLogger.logPulseKitInitialized(
-                configApplied: configVersion != nil,
-                version: configVersion
-            )
+            if let v = configVersion {
+                PulseLogger.log("Initialized with config v\(v).")
+            } else {
+                PulseLogger.log("Initialized (using defaults, no config).")
+            }
         }
     }
 
     // MARK: - Private Helper Methods
 
-    /// Disables features not in enabledFeatures. Matches Android PulseSDKImpl: iterate all PulseFeatureName cases, disable or no-op.
+    /// Disables features not in enabledFeatures.
     private func applyDisabledFeatures(enabledFeatures: [PulseFeatureName], config: inout InstrumentationConfiguration) {
         for feature in PulseFeatureName.allCases {
             guard !enabledFeatures.contains(feature) else { continue }
@@ -217,7 +224,8 @@ public class PulseKit {
                 _customEventsEnabled = false
             case .rn_screen_load: break
             case .rn_screen_interactive: break
-            case .ios_crash: break
+            case .ios_crash:
+                config.crash { $0.enabled(false) }
             case .unknown: break
             }
         }

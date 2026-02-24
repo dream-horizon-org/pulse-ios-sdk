@@ -64,7 +64,7 @@ public final class PulseSdkConfigRestProvider {
         guard let url = urlProvider() else {
             return nil
         }
-        PulseSdkConfigLogger.logConfigFetchStarted(url: url.absoluteString)
+        PulseLogger.log("Config fetch started: \(url.absoluteString)")
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -78,7 +78,7 @@ public final class PulseSdkConfigRestProvider {
         do {
             (data, response) = try await urlSession.data(for: request)
         } catch {
-            PulseSdkConfigLogger.logNetworkError(error)
+            PulseLogger.log("Config fetch: network error \(error.localizedDescription)")
             return nil
         }
 
@@ -86,16 +86,16 @@ public final class PulseSdkConfigRestProvider {
             return nil
         }
         guard (200...299).contains(httpResponse.statusCode) else {
-            PulseSdkConfigLogger.logApiError(code: "http_\(httpResponse.statusCode)", message: "HTTP \(httpResponse.statusCode)")
+            PulseLogger.log("Config fetch: API error HTTP \(httpResponse.statusCode)")
             return nil
         }
 
         do {
             let config = try PulseSdkConfigRestProvider.decoder.decode(PulseSdkConfig.self, from: data)
-            PulseSdkConfigLogger.logConfigFetchSuccess(version: config.version)
+            PulseLogger.log("Config fetch done (version \(config.version)).")
             return config
         } catch {
-            PulseSdkConfigLogger.logDecodeFailure()
+            PulseLogger.log("Config fetch: response decode failed (invalid or missing payload).")
             return nil
         }
     }

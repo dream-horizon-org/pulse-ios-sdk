@@ -24,7 +24,9 @@ public class InteractionConfigRestFetcher: InteractionConfigFetcher {
 
     public func getConfigs() async throws -> [InteractionConfig]? {
         let urlString = urlProvider()
+        print("[Pulse] Interaction: requesting config from endpoint: \(urlString)")
         guard let url = URL(string: urlString) else {
+            print("[Pulse] Interaction: invalid config URL (skipping fetch)")
             return nil
         }
 
@@ -41,14 +43,15 @@ public class InteractionConfigRestFetcher: InteractionConfigFetcher {
 
         // Check HTTP status code
         guard (200...299).contains(httpResponse.statusCode) else {
-            // HTTP error - return nil (will be logged by InteractionManager)
+            print("[Pulse] Interaction: config endpoint returned HTTP \(httpResponse.statusCode), response preview: \(String(data: data.prefix(500), encoding: .utf8) ?? "<unable to decode>")")
             return nil
         }
 
         // Check Content-Type header to ensure it's JSON
         if let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type"),
            !contentType.contains("application/json") && !contentType.contains("text/json") {
-            // Server returned non-JSON response (likely HTML error page or wrong endpoint)
+            let preview = String(data: data.prefix(500), encoding: .utf8) ?? "<unable to decode>"
+            print("[Pulse] Interaction: config endpoint returned non-JSON Content-Type: \(contentType). Endpoint: \(urlString). Response preview: \(preview)")
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: [],
@@ -57,28 +60,37 @@ public class InteractionConfigRestFetcher: InteractionConfigFetcher {
             )
         }
 
-        // Try to decode JSON
+        // Try to decode JSON (API returns a raw array of interaction configs, no data/error wrapper)
         do {
-            let apiResponse = try JSONDecoder().decode(
-                ApiResponse<[InteractionConfig]>.self,
-                from: data
-            )
-
-            // Return data only if there's no error
-            if apiResponse.error == nil {
-                return apiResponse.data
-            } else {
-                return nil
-            }
+            let configs = try JSONDecoder().decode([InteractionConfig].self, from: data)
+            print("[Pulse] Interaction: config fetched successfully, \(configs.count) interaction(s) present")
+            return configs
         } catch {
-            // Provide more context for JSON parsing errors
-            let responsePreview = String(data: data.prefix(200), encoding: .utf8) ?? "<unable to decode>"
+            // Log endpoint and raw response for debugging decode failures
+            let responsePreview = String(data: data.prefix(500), encoding: .utf8) ?? "<unable to decode as UTF-8>"
+            let decodeDetail = (error as? DecodingError).map { describe($0) } ?? error.localizedDescription
+            print("[Pulse] Interaction: decode failed. Endpoint: \(urlString). HTTP status: \(httpResponse.statusCode). Decode error: \(decodeDetail). Response body (first 500 chars): \(responsePreview)")
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: [],
                     debugDescription: "Failed to decode JSON response. Response preview: \(responsePreview). Original error: \(error.localizedDescription). This might indicate the endpoint URL is incorrect or the server returned an error page."
                 )
             )
+        }
+    }
+
+    private func describe(_ error: DecodingError) -> String {
+        switch error {
+        case .keyNotFound(let key, let context):
+            return "keyNotFound(\(key.stringValue)) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        case .typeMismatch(let type, let context):
+            return "typeMismatch(\(type)) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        case .valueNotFound(let type, let context):
+            return "valueNotFound(\(type)) at \(context.codingPath.map(\.stringValue).joined(separator: "."))"
+        case .dataCorrupted(let context):
+            return "dataCorrupted: \(context.debugDescription)"
+        @unknown default:
+            return error.localizedDescription
         }
     }
 }

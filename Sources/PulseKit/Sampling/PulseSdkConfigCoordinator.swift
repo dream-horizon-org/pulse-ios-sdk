@@ -42,7 +42,7 @@ public final class PulseSdkConfigCoordinator {
         // Async, non-blocking: work runs on a background thread (QoS .utility ≈ Android Dispatchers.IO).
         Task.detached(priority: .utility) {
             guard let url = URL(string: configEndpointUrlFinal) else {
-                PulseSdkConfigLogger.logInvalidConfigURL(configEndpointUrlFinal)
+                PulseLogger.log("Config fetch: invalid config URL (skipping fetch) \(configEndpointUrlFinal)")
                 return
             }
             let session = Self.makeSessionForConfigAPI()
@@ -53,11 +53,9 @@ public final class PulseSdkConfigCoordinator {
             )
             let newConfig = await provider.provide()
             let shouldPersist = newConfig != nil && newConfig?.version != currentVersion
-            PulseSdkConfigLogger.logFetchResult(
-                newVersion: newConfig?.version,
-                currentVersion: currentVersion,
-                shouldPersist: shouldPersist
-            )
+            let newStr = (newConfig?.version).map { "\($0)" } ?? "nil"
+            let curStr = currentVersion.map { "\($0)" } ?? "nil"
+            PulseLogger.log("Config fetch: newVersion=\(newStr) currentVersion=\(curStr) shouldUpdate=\(shouldPersist)")
             if shouldPersist, let config = newConfig {
                 storageRef.saveSync(config)
             }
