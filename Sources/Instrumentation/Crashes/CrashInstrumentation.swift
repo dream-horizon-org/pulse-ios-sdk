@@ -126,10 +126,10 @@ public final class CrashInstrumentation {
     static func processStoredCrashes() -> Bool {
         var hadValidCrash = false
         guard let logger = logger,
-              let reportStore = reporter.reportStore else { return false }
+              let reportStore = reporter.reportStore else { return hadValidCrash }
 
         let reportIDs = reportStore.reportIDs
-        guard !reportIDs.isEmpty else { return false }
+        guard !reportIDs.isEmpty else { return hadValidCrash }
 
         for reportID in reportIDs {
             guard let id = reportID as? Int64,
