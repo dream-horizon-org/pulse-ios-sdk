@@ -65,6 +65,12 @@ public class PulseKit {
         configStorageQueue.sync { _currentSdkConfig }
     }
 
+    /// When false, trackEvent/trackNonFatal are no-ops. Set from getEnabledFeatures() when config present.
+    private var _customEventsEnabled: Bool = true
+
+    /// Keeps PulseSamplingSignalProcessors alive so SampledSpanExporter/SampledLogExporter weak parent ref stays valid.
+    private var _samplingSignalProcessors: PulseSamplingSignalProcessors?
+
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
             fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
@@ -85,6 +91,7 @@ public class PulseKit {
         endpointBaseUrl: String,
         projectId: String,
         configEndpointUrl: String? = nil,
+        customEventCollectorUrl: String? = nil,
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
@@ -125,12 +132,30 @@ public class PulseKit {
             instrumentations?(&config)
 
             let resource = buildResource(projectId: projectId, resource: resource)
+            // 3. Read from built resource (matches Android: builtResource.getAttribute(TELEMETRY_SDK_NAME_KEY))
+            let telemetrySdkName: String? = {
+                guard let av = resource.attributes[ResourceAttributes.telemetrySdkName.rawValue] else { return nil }
+                if case .string(let s) = av { return s } else { return nil }
+            }()
+            let currentSdkName = PulseSdkName.from(telemetrySdkName: telemetrySdkName ?? PulseAttributes.PulseSdkNames.iosSwift)
+
+            if let sdkConfig = configStorageQueue.sync(execute: { _currentSdkConfig }) {
+                let interactionConfigUrl = sdkConfig.interaction.configUrl
+                config.interaction { $0.setConfigUrl { interactionConfigUrl } }
+                let processors = PulseSamplingSignalProcessors(sdkConfig: sdkConfig, currentSdkName: currentSdkName)
+                _samplingSignalProcessors = processors
+                let enabledFeatures = processors.getEnabledFeatures()
+                applyDisabledFeatures(enabledFeatures: enabledFeatures, config: &config)
+            }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
                 endpointBaseUrl: endpointBaseUrl,
+                customEventCollectorUrl: customEventCollectorUrl,
                 endpointHeaders: endpointHeadersWithProject,
                 resource: resource,
                 config: config,
+                currentSdkConfig: configStorageQueue.sync { _currentSdkConfig },
+                currentSdkName: currentSdkName,
                 tracerProviderCustomizer: tracerProviderCustomizer,
                 loggerProviderCustomizer: loggerProviderCustomizer
             )
@@ -140,7 +165,8 @@ public class PulseKit {
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
                 openTelemetry: openTelemetry,
-                endpointBaseUrl: endpointBaseUrl
+                endpointBaseUrl: endpointBaseUrl,
+                endpointHeaders: endpointHeadersWithProject
             )
             installInstrumentations(config: config, ctx: installationContext)
 
@@ -159,56 +185,123 @@ public class PulseKit {
 
             self.openTelemetry = openTelemetry
             _isInitialized = true
+            let configVersion = configStorageQueue.sync { _currentSdkConfig?.version }
+            PulseSdkConfigLogger.logPulseKitInitialized(
+                configApplied: configVersion != nil,
+                version: configVersion
+            )
         }
     }
 
     // MARK: - Private Helper Methods
 
+    /// Disables features not in enabledFeatures. Matches Android PulseSDKImpl: iterate all PulseFeatureName cases, disable or no-op.
+    private func applyDisabledFeatures(enabledFeatures: [PulseFeatureName], config: inout InstrumentationConfiguration) {
+        for feature in PulseFeatureName.allCases {
+            guard !enabledFeatures.contains(feature) else { continue }
+            switch feature {
+            case .java_crash: break
+            case .js_crash: break
+            case .cpp_crash: break
+            case .java_anr: break
+            case .cpp_anr: break
+            case .interaction:
+                config.interaction { $0.enabled(false) }
+            case .network_change:
+                _configuration.disableNetworkAttributes()
+            case .network_instrumentation:
+                config.urlSession { $0.enabled(false) }
+            case .screen_session:
+                _configuration.disableScreenAttributes()
+            case .custom_events:
+                _customEventsEnabled = false
+            case .rn_screen_load: break
+            case .rn_screen_interactive: break
+            case .ios_crash: break
+            case .unknown: break
+            }
+        }
+    }
+
+    /// Normalizes base URL by stripping trailing slashes (avoids double slashes when appending paths).
+    private static func normalizedBaseUrl(_ base: String) -> String {
+        var b = base
+        while b.hasSuffix("/") { b.removeLast() }
+        return b
+    }
+
     /// Default config endpoint URL when not provided (matches Android PulseSDKImpl: endpointBaseUrl with port 8080 + v1/configs/active/).
     private static func defaultConfigEndpointUrl(from endpointBaseUrl: String) -> String {
         let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
-        var base = withPort
-        while base.hasSuffix("/") { base.removeLast() }
-        base += "/"
-        return base + "v1/configs/active/"
+        return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
 
+    /// Matches Android PulseSDKImpl: set default telemetry.sdk.name first, then resource callback (overrides if it sets the key).
     private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
-        
         var attributes = defaultResource.attributes
-        
+
+        // 1. Set default (native iOS = pulse_ios_swift)
         attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
         attributes[PulseAttributes.projectId] = AttributeValue.string(projectId)
-        
+
+        // 2. Resource callback can override (e.g. RN bridge sets pulse_ios_rn)
         if let resourceCustomizer = resource {
             resourceCustomizer(&attributes)
         }
-        
+
         return Resource(attributes: attributes)
     }
 
     private func buildOpenTelemetrySDK(
         endpointBaseUrl: String,
+        customEventCollectorUrl: String?,
         endpointHeaders: [String: String]?,
         resource: Resource,
         config: InstrumentationConfiguration,
+        currentSdkConfig: PulseSdkConfig?,
+        currentSdkName: PulseSdkName,
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
-        // Convert headers to exporter format [(String, String)]?
         let envVarHeaders: [(String, String)]? = endpointHeaders?.map { ($0.key, $0.value) }
 
-        // Build exporters
-        let tracesEndpoint = URL(string: "\(endpointBaseUrl)/v1/traces")!
-        let logsEndpoint = URL(string: "\(endpointBaseUrl)/v1/logs")!
-        let otlpHttpTraceExporter = OtlpHttpTraceExporter(endpoint: tracesEndpoint, envVarHeaders: envVarHeaders)
-        let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
-        let spanExporter = otlpHttpTraceExporter
+        // URL resolution (see expectations in PulseKit README):
+        // Traces/Logs/Metrics: config present → use full path from config; else → baseUrl + /v1/{traces|logs|metrics}
+        // customEventCollectorUrl: config present → from config; else user-provided; else baseUrl + /v1/logs
+        let base = Self.normalizedBaseUrl(endpointBaseUrl)
+        let tracesUrl = currentSdkConfig.map { URL(string: $0.signals.spanCollectorUrl)! }
+            ?? URL(string: "\(base)/v1/traces")!
+        let logsUrl = currentSdkConfig.map { URL(string: $0.signals.logsCollectorUrl)! }
+            ?? URL(string: "\(base)/v1/logs")!
+        let customEventUrl = currentSdkConfig.map { URL(string: $0.signals.customEventCollectorUrl)! }
+            ?? (customEventCollectorUrl.flatMap { URL(string: $0) } ?? URL(string: "\(base)/v1/logs")!)
+        let otlpSpanExporter = OtlpHttpTraceExporter(endpoint: tracesUrl, envVarHeaders: envVarHeaders)
+        let filteredSpanExporter = FilteringSpanExporter(delegate: otlpSpanExporter)
 
-        // Build base processors
-        let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
-        let baseLogProcessor = SimpleLogRecordProcessor(logRecordExporter: otlpHttpLogExporter)
+        // Always use SelectedLogExporter (matches Android): route custom events to customEventUrl, others to logsUrl.
+        // When config is nil: customEventUrl = customEventCollectorUrl from init ?? logsUrl.
+        let defaultLogsExporter = OtlpHttpLogExporter(endpoint: logsUrl, envVarHeaders: envVarHeaders)
+        let customEventExporter = OtlpHttpLogExporter(endpoint: customEventUrl, envVarHeaders: envVarHeaders)
+        let selectExporter = PulseSignalSelectExporter(currentSdkName: currentSdkName)
+        let logMap: [(PulseSignalMatchCondition, LogRecordExporter)] = [
+            (PulseSignalMatchCondition.allMatchLogCondition, defaultLogsExporter),
+            (PulseSignalMatchCondition.customEventLogCondition(pulseTypeKey: PulseAttributes.pulseType, customEventValue: PulseAttributes.PulseTypeValues.customEvent), customEventExporter),
+        ]
+        let logsExporter = selectExporter.makeSelectedLogExporter(logMap: logMap)
+
+        let finalSpanExporter: SpanExporter
+        let finalLogExporter: LogRecordExporter
+        if let processors = _samplingSignalProcessors {
+            finalSpanExporter = processors.makeSampledSpanExporter(delegateExporter: filteredSpanExporter)
+            finalLogExporter = processors.makeSampledLogExporter(delegateExporter: logsExporter)
+        } else {
+            finalSpanExporter = filteredSpanExporter
+            finalLogExporter = logsExporter
+        }
+
+        let spanProcessor = SimpleSpanProcessor(spanExporter: finalSpanExporter)
+        let baseLogProcessor = SimpleLogRecordProcessor(logRecordExporter: finalLogExporter)
 
         let (spanProcessors, logProcessors) = buildProcessors(
             baseSpanProcessor: spanProcessor,
@@ -331,7 +424,7 @@ public class PulseKit {
         observedTimeStampInMs: Double,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isInitialized else { return }
+        guard isInitialized, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.customEvent)
@@ -353,7 +446,7 @@ public class PulseKit {
         observedTimeStampInMs: Int64,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isInitialized else { return }
+        guard isInitialized, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal)
@@ -375,7 +468,7 @@ public class PulseKit {
         observedTimeStampInMs: Int64,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isInitialized else { return }
+        guard isInitialized, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal),

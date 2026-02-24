@@ -20,7 +20,7 @@ public final class PulseSdkConfigCoordinator {
     /// Loads and returns the current config from persistence (sync). Returns nil if none stored or decode failed.
     /// On decode failure we do not crash; we return nil and log, then the app uses Pulse.initialize defaults.
     public func loadCurrentConfig() -> PulseSdkConfig? {
-        storage.load()
+        return storage.load()
     }
 
     /// Starts a background fetch for config and persists only when version changed (apply on next launch).

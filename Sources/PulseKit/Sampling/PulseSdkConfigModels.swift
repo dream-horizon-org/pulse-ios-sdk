@@ -42,6 +42,22 @@ public struct PulseSdkConfig: Codable, Equatable {
     public let signals: PulseSignalConfig
     public let interaction: PulseInteractionConfig
     public let features: [PulseFeatureConfig]
+
+    public init(
+        version: Int,
+        description: String,
+        sampling: PulseSamplingConfig,
+        signals: PulseSignalConfig,
+        interaction: PulseInteractionConfig,
+        features: [PulseFeatureConfig]
+    ) {
+        self.version = version
+        self.description = description
+        self.sampling = sampling
+        self.signals = signals
+        self.interaction = interaction
+        self.features = features
+    }
 }
 
 // MARK: - Sampling
@@ -85,6 +101,10 @@ public struct PulseSamplingConfig: Codable, Equatable {
 
 public struct PulseDefaultSamplingConfig: Codable, Equatable {
     public let sessionSampleRate: Float
+
+    public init(sessionSampleRate: Float) {
+        self.sessionSampleRate = sessionSampleRate
+    }
 }
 
 public struct PulseSessionSamplingRule: Codable, Equatable {
@@ -92,10 +112,21 @@ public struct PulseSessionSamplingRule: Codable, Equatable {
     public let value: String
     public let sdks: [PulseSdkName]
     public let sessionSampleRate: Float
+
+    public init(name: PulseDeviceAttributeName, value: String, sdks: [PulseSdkName], sessionSampleRate: Float) {
+        self.name = name
+        self.value = value
+        self.sdks = sdks
+        self.sessionSampleRate = sessionSampleRate
+    }
 }
 
 public struct PulseCriticalEventPolicies: Codable, Equatable {
     public let alwaysSend: [PulseSignalMatchCondition]
+
+    public init(alwaysSend: [PulseSignalMatchCondition]) {
+        self.alwaysSend = alwaysSend
+    }
 }
 
 // MARK: - Signals
@@ -132,11 +163,36 @@ public struct PulseSignalConfig: Codable, Equatable {
         attributesToAdd = (try? c.decode([PulseAttributesToAddEntry].self, forKey: .attributesToAdd)) ?? []
         filters = try c.decode(PulseSignalFilter.self, forKey: .filters)
     }
+
+    public init(
+        scheduleDurationMs: Int64,
+        logsCollectorUrl: String,
+        metricCollectorUrl: String,
+        spanCollectorUrl: String,
+        customEventCollectorUrl: String,
+        attributesToDrop: [PulseSignalMatchCondition],
+        attributesToAdd: [PulseAttributesToAddEntry],
+        filters: PulseSignalFilter
+    ) {
+        self.scheduleDurationMs = scheduleDurationMs
+        self.logsCollectorUrl = logsCollectorUrl
+        self.metricCollectorUrl = metricCollectorUrl
+        self.spanCollectorUrl = spanCollectorUrl
+        self.customEventCollectorUrl = customEventCollectorUrl
+        self.attributesToDrop = attributesToDrop
+        self.attributesToAdd = attributesToAdd
+        self.filters = filters
+    }
 }
 
 public struct PulseSignalFilter: Codable, Equatable {
     public let mode: PulseSignalFilterMode
     public let values: [PulseSignalMatchCondition]
+
+    public init(mode: PulseSignalFilterMode, values: [PulseSignalMatchCondition]) {
+        self.mode = mode
+        self.values = values
+    }
 }
 
 // MARK: - Signal match condition (matchers)
@@ -154,6 +210,31 @@ public struct PulseSignalMatchCondition: Codable, Equatable {
         case sdks
     }
 
+    public init(name: String, props: [PulseProp], scopes: [PulseSignalScope], sdks: [PulseSdkName]) {
+        self.name = name
+        self.props = props
+        self.scopes = scopes
+        self.sdks = sdks
+    }
+
+    /// Condition that matches any signal (for "catch-all" routing). Used by Batch 5 SelectedLogExporter.
+    public static let allMatchLogCondition = PulseSignalMatchCondition(
+        name: ".*",
+        props: [],
+        scopes: PulseSignalScope.allCases.filter { $0 != .unknown },
+        sdks: PulseSdkName.allCases.filter { $0 != .unknown }
+    )
+
+    /// Condition that matches custom events (pulse.type == custom_event). Used by Batch 5 SelectedLogExporter.
+    public static func customEventLogCondition(pulseTypeKey: String = "pulse.type", customEventValue: String = "custom_event") -> PulseSignalMatchCondition {
+        PulseSignalMatchCondition(
+            name: ".*",
+            props: [PulseProp(name: pulseTypeKey, value: customEventValue)],
+            scopes: PulseSignalScope.allCases.filter { $0 != .unknown },
+            sdks: PulseSdkName.allCases.filter { $0 != .unknown }
+        )
+    }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name)
@@ -166,6 +247,11 @@ public struct PulseSignalMatchCondition: Codable, Equatable {
 public struct PulseProp: Codable, Equatable {
     public let name: String
     public let value: String?
+
+    public init(name: String, value: String?) {
+        self.name = name
+        self.value = value
+    }
 }
 
 public struct PulseAttributesToAddEntry: Codable, Equatable {
@@ -236,6 +322,7 @@ public enum PulseFeatureName: String, Codable, CaseIterable {
     case custom_events
     case rn_screen_load
     case rn_screen_interactive
+    case ios_crash
     case unknown
 }
 

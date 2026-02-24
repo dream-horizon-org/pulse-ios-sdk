@@ -61,7 +61,10 @@ public final class PulseSdkConfigRestProvider {
     /// Call from a background queue (do not block main thread).
     /// - Returns: Decoded config if HTTP 2xx and decode succeeds; nil on network error, non-2xx, or decode failure.
     public func provide() async -> PulseSdkConfig? {
-        guard let url = urlProvider() else { return nil }
+        guard let url = urlProvider() else {
+            return nil
+        }
+        PulseSdkConfigLogger.logConfigFetchStarted(url: url.absoluteString)
 
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
@@ -88,7 +91,9 @@ public final class PulseSdkConfigRestProvider {
         }
 
         do {
-            return try PulseSdkConfigRestProvider.decoder.decode(PulseSdkConfig.self, from: data)
+            let config = try PulseSdkConfigRestProvider.decoder.decode(PulseSdkConfig.self, from: data)
+            PulseSdkConfigLogger.logConfigFetchSuccess(version: config.version)
+            return config
         } catch {
             PulseSdkConfigLogger.logDecodeFailure()
             return nil

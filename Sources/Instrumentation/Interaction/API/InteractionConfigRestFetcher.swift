@@ -9,13 +9,16 @@ import Foundation
 /// Fetches interaction configurations from a remote server using URLSession
 public class InteractionConfigRestFetcher: InteractionConfigFetcher {
     private let urlProvider: () -> String
+    private let headers: [String: String]
     private let urlSession: URLSession
 
     public init(
         urlProvider: @escaping () -> String,
+        headers: [String: String] = [:],
         urlSession: URLSession = .shared
     ) {
         self.urlProvider = urlProvider
+        self.headers = headers
         self.urlSession = urlSession
     }
 
@@ -25,7 +28,12 @@ public class InteractionConfigRestFetcher: InteractionConfigFetcher {
             return nil
         }
 
-        let (data, response) = try await urlSession.data(from: url)
+        var request = URLRequest(url: url)
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+
+        let (data, response) = try await urlSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             return nil

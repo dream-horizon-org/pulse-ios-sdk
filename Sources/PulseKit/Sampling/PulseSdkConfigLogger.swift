@@ -11,6 +11,25 @@ import os.log
 enum PulseSdkConfigLogger {
     private static let log = OSLog(subsystem: "com.pulse.ios.sdk", category: "SamplingConfig")
 
+    /// Call when config API fetch is started.
+    static func logConfigFetchStarted(url: String) {
+        os_log("Pulse config: fetch started url=%{public}@", log: log, type: .debug, url)
+    }
+
+    /// Call when config API fetch succeeds and returns a config.
+    static func logConfigFetchSuccess(version: Int) {
+        os_log("Pulse config: fetch done version=%{public}d", log: log, type: .debug, version)
+    }
+
+    /// Call when PulseKit has finished initializing.
+    static func logPulseKitInitialized(configApplied: Bool, version: Int?) {
+        if configApplied, let v = version {
+            os_log("Pulse: initialized with config v%{public}d", log: log, type: .default, v)
+        } else {
+            os_log("Pulse: initialized (using defaults, no config)", log: log, type: .default)
+        }
+    }
+
     /// Call after loading config from persistence at init.
     static func logLoaded(currentVersion: Int?) {
         if let v = currentVersion {
@@ -62,5 +81,16 @@ enum PulseSdkConfigLogger {
     /// Call when config version is unsupported.
     static func logUnsupportedVersion(_ version: Int) {
         os_log("Pulse config fetch: unsupported config version=%{public}d", log: log, type: .default, version)
+    }
+
+    /// Temporary: log full config payload (debug).
+    static func logPayload(_ config: PulseSdkConfig) {
+        #if DEBUG
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let data = try? encoder.encode(config), let payload = String(data: data, encoding: .utf8) {
+            os_log("Pulse config fetch: payload %{public}@", log: log, type: .debug, payload)
+        }
+        #endif
     }
 }

@@ -35,16 +35,12 @@ public struct URLSessionInstrumentationConfig {
         baseUrl: String,
         userHandler: ((URLRequest) -> Bool)?
     ) -> ((URLRequest) -> Bool) {
-        // Normalize base URL (remove trailing slash for comparison)
-        let normalizedBaseUrl = baseUrl.hasSuffix("/") ? String(baseUrl.dropLast()) : baseUrl
-        
+        _ = baseUrl  // Reserved for future host-based exclusion if needed
         return { request in
-            if let url = request.url {
-                let urlString = url.absoluteString
-                if (urlString.contains("/v1/traces") || urlString.contains("/v1/logs")) && 
-                   urlString.hasPrefix(normalizedBaseUrl) {
-                    return false
-                }
+            guard let url = request.url else { return userHandler?(request) ?? true }
+            let urlString = url.absoluteString
+            if urlString.contains("/v1/traces") || urlString.contains("/v1/logs") || urlString.contains("/v1/metrics") {
+                return false
             }
             
             return userHandler?(request) ?? true

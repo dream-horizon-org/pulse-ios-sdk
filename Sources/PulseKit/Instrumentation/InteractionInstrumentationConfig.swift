@@ -39,10 +39,10 @@ extension InteractionInstrumentationConfig: InstrumentationInitializer {
 
         let configUrlProvider = self.configUrlProvider ?? {
             "http://127.0.0.1:8080/v1/interaction-configs/"
-
         }
         let interactionConfig = InteractionInstrumentationConfiguration(
             configUrlProvider: configUrlProvider,
+            headers: ctx.endpointHeaders,
             attributeExtractor: nil
         )
         let instrumentation = InteractionInstrumentation(configuration: interactionConfig)

@@ -13,6 +13,9 @@ internal struct InstallationContext {
     let loggerProvider: LoggerProvider
 
     let openTelemetry: OpenTelemetry
-    
+
     let endpointBaseUrl: String
+
+    /// Headers (including projectId) for config fetch, OTLP, and interaction-config requests
+    let endpointHeaders: [String: String]
 }
