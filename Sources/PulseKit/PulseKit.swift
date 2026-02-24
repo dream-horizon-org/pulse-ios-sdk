@@ -31,6 +31,7 @@ public class PulseKit {
     private var openTelemetry: OpenTelemetry?
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
+    private var networkMonitor: NetworkMonitorProtocol?
     
     // User session emitter (matches Android's PulseUserSessionEmitter)
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
