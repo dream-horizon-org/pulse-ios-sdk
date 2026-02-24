@@ -475,6 +475,7 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
             "OpenTelemetryProtocolExporterHttp",
+            "PersistenceExporter",
             "ResourceExtension",
             "Sessions",
             "URLSessionInstrumentation",

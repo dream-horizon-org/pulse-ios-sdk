@@ -16,6 +16,7 @@ struct Directory {
 
   init(url: URL) {
     self.url = url
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: nil)
   }
 
   /// Creates file with given name.

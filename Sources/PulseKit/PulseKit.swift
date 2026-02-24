@@ -6,7 +6,6 @@ import OpenTelemetryProtocolExporterHttp
 import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
-import NetworkStatus
 #if canImport(Location)
 import Location
 #endif
@@ -30,8 +29,8 @@ public class PulseKit {
     private var openTelemetry: OpenTelemetry?
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
-    
-    // User session emitter (matches Android's PulseUserSessionEmitter)
+
+    // User session emitter 
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
         PulseUserSessionEmitter(
             loggerProvider: { [weak self] in
@@ -175,15 +174,20 @@ public class PulseKit {
         let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
         let spanExporter = FilteringSpanExporter(delegate: otlpHttpTraceExporter)
 
-        let spanProcessor = BatchSpanProcessor(
+        let (persistentSpanExporter, persistentLogExporter) = PersistenceUtils.createPersistentExporters(
             spanExporter: spanExporter,
+            logExporter: otlpHttpLogExporter
+        )
+
+        let spanProcessor = BatchSpanProcessor(
+            spanExporter: persistentSpanExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
         let baseLogProcessor = BatchLogRecordProcessor(
-            logRecordExporter: otlpHttpLogExporter,
+            logRecordExporter: persistentLogExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
