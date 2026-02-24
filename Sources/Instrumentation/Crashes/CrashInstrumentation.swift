@@ -127,6 +127,7 @@ public final class CrashInstrumentation {
         observers.removeAll()
         logger = nil
         isInstalled = false
+      //TODO: implement complete uninstall for crashes inclduing kscrash handlers 
     }
 
     // MARK: - Report Processing
