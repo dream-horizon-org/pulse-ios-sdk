@@ -61,6 +61,15 @@ PulseKit.shared.initialize(
 
 ---
 
+## Batching and persistence
+
+**Batching:** Spans and logs are batched in memory and sent to the backend on a schedule. This reduces the number of network requests and improves efficiency. Batch size and timing are tuned for typical app usage.
+
+**Persistence:** Telemetry is written to disk before export. When the device is offline or export fails, data stays on disk and is sent automatically when the network is available again. Export is only attempted when the SDK detects a usable connection, so data is preserved across app restarts. Persistence uses the app cache directory; if disk storage cannot be created, the SDK falls back to in-memory batching only.
+
+For more detail on the persistence layer (batch format, file lifecycle, performance presets), see [Persistence Exporter](../Exporters/Persistence/README.md). A full SDK shutdown API (including stopping the persistence worker) is not yet implemented.
+
+
 ### Event Tracking
 
 #### `trackEvent(name:observedTimeStampInMs:params:)`
