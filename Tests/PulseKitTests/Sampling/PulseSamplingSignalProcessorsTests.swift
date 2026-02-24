@@ -81,6 +81,39 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
         XCTAssertEqual(mockExporter.exportedLogs.count, 1)
     }
 
+    func testSampledSpanExporterDropsAttributesWhenAttributesToDropMatches() {
+        let dropCondition = PulseSignalMatchCondition(
+            name: ".*",
+            props: [],
+            scopes: [.traces],
+            sdks: [.pulse_ios_swift]
+        )
+        let attributesToDrop = [
+            PulseAttributesToDropEntry(values: ["toDrop"], condition: dropCondition)
+        ]
+        let config = makeSdkConfigWithAttributesToDrop(attributesToDrop)
+        let mockExporter = MockSpanExporter()
+        let processors = PulseSamplingSignalProcessors(
+            sdkConfig: config,
+            currentSdkName: .pulse_ios_swift,
+            sessionParser: AlwaysOnSessionParser(),
+            randomGenerator: { 0 }
+        )
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockExporter)
+        let span = createTestSpan(
+            name: "test-span",
+            attributes: [
+                "toDrop": AttributeValue.string("secret"),
+                "keep": AttributeValue.string("visible")
+            ]
+        )
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil)
+        XCTAssertEqual(mockExporter.exportedSpans.count, 1)
+        let exported = mockExporter.exportedSpans[0]
+        XCTAssertNil(exported.attributes["toDrop"], "toDrop should be dropped")
+        XCTAssertNotNil(exported.attributes["keep"], "keep should remain")
+    }
+
     // MARK: - Helpers
 
     private func makeSdkConfig(
@@ -117,7 +150,36 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
         )
     }
 
-    private func createTestSpan(name: String) -> SpanData {
+    private func makeSdkConfigWithAttributesToDrop(_ attributesToDrop: [PulseAttributesToDropEntry]) -> PulseSdkConfig {
+        PulseSdkConfig(
+            version: 1,
+            description: "test",
+            sampling: PulseSamplingConfig(
+                default: PulseDefaultSamplingConfig(sessionSampleRate: 0.5),
+                rules: [],
+                criticalEventPolicies: nil,
+                criticalSessionPolicies: nil
+            ),
+            signals: PulseSignalConfig(
+                scheduleDurationMs: 60_000,
+                logsCollectorUrl: "https://logs",
+                metricCollectorUrl: "https://metrics",
+                spanCollectorUrl: "https://spans",
+                customEventCollectorUrl: "https://custom",
+                attributesToDrop: attributesToDrop,
+                attributesToAdd: [],
+                filters: PulseSignalFilter(mode: .blacklist, values: [])
+            ),
+            interaction: PulseInteractionConfig(
+                collectorUrl: "https://interaction",
+                configUrl: "https://config",
+                beforeInitQueueSize: 100
+            ),
+            features: []
+        )
+    }
+
+    private func createTestSpan(name: String, attributes: [String: AttributeValue] = [:]) -> SpanData {
         let start = Date()
         let end = start.addingTimeInterval(0.1)
         var spanData = SpanData(
@@ -128,8 +190,8 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
             startTime: start,
             endTime: end
         )
-        spanData.settingAttributes([:])
-        spanData.settingTotalAttributeCount(0)
+        spanData.settingAttributes(attributes)
+        spanData.settingTotalAttributeCount(attributes.count)
         spanData.settingHasEnded(true)
         spanData.settingTotalRecordedEvents(0)
         spanData.settingLinks([])

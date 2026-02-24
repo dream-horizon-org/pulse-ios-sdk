@@ -538,6 +538,7 @@ public class PulseKit {
     
     public func getOtelOrThrow() -> OpenTelemetry {
         guard let otel = openTelemetry else {
+            
             fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
         return otel

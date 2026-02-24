@@ -18,9 +18,9 @@ public enum PulseAttributes {
     public static let exceptionType = "exception.type"
     public static let exceptionStacktrace = "exception.stacktrace"
 
-    /// Project identifier; used as resource attribute "project.id" and in HTTP header X-API-KEY (matches Android).
+    /// Project identifier; used as resource attribute "project.id" and in HTTP header X-API-KEY.
     public static let projectId = "project.id"
-    internal static let projectIdHeaderKey = "X-API-KEY"
+    internal static let projectIdHeaderKey = "X-Tenant-ID"
 
     public static func pulseUserParameter(_ key: String) -> String {
         return "\(pulseUserPrefix).\(key)"
