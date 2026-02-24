@@ -3,11 +3,9 @@ import OpenTelemetryApi
 import OpenTelemetrySdk
 import InteractionInstrumentation
 import OpenTelemetryProtocolExporterHttp
-import PersistenceExporter
 import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
-import NetworkStatus
 #if canImport(Location)
 import Location
 #endif
@@ -31,9 +29,8 @@ public class PulseKit {
     private var openTelemetry: OpenTelemetry?
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
-    private var networkMonitor: NetworkMonitorProtocol?
-    
-    // User session emitter (matches Android's PulseUserSessionEmitter)
+
+    // User session emitter 
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
         PulseUserSessionEmitter(
             loggerProvider: { [weak self] in
@@ -177,40 +174,10 @@ public class PulseKit {
         let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
         let spanExporter = FilteringSpanExporter(delegate: otlpHttpTraceExporter)
 
-        let persistenceStorageBase = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("com.pulse.persistence", isDirectory: true)
-
-        #if !os(watchOS)
-        let monitor: NetworkMonitorProtocol? = try? NetworkMonitor()
-        #else
-        let monitor: NetworkMonitorProtocol? = nil
-        #endif
-        self.networkMonitor = monitor
-
-        let exportCondition: () -> Bool = { [weak self] in
-            guard let monitor = self?.networkMonitor else { return true }
-            return monitor.getConnection() != .unavailable
-        }
-
-        var persistentSpanExporter: SpanExporter
-        var persistentLogExporter: LogRecordExporter
-        do {
-            persistentSpanExporter = try PersistenceSpanExporterDecorator(
-                spanExporter: spanExporter,
-                storageURL: persistenceStorageBase.appendingPathComponent("traces", isDirectory: true),
-                exportCondition: exportCondition,
-                performancePreset: .lowRuntimeImpact
-            )
-            persistentLogExporter = try PersistenceLogExporterDecorator(
-                logRecordExporter: otlpHttpLogExporter,
-                storageURL: persistenceStorageBase.appendingPathComponent("logs", isDirectory: true),
-                exportCondition: exportCondition,
-                performancePreset: .lowRuntimeImpact
-            )
-        } catch {
-            persistentSpanExporter = spanExporter
-            persistentLogExporter = otlpHttpLogExporter
-        }
+        let (persistentSpanExporter, persistentLogExporter) = PersistenceUtils.createPersistentExporters(
+            spanExporter: spanExporter,
+            logExporter: otlpHttpLogExporter
+        )
 
         let spanProcessor = BatchSpanProcessor(
             spanExporter: persistentSpanExporter,
