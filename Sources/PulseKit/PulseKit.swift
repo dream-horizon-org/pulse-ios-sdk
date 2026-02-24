@@ -332,7 +332,6 @@ public class PulseKit {
             let defaults = UserDefaults.standard
 
             CrashInstrumentation.uninstall()
-            SessionEventInstrumentation.uninstall()
             InteractionInstrumentation.getInstance()?.uninstall()
             defaults.removeObject(forKey: "pulse_installation_id")
             defaults.removeObject(forKey: "user_id")
