@@ -26,11 +26,11 @@ public struct SessionConfig {
   /// Creates session configuration
   /// - Parameters:
   ///   - backgroundInactivityTimeout: Background timeout in seconds (default: 15 minutes)
-  ///   - maxLifetime: Max session duration in seconds (default: 4 hours)
+  ///   - maxLifetime: Max session duration in seconds (default: 15 seconds for testing, 4 hours for production)
   ///   - shouldPersist: Enable persistence (default: false)
   public init(
     backgroundInactivityTimeout: TimeInterval? = 15 * 60,  // 15 minutes
-    maxLifetime: TimeInterval? = 4 * 60 * 60,  // 4 hours
+    maxLifetime: TimeInterval? = 15,  // 15 seconds for testing (4 * 60 * 60 for production)
     shouldPersist: Bool = false
   ) {
     self.backgroundInactivityTimeout = backgroundInactivityTimeout
@@ -45,7 +45,7 @@ public struct SessionConfig {
 /// Builder for SessionConfig with fluent API
 public class SessionConfigBuilder {
   public private(set) var backgroundInactivityTimeout: TimeInterval? = 15 * 60
-  public private(set) var maxLifetime: TimeInterval? = 4 * 60 * 60
+  public private(set) var maxLifetime: TimeInterval? = 15  // 15 seconds for testing
   public private(set) var shouldPersist: Bool = false
   
   public init() {}

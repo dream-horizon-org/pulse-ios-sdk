@@ -46,7 +46,7 @@ public struct Session: Equatable {
               expireTime: Date,
               previousId: String? = nil,
               startTime: Date = Date(),
-              sessionTimeout: TimeInterval = SessionConfig.default.sessionTimeout) {
+              sessionTimeout: TimeInterval = SessionConfig.default.maxLifetime ?? 15) {
     self.id = id
     self.expireTime = expireTime
     self.previousId = previousId

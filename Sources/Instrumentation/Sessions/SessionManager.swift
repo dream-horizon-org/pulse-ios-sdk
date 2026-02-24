@@ -13,11 +13,17 @@ public class SessionManager {
   private var configuration: SessionConfig
   private var session: Session?
   private var lock = NSLock()
-
+  private var sessionStorage: SessionStorage
+  private var defaultMaxlifetime: TimeInterval = 15  // 15 seconds for testing
   /// Initializes the session manager and restores any previous session from disk
   /// - Parameter configuration: Session configuration settings
   public init(configuration: SessionConfig = .default) {
     self.configuration = configuration
+    if configuration.shouldPersist {
+      self.sessionStorage = PersistentSessionStorage()
+    } else {
+      self.sessionStorage = InMemorySessionStorage()
+    }
     restoreSessionFromDisk()
   }
 
@@ -56,10 +62,14 @@ public class SessionManager {
 
     session = Session(
       id: newId,
-      expireTime: now.addingTimeInterval(Double(configuration.sessionTimeout)),
+      expireTime: now.addingTimeInterval(
+        Double(
+            configuration.maxLifetime ?? defaultMaxlifetime
+        )
+      ),
       previousId: previousId,
       startTime: now,
-      sessionTimeout: configuration.sessionTimeout
+      sessionTimeout: configuration.maxLifetime ?? defaultMaxlifetime
     )
 
     // Queue the new session for a `session.start`` event
@@ -78,7 +88,7 @@ public class SessionManager {
         expireTime: session!.expireTime,
         previousId: session!.previousId,
         startTime: session!.startTime,
-        sessionTimeout: TimeInterval(configuration.sessionTimeout)
+        sessionTimeout: TimeInterval(configuration.maxLifetime ?? defaultMaxlifetime)
       )
     }
     saveSessionToDisk()
@@ -86,13 +96,13 @@ public class SessionManager {
 
   /// Schedules the current session to be persisted to UserDefaults
   private func saveSessionToDisk() {
-    if session != nil {
-      SessionStore.scheduleSave(session: session!)
+    if let currentSession = session {
+      sessionStorage.save(currentSession)
     }
   }
 
   /// Restores a previously saved session from UserDefaults
   private func restoreSessionFromDisk() {
-    session = SessionStore.load()
+      session = sessionStorage.get()
   }
 }
