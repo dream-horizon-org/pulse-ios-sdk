@@ -5,64 +5,72 @@
 
 import Foundation
 
-/// Configuration object for session management settings.
-///
-/// Controls session behavior including timeout duration and expiration handling.
-/// Sessions automatically expire after the specified timeout period of inactivity.
-///
-/// Example:
-/// ```swift
-/// // Direct initialization
-/// let config = SessionConfig(sessionTimeout: 45 * 60) // 45 minutes
+/// Configuration for session management (matches Android SessionConfig)
 /// 
-/// // Using builder pattern
-/// let config = SessionConfig.builder()
-///   .with(sessionTimeout: 45 * 60)
-///   .build()
-/// 
-/// let manager = SessionManager(configuration: config)
-/// ```
+/// **Two ways to create:**
+/// 1. Direct init: `SessionConfig(maxLifetime: 3600)`
+/// 2. Builder pattern: `SessionConfig.builder().with(maxLifetime: 3600).build()`
+/// Both are equivalent - builder is just for fluent API convenience
 public struct SessionConfig {
-  /// Duration in seconds after which a session expires if left inactive
-  public let sessionTimeout: TimeInterval
+  /// Background inactivity timeout in seconds (optional)
+  /// Session expires if app stays in background longer than this
+  public let backgroundInactivityTimeout: TimeInterval?
   
-  /// Creates a new session configuration
-  /// - Parameter sessionTimeout: Duration in seconds after which a session expires if left inactive (default 30 minutes)
-  public init(sessionTimeout: TimeInterval = 30 * 60) {
-    self.sessionTimeout = sessionTimeout
+  /// Maximum session lifetime in seconds (optional)
+  /// Session expires after this duration from start time
+  public let maxLifetime: TimeInterval?
+  
+  /// Whether session should persist across app restarts
+  public let shouldPersist: Bool
+  
+  /// Creates session configuration
+  /// - Parameters:
+  ///   - backgroundInactivityTimeout: Background timeout in seconds (default: 15 minutes)
+  ///   - maxLifetime: Max session duration in seconds (default: 4 hours)
+  ///   - shouldPersist: Enable persistence (default: false)
+  public init(
+    backgroundInactivityTimeout: TimeInterval? = 15 * 60,  // 15 minutes
+    maxLifetime: TimeInterval? = 4 * 60 * 60,  // 4 hours
+    shouldPersist: Bool = false
+  ) {
+    self.backgroundInactivityTimeout = backgroundInactivityTimeout
+    self.maxLifetime = maxLifetime
+    self.shouldPersist = shouldPersist
   }
   
-  /// Default configuration with 30-minute session timeout
+  /// Default configuration (matches Android defaults)
   public static let `default` = SessionConfig()
 }
 
-/// Builder for creating SessionConfig instances with a fluent API.
-///
-/// Provides a convenient way to configure session settings using method chaining.
-///
-/// Example:
-/// ```swift
-/// let config = SessionConfig.builder()
-///   .with(sessionTimeout: 45 * 60)
-///   .build()
-/// ```
+/// Builder for SessionConfig with fluent API
 public class SessionConfigBuilder {
-  public private(set) var sessionTimeout: TimeInterval = 30 * 60
+  public private(set) var backgroundInactivityTimeout: TimeInterval? = 15 * 60
+  public private(set) var maxLifetime: TimeInterval? = 4 * 60 * 60
+  public private(set) var shouldPersist: Bool = false
   
   public init() {}
   
-  /// Sets the session timeout duration
-  /// - Parameter sessionTimeout: Duration in seconds after which a session expires if left inactive
-  /// - Returns: The builder instance for method chaining
-  public func with(sessionTimeout: TimeInterval) -> Self {
-    self.sessionTimeout = sessionTimeout
+  public func with(backgroundInactivityTimeout: TimeInterval?) -> Self {
+    self.backgroundInactivityTimeout = backgroundInactivityTimeout
     return self
   }
   
-  /// Builds the SessionConfig with the configured settings
-  /// - Returns: A new SessionConfig instance
+  public func with(maxLifetime: TimeInterval?) -> Self {
+    self.maxLifetime = maxLifetime
+    return self
+  }
+  
+  public func with(shouldPersist: Bool) -> Self {
+    self.shouldPersist = shouldPersist
+    return self
+  }
+  
   public func build() -> SessionConfig {
-    return SessionConfig(sessionTimeout: sessionTimeout)
+    return SessionConfig(
+      backgroundInactivityTimeout: backgroundInactivityTimeout,
+      maxLifetime: maxLifetime,
+      shouldPersist: shouldPersist
+    )
   }
 }
 
