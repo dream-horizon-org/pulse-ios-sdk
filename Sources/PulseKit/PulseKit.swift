@@ -7,7 +7,6 @@ import OpenTelemetryProtocolExporterHttp
 import ResourceExtension
 import Sessions
 import URLSessionInstrumentation
-import NetworkStatus
 #if canImport(Location)
 import Location
 #endif
@@ -44,6 +43,7 @@ public class PulseKit {
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
     
+    // User session emitter
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
         PulseUserSessionEmitter(
             loggerProvider: { [weak self] in
@@ -108,7 +108,6 @@ public class PulseKit {
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
-            // Merge ProjectID  header with user-provided headers
             let projectIdHeader = [PulseAttributes.projectIdHeaderKey: projectId]
             let endpointHeadersWithProjectID = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
 
@@ -184,6 +183,7 @@ public class PulseKit {
         let otlpHttpTraceExporter = OtlpHttpTraceExporter(endpoint: tracesEndpoint, envVarHeaders: envVarHeaders)
         let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
         let spanExporter = FilteringSpanExporter(delegate: otlpHttpTraceExporter)
+
         let (persistentSpanExporter, persistentLogExporter) = PersistenceUtils.createPersistentExporters(
             spanExporter: spanExporter,
             logExporter: otlpHttpLogExporter
@@ -201,8 +201,9 @@ public class PulseKit {
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
+            maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
-        
+
         self.batchSpanProcessor = spanProcessor
         self.batchLogProcessor = baseLogProcessor
 
@@ -249,14 +250,16 @@ public class PulseKit {
         let pulseSignalProcessor = PulseSignalProcessor()
         var spanProcessors: [SpanProcessor] = []
         var logProcessor = baseLogProcessor
-        
+
+        // Apply customizer first, right after baseLogProcessor
         if let customizer = loggerProviderCustomizer {
             let modified = customizer([logProcessor])
             if let firstModified = modified.first {
                 logProcessor = firstModified
             }
         }
-        
+
+        // Build SDK processor chain
         if _configuration.includeGlobalAttributes {
             let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
             let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
@@ -321,16 +324,15 @@ public class PulseKit {
 
     // MARK: - Shutdown
 
-    /// Shuts down the Pulse SDK: flushes pending telemetry, uninstalls all
-    /// instrumentations, and releases OpenTelemetry resources.
-    /// After shutdown the SDK cannot be re-initialized in this process.
+    /// Permanently shuts down the SDK. Cannot be re-initialized in this process.
     public func shutdown() {
         initializationQueue.sync {
             guard _isInitialized, !_isShutdown else { return }
 
             let defaults = UserDefaults.standard
-            
+
             CrashInstrumentation.uninstall()
+            SessionEventInstrumentation.uninstall()
             InteractionInstrumentation.getInstance()?.uninstall()
             defaults.removeObject(forKey: "pulse_installation_id")
             defaults.removeObject(forKey: "user_id")
@@ -511,8 +513,8 @@ public class PulseKit {
 // MARK: - Batch Processor Constants
 
 internal enum BatchProcessorDefaults {
-    static let scheduleDelay: TimeInterval = 20
-    static let maxQueueSize: Int = 6
+    static let scheduleDelay: TimeInterval = 5
+    static let maxQueueSize: Int = 2048
     static let maxExportBatchSize: Int = 512
     static let exportTimeout: TimeInterval = 30
 }
