@@ -28,6 +28,8 @@ public class PulseKit {
     }
 
     private var openTelemetry: OpenTelemetry?
+    private var batchSpanProcessor: BatchSpanProcessor?
+    private var batchLogProcessor: BatchLogRecordProcessor?
     
     // User session emitter (matches Android's PulseUserSessionEmitter)
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
@@ -110,12 +112,14 @@ public class PulseKit {
                 loggerProviderCustomizer: loggerProviderCustomizer
             )
 
-            // Install instrumentations
             let installationContext = InstallationContext(
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
                 openTelemetry: openTelemetry,
-                endpointBaseUrl: endpointBaseUrl
+                endpointBaseUrl: endpointBaseUrl,
+                flushLogProcessor: { [weak self] in
+                    self?.batchLogProcessor?.forceFlush()
+                }
             )
             installInstrumentations(config: config, ctx: installationContext)
             
@@ -134,6 +138,7 @@ public class PulseKit {
 
             self.openTelemetry = openTelemetry
             _isInitialized = true
+
         }
     }
 
@@ -162,19 +167,31 @@ public class PulseKit {
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
-        // Convert headers to exporter format [(String, String)]?
         let envVarHeaders: [(String, String)]? = endpointHeaders?.map { ($0.key, $0.value) }
 
-        // Build exporters
         let tracesEndpoint = URL(string: "\(endpointBaseUrl)/v1/traces")!
         let logsEndpoint = URL(string: "\(endpointBaseUrl)/v1/logs")!
         let otlpHttpTraceExporter = OtlpHttpTraceExporter(endpoint: tracesEndpoint, envVarHeaders: envVarHeaders)
-        let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)        
+        let otlpHttpLogExporter = OtlpHttpLogExporter(endpoint: logsEndpoint, envVarHeaders: envVarHeaders)
         let spanExporter = FilteringSpanExporter(delegate: otlpHttpTraceExporter)
 
-        // Build base processors
-        let spanProcessor = SimpleSpanProcessor(spanExporter: spanExporter)
-        let baseLogProcessor = SimpleLogRecordProcessor(logRecordExporter: otlpHttpLogExporter)
+        let spanProcessor = BatchSpanProcessor(
+            spanExporter: spanExporter,
+            scheduleDelay: BatchProcessorDefaults.scheduleDelay,
+            exportTimeout: BatchProcessorDefaults.exportTimeout,
+            maxQueueSize: BatchProcessorDefaults.maxQueueSize,
+            maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
+        )
+        let baseLogProcessor = BatchLogRecordProcessor(
+            logRecordExporter: otlpHttpLogExporter,
+            scheduleDelay: BatchProcessorDefaults.scheduleDelay,
+            exportTimeout: BatchProcessorDefaults.exportTimeout,
+            maxQueueSize: BatchProcessorDefaults.maxQueueSize,
+            maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
+        )
+
+        self.batchSpanProcessor = spanProcessor
+        self.batchLogProcessor = baseLogProcessor
 
         let (spanProcessors, logProcessors) = buildProcessors(
             baseSpanProcessor: spanProcessor,
@@ -202,7 +219,6 @@ public class PulseKit {
         
         let loggerProvider = loggerProviderBuilder.build()
 
-        // Register providers
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
         OpenTelemetry.registerLoggerProvider(loggerProvider: loggerProvider)
 
@@ -429,5 +445,13 @@ public class PulseKit {
         builderAction(&properties)
         setUserProperties(properties)
     }
-    
+}
+
+// MARK: - Batch Processor Constants
+
+internal enum BatchProcessorDefaults {
+    static let scheduleDelay: TimeInterval = 5
+    static let maxQueueSize: Int = 2048
+    static let maxExportBatchSize: Int = 512
+    static let exportTimeout: TimeInterval = 30
 }

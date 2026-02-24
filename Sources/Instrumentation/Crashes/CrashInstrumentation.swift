@@ -43,15 +43,18 @@ public final class CrashInstrumentation {
     private let loggerProvider: LoggerProvider
     private let instrumentationScopeName: String
     private let instrumentationVersion: String
+    private let flushLogProcessor: (() -> Void)?
 
     public init(
         loggerProvider: LoggerProvider,
         instrumentationScopeName: String = "com.pulse.ios.sdk.crash",
-        instrumentationVersion: String = "0.0.1"
+        instrumentationVersion: String = "0.0.1",
+        flushLogProcessor: (() -> Void)? = nil
     ) {
         self.loggerProvider = loggerProvider
         self.instrumentationScopeName = instrumentationScopeName
         self.instrumentationVersion = instrumentationVersion
+        self.flushLogProcessor = flushLogProcessor
     }
 
     public func install() {
@@ -69,12 +72,15 @@ public final class CrashInstrumentation {
             return
         }
 
-        // Seed KSCrash userInfo with the current session so it's included in any crash report
         CrashInstrumentation.cacheCrashContext()
         CrashInstrumentation.setupNotificationObservers()
 
+        let flush = self.flushLogProcessor
         CrashInstrumentation.queue.async {
-            CrashInstrumentation.processStoredCrashes()
+            let hadCrashes = CrashInstrumentation.processStoredCrashes()
+            if hadCrashes {
+                flush?()
+            }
         }
     }
 
@@ -115,12 +121,15 @@ public final class CrashInstrumentation {
 
     // MARK: - Report Processing
 
-    static func processStoredCrashes() {
+    /// Processes any crash reports from the previous session. Emits crash log records for each.
+    /// - Returns: `true` if at least one crash was processed (previous session had a crash), `false` otherwise.
+    static func processStoredCrashes() -> Bool {
+        var hadValidCrash = false
         guard let logger = logger,
-              let reportStore = reporter.reportStore else { return }
+              let reportStore = reporter.reportStore else { return hadValidCrash }
 
         let reportIDs = reportStore.reportIDs
-        guard !reportIDs.isEmpty else { return }
+        guard !reportIDs.isEmpty else { return hadValidCrash }
 
         for reportID in reportIDs {
             guard let id = reportID as? Int64,
@@ -128,7 +137,9 @@ public final class CrashInstrumentation {
 
             reportCrash(crashReport: crashReport, logger: logger)
             reportStore.deleteReport(with: id)
+            hadValidCrash = true
         }
+        return hadValidCrash
     }
 
     private static func reportCrash(crashReport: CrashReportDictionary, logger: Logger) {
