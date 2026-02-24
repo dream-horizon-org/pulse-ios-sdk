@@ -28,6 +28,8 @@ public class PulseKit {
     }
 
     private var openTelemetry: OpenTelemetry?
+    private var batchSpanProcessor: BatchSpanProcessor?
+    private var batchLogProcessor: BatchLogRecordProcessor?
     
     // User session emitter (matches Android's PulseUserSessionEmitter)
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
@@ -166,13 +168,15 @@ public class PulseKit {
                 loggerProviderCustomizer: loggerProviderCustomizer
             )
 
-            // Install instrumentations
             let installationContext = InstallationContext(
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
                 openTelemetry: openTelemetry,
                 endpointBaseUrl: endpointBaseUrl,
-                endpointHeaders: endpointHeadersWithProject
+                endpointHeaders: endpointHeadersWithProject,
+                flushLogProcessor: { [weak self] in
+                    self?.batchLogProcessor?.forceFlush()
+                }
             )
             installInstrumentations(config: config, ctx: installationContext)
 
@@ -308,8 +312,23 @@ public class PulseKit {
             finalLogExporter = logsExporter
         }
 
-        let spanProcessor = SimpleSpanProcessor(spanExporter: finalSpanExporter)
-        let baseLogProcessor = SimpleLogRecordProcessor(logRecordExporter: finalLogExporter)
+        let spanProcessor = BatchSpanProcessor(
+            spanExporter: finalSpanExporter,
+            scheduleDelay: BatchProcessorDefaults.scheduleDelay,
+            exportTimeout: BatchProcessorDefaults.exportTimeout,
+            maxQueueSize: BatchProcessorDefaults.maxQueueSize,
+            maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
+        )
+        let baseLogProcessor = BatchLogRecordProcessor(
+            logRecordExporter: finalLogExporter,
+            scheduleDelay: BatchProcessorDefaults.scheduleDelay,
+            exportTimeout: BatchProcessorDefaults.exportTimeout,
+            maxQueueSize: BatchProcessorDefaults.maxQueueSize,
+            maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
+        )
+
+        self.batchSpanProcessor = spanProcessor
+        self.batchLogProcessor = baseLogProcessor
 
         let (spanProcessors, logProcessors) = buildProcessors(
             baseSpanProcessor: spanProcessor,
@@ -337,7 +356,6 @@ public class PulseKit {
         
         let loggerProvider = loggerProviderBuilder.build()
 
-        // Register providers
         OpenTelemetry.registerTracerProvider(tracerProvider: tracerProvider)
         OpenTelemetry.registerLoggerProvider(loggerProvider: loggerProvider)
 
@@ -565,5 +583,13 @@ public class PulseKit {
         builderAction(&properties)
         setUserProperties(properties)
     }
-    
+}
+
+// MARK: - Batch Processor Constants
+
+internal enum BatchProcessorDefaults {
+    static let scheduleDelay: TimeInterval = 5
+    static let maxQueueSize: Int = 2048
+    static let maxExportBatchSize: Int = 512
+    static let exportTimeout: TimeInterval = 30
 }

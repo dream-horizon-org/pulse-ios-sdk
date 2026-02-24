@@ -16,6 +16,7 @@ internal struct InstallationContext {
 
     let endpointBaseUrl: String
 
-    /// Headers (including projectId) for config fetch, OTLP, and interaction-config requests
     let endpointHeaders: [String: String]
+
+    let flushLogProcessor: (() -> Void)?
 }
