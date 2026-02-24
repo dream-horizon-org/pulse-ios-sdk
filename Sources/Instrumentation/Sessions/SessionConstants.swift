@@ -20,11 +20,8 @@ public class SessionConstants {
   public static let id = "session.id"
   /// Attribute name for previous session identifier
   public static let previousId = "session.previous_id"
-  /// Event name for metered session start events
-  public static let meteredSessionStartEvent = "pulse.meteringsession.start"
-  /// Event name fo metered session end events
-  public static let meteredSessionEndEvent = "pulse.metering.session.end"
-    
+  /// Attribute name for metered session identifier (billing/metering)
+  public static let meteredId = "pulse.metering.session.id"
 
   // MARK: - Extension Attributes
   

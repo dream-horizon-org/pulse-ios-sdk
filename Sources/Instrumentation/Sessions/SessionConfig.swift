@@ -23,19 +23,31 @@ public struct SessionConfig {
   /// Whether session should persist across app restarts
   public let shouldPersist: Bool
   
+  /// Event name for session start (e.g., "session.start" or "metered.session.start")
+  public let startEventName: String?
+  
+  /// Event name for session end (e.g., "session.end" or "metered.session.end")
+  public let endEventName: String?
+  
   /// Creates session configuration
   /// - Parameters:
   ///   - backgroundInactivityTimeout: Background timeout in seconds (default: 15 minutes)
   ///   - maxLifetime: Max session duration in seconds (default: 15 seconds for testing, 4 hours for production)
   ///   - shouldPersist: Enable persistence (default: false)
+  ///   - startEventName: Event name for session start (default: "session.start")
+  ///   - endEventName: Event name for session end (default: "session.end")
   public init(
     backgroundInactivityTimeout: TimeInterval? = 15 * 60,  // 15 minutes
     maxLifetime: TimeInterval? = 15,  // 15 seconds for testing (4 * 60 * 60 for production)
-    shouldPersist: Bool = false
+    shouldPersist: Bool = false,
+    startEventName: String? = SessionConstants.sessionStartEvent,
+    endEventName: String? = SessionConstants.sessionEndEvent
   ) {
     self.backgroundInactivityTimeout = backgroundInactivityTimeout
     self.maxLifetime = maxLifetime
     self.shouldPersist = shouldPersist
+    self.startEventName = startEventName
+    self.endEventName = endEventName
   }
   
   /// Default configuration (matches Android defaults)

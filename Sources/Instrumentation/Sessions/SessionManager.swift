@@ -55,9 +55,9 @@ public class SessionManager {
     /// This matches Android's approach: TraceId.fromLongs(random.nextLong(), random.nextLong())
     let newId = TraceId.random().hexString
 
-    /// Queue the previous session for a `session.end` event
-    if session != nil {
-      SessionEventInstrumentation.addSession(session: session!, eventType: .end)
+    /// Queue the previous session for a session.end event
+    if session != nil, let endEventName = configuration.endEventName {
+      SessionEventInstrumentation.addSession(session: session!, eventType: .end, eventName: endEventName)
     }
 
     session = Session(
@@ -72,8 +72,10 @@ public class SessionManager {
       sessionTimeout: configuration.maxLifetime ?? defaultMaxlifetime
     )
 
-    // Queue the new session for a `session.start`` event
-    SessionEventInstrumentation.addSession(session: session!, eventType: .start)
+    // Queue the new session for a session.start event
+    if let startEventName = configuration.startEventName {
+      SessionEventInstrumentation.addSession(session: session!, eventType: .start, eventName: startEventName)
+    }
   }
 
   /// Refreshes the current session, creating new one if expired\

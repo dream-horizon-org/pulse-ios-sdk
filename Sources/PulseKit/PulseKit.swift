@@ -297,7 +297,23 @@ public class PulseKit {
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
-        let envVarHeaders: [(String, String)]? = endpointHeaders?.map { ($0.key, $0.value) }
+        // Create metered session manager early to get session ID for HTTP headers
+        let meteredConfig = SessionConfig(
+            backgroundInactivityTimeout: nil,
+            maxLifetime: 30,  // 30 seconds for testing (30 * 60 for production)
+            shouldPersist: true,
+            startEventName: nil,  // No events for metered session
+            endEventName: nil  // No events for metered session
+        )
+        let meteredManager = SessionManager(configuration: meteredConfig)
+        let meteredSessionId = meteredManager.getSession().id
+        
+        // Add metered session ID to HTTP headers (matches Android: X-Pulse-Metering-Session-ID)
+        var headers = endpointHeaders ?? [:]
+        headers["X-Pulse-Metering-Session-ID"] = meteredSessionId
+        
+        // Convert headers to exporter format [(String, String)]?
+        let envVarHeaders: [(String, String)]? = headers.map { ($0.key, $0.value) }
 
         // URL resolution (see expectations in PulseKit README):
         // Traces/Logs/Metrics: config present → use full path from config; else → baseUrl + /v1/{traces|logs|metrics}
@@ -360,6 +376,7 @@ public class PulseKit {
             baseSpanProcessor: spanProcessor,
             baseLogProcessor: baseLogProcessor,
             config: config,
+            meteredManager: meteredManager,  // Pass metered manager for processors
             loggerProviderCustomizer: loggerProviderCustomizer
         )
 
@@ -394,6 +411,7 @@ public class PulseKit {
         baseSpanProcessor: SpanProcessor,
         baseLogProcessor: LogRecordProcessor,
         config: InstrumentationConfiguration,
+        meteredManager: SessionManager,  // Pre-created metered manager (for processors)
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         let pulseSignalProcessor = PulseSignalProcessor()
@@ -449,9 +467,15 @@ public class PulseKit {
         let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
-        if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
-            spanProcessors.append(sessionsProcessors.spanProcessor)
-            logProcessors = [sessionsProcessors.logProcessor]
+        // Create both metered and OTEL session processors with wrapping logic
+        if let sessionProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor, meteredManager: meteredManager) {
+            // Add span processors (both metered and OTEL)
+            spanProcessors.append(sessionProcessors.meteredSpanProcessor)
+            spanProcessors.append(sessionProcessors.otelSpanProcessor)
+            
+            // Log processors are already wrapped: metered wraps OTEL wraps pulse
+            // Chain: pulseLogProcessor → otelLogProcessor → meteredLogProcessor
+            logProcessors = [sessionProcessors.meteredLogProcessor]
         }
         
         if config.interaction.enabled,
