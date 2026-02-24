@@ -30,9 +30,11 @@ public struct SessionsInstrumentationConfig {
         guard self.enabled else { return nil }
         
         // Create OTEL session manager (15 seconds for testing, in-memory, emits events)
+        // backgroundInactivityTimeout: 3 seconds for testing (15 * 60 for production)
+        // This means if app stays in background > 3 seconds, session expires when app returns to foreground
         let otelConfig = SessionConfig(
-            backgroundInactivityTimeout: 5,  // 5 seconds for testing (15 * 60 for production)
-            maxLifetime: 15,  // 15 seconds for testing (4 * 60 * 60 for production)
+            backgroundInactivityTimeout: 15 * 60,
+            maxLifetime: 4 * 60 * 60, 
             shouldPersist: false,  // In-memory
             startEventName: SessionConstants.sessionStartEvent,  // "session.start"
             endEventName: SessionConstants.sessionEndEvent  // "session.end"

@@ -300,7 +300,7 @@ public class PulseKit {
         // Create metered session manager early to get session ID for HTTP headers
         let meteredConfig = SessionConfig(
             backgroundInactivityTimeout: nil,
-            maxLifetime: 30,  // 30 seconds for testing (30 * 60 for production)
+            maxLifetime: 30 * 60,  // 30 seconds for testing (30 * 60 for production)
             shouldPersist: true,
             startEventName: nil,  // No events for metered session
             endEventName: nil  // No events for metered session

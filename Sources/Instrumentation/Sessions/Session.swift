@@ -71,12 +71,24 @@ public struct Session: Equatable {
 
   /// The time when the session ended (only available for expired sessions).
   ///
-  /// For expired sessions, this returns the calculated end time based on when the session
-  /// was last active. For active sessions, this returns nil.
+  /// For expired sessions, this returns the calculated end time:
+  /// - If session expired in background: returns expireTime (which is set to background start time)
+  /// - If session expired in foreground: returns session.start + maxLifetime
+  /// For active sessions, this returns nil.
   /// - Returns: The session end time, or nil if the session is still active
   public var endTime: Date? {
     guard isExpired() else { return nil }
-    return expireTime.addingTimeInterval(-Double(sessionTimeout))
+    // Check if this is a background expiration by comparing expireTime with expected foreground expiration
+    // If expireTime is before startTime + sessionTimeout, it means session expired in background
+    // In that case, expireTime is the background start time, so use it directly
+    let expectedForegroundExpiration = startTime.addingTimeInterval(sessionTimeout)
+    if expireTime < expectedForegroundExpiration {
+      // Background expiration: expireTime is the background start time (set when creating expired session)
+      return expireTime
+    } else {
+      // Foreground expiration: calculate from startTime + sessionTimeout
+      return expectedForegroundExpiration
+    }
   }
 
   /// The total duration the session was active (only available for expired sessions).

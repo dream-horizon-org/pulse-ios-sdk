@@ -38,7 +38,7 @@ public struct SessionConfig {
   ///   - endEventName: Event name for session end (default: "session.end")
   public init(
     backgroundInactivityTimeout: TimeInterval? = 15 * 60,  // 15 minutes
-    maxLifetime: TimeInterval? = 15,  // 15 seconds for testing (4 * 60 * 60 for production)
+    maxLifetime: TimeInterval? = 4 * 60 * 60,  // 15 seconds for testing (4 * 60 * 60 for production)
     shouldPersist: Bool = false,
     startEventName: String? = SessionConstants.sessionStartEvent,
     endEventName: String? = SessionConstants.sessionEndEvent
