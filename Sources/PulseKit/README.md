@@ -65,8 +65,28 @@ PulseKit.shared.initialize(
 
 **Persistence:** Telemetry is written to disk before export. When the device is offline or export fails, data stays on disk and is sent automatically when the network is available again. Export is only attempted when the SDK detects a usable connection, so data is preserved across app restarts. Persistence uses the app cache directory; if disk storage cannot be created, the SDK falls back to in-memory batching only.
 
-For more detail on the persistence layer (batch format, file lifecycle, performance presets), see [Persistence Exporter](../Exporters/Persistence/README.md). A full SDK shutdown API (including stopping the persistence worker) is not yet implemented.
+For more detail on the persistence layer (batch format, file lifecycle, performance presets), see [Persistence Exporter](../Exporters/Persistence/README.md).
 
+---
+
+### Shutdown
+
+#### `shutdown()`
+
+Shuts down the SDK. After calling this method, all public APIs become no-ops and the SDK cannot be re-initialized in this process.
+
+**What it does:**
+- Uninstalls all instrumentations (crashes, sessions, interactions, location)
+- Disables view-controller swizzling
+- Flushes and shuts down batch span/log processors
+- Deletes persisted telemetry from the Caches directory
+- Removes all SDK-managed `UserDefaults` keys (installation ID, user ID, location cache, session data)
+- Releases OpenTelemetry resources
+
+
+**Note:** `shutdown()` is a one-way operation. It is safe to call multiple times — subsequent calls are ignored.
+
+---
 
 ### Event Tracking
 
@@ -203,12 +223,23 @@ try performAPICall()
 
 #### `isSDKInitialized() -> Bool`
 
-Returns `true` if the SDK has been initialized, `false` otherwise.
+Returns `true` if the SDK has been initialized and has not been shut down.
 
 **Example:**
 ```swift
 if PulseKit.shared.isSDKInitialized() {
     // SDK is ready to use
+}
+```
+
+#### `isShutdown: Bool`
+
+Returns `true` after `shutdown()` has been called.
+
+**Example:**
+```swift
+if PulseKit.shared.isShutdown {
+    // SDK has been permanently shut down
 }
 ```
 

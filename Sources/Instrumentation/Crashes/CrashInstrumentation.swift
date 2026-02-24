@@ -119,6 +119,16 @@ public final class CrashInstrumentation {
         observers.append(observer)
     }
 
+    /// Removes notification observers and resets state.
+    public static func uninstall() {
+        for observer in observers {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        observers.removeAll()
+        logger = nil
+        isInstalled = false
+    }
+
     // MARK: - Report Processing
 
     /// Processes any crash reports from the previous session. Emits crash log records for each.

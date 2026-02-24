@@ -11,6 +11,7 @@ import ObjectiveC
 
 internal class UIViewControllerSwizzler {
     private static var swizzled = false
+    private static var _disabled = false
     private static let swizzleLock = NSLock()
     
     static func swizzle() {
@@ -18,6 +19,7 @@ internal class UIViewControllerSwizzler {
         defer { swizzleLock.unlock() }
         
         guard !swizzled else { return }
+        _disabled = false
         
         #if os(iOS) || os(tvOS)
         guard let method = class_getInstanceMethod(UIViewController.self, #selector(UIViewController.viewDidAppear(_:))) else {
@@ -27,7 +29,9 @@ internal class UIViewControllerSwizzler {
         var originalIMP: IMP?
         
         let block: @convention(block) (UIViewController, Bool) -> Void = { viewController, animated in
-            VisibleScreenTracker.shared.viewControllerDidAppear(viewController)
+            if !UIViewControllerSwizzler._disabled {
+                VisibleScreenTracker.shared.viewControllerDidAppear(viewController)
+            }
             
             if let originalIMP = originalIMP {
                 let castedIMP = unsafeBitCast(
@@ -43,6 +47,14 @@ internal class UIViewControllerSwizzler {
         #endif
         
         swizzled = true
+    }
+
+    /// Disables the swizzled tracking. The swizzle remains in place
+    /// (cannot be undone at runtime) but the Pulse callback becomes a no-op.
+    static func shutdown() {
+        swizzleLock.lock()
+        defer { swizzleLock.unlock() }
+        _disabled = true
     }
 }
 

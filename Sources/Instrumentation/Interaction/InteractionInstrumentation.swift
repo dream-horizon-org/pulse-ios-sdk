@@ -210,6 +210,14 @@ public class InteractionInstrumentation {
         return attributes
     }
     
+    /// Cancels the observation task and clears the shared instance.
+    public func uninstall() {
+        stateObservationTask?.cancel()
+        stateObservationTask = nil
+        attributeExtractors.removeAll()
+        InteractionInstrumentation.sharedInstance = nil
+    }
+
     deinit {
         stateObservationTask?.cancel()
     }
