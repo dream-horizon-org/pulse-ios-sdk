@@ -481,16 +481,11 @@ public class PulseKit {
             defaults.removeObject(forKey: "location_cache")
             #endif
 
-            batchSpanProcessor?.forceFlush()
-            batchLogProcessor?.forceFlush()
             batchSpanProcessor?.shutdown()
             _ = batchLogProcessor?.shutdown()
             PersistenceUtils.clearStorage()
-            
-            batchSpanProcessor = nil
-            batchLogProcessor = nil
+
             openTelemetry = nil
-            _globalAttributes = nil
             _isShutdown = true
         }
     }
@@ -589,11 +584,6 @@ public class PulseKit {
         name: String,
         params: [String: AttributeValue] = [:]
     ) -> Span {
-        guard isActive else {
-            return OpenTelemetry.instance.tracerProvider
-                .get(instrumentationName: PulseKitConstants.instrumentationScopeName)
-                .spanBuilder(spanName: name).startSpan()
-        }
         let span = tracer.spanBuilder(spanName: name).startSpan()
         span.setAttributes(params)
         return span
