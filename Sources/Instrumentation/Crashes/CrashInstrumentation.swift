@@ -125,7 +125,6 @@ public final class CrashInstrumentation {
             NotificationCenter.default.removeObserver(observer)
         }
         observers.removeAll()
-        logger = nil
         isInstalled = false
       //TODO: implement complete uninstall for crashes inclduing kscrash handlers 
     }

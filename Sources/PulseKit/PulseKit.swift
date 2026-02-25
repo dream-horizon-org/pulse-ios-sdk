@@ -481,10 +481,6 @@ public class PulseKit {
             defaults.removeObject(forKey: "location_cache")
             #endif
 
-            #if os(iOS) || os(tvOS)
-            UIViewControllerSwizzler.shutdown()
-            #endif
-
             batchSpanProcessor?.forceFlush()
             batchLogProcessor?.forceFlush()
             batchSpanProcessor?.shutdown()
