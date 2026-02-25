@@ -2,7 +2,7 @@
  * Copyright The OpenTelemetry Authors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Thread-safe persistence for PulseSdkConfig. Matches Android: SharedPreferences name "pulse_sdk_config", key "sdk_config".
+ * Thread-safe persistence for PulseSdkConfig. SharedPreferences name "pulse_sdk_config", key "sdk_config".
  */
 
 import Foundation

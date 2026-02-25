@@ -12,7 +12,6 @@ import Security
 // MARK: - PulseSessionParser protocol
 
 /// Returns the session sample rate for the current session based on device context and config.
-/// Matches Android PulseSessionParser (pulse-sampling-core).
 public protocol PulseSessionParser {
     /// Returns a Float in [0, 1] for the current session.
     /// - Parameters:
@@ -29,7 +28,6 @@ public protocol PulseSessionParser {
 // MARK: - Default implementation (PulseSessionConfigParser)
 
 /// Default session parser: evaluate rules in order, first match wins; else default.
-/// Matches Android PulseSessionConfigParser (LLD §6.2).
 public struct PulseSessionConfigParser: PulseSessionParser {
     public init() {}
 
@@ -79,7 +77,6 @@ public struct AlwaysOffSessionParser: PulseSessionParser {
 // MARK: - Session sampling decision
 
 /// Holds the session sampling decision: computed once per session (random draw + parser).
-/// Matches Android: shouldSampleThisSession in PulseSamplingSignalProcessors (LLD §6.3).
 public final class PulseSessionSamplingDecision {
     private let _shouldSample: Bool
     private let lock = NSLock()
@@ -114,7 +111,7 @@ public final class PulseSessionSamplingDecision {
         _shouldSample = randomValue <= samplingRate
     }
 
-    /// Secure random float in [0, 1]. Matches Android SecureRandom.nextFloat().
+    /// Secure random float in [0, 1].
     private static func secureRandomFloatInZeroToOne() -> Float {
         var bytes: [UInt8] = Array(repeating: 0, count: 4)
         let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)

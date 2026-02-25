@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Fetches PulseSdkConfig from the config API (GET). Intended to be called on a background queue.
- * API contract matches Android: GET, JSON body decodes directly to PulseSdkConfig (no wrapper).
+ * API contract: GET, JSON body decodes directly to PulseSdkConfig (no wrapper).
  * Validation: required fields must be present (decode fails otherwise), same as Retrofit + kotlinx.serialization.
  *
  * Caching (TTL): Uses URLSession with disk URLCache (10MB); requestCachePolicy = .useProtocolCachePolicy
@@ -15,10 +15,10 @@
 
 import Foundation
 
-/// Size of the config API response cache in bytes (matches Android OkHttp Cache 10MB).
+/// Size of the config API response cache in bytes.
 private let configCacheSizeBytes: Int = 10 * 1024 * 1024
 
-/// Creates a URLSession that uses a disk-backed URLCache for the config API (matches Android OkHttp Cache).
+/// Creates a URLSession that uses a disk-backed URLCache for the config API.
 /// Respects server Cache-Control / max-age (TTL is server-driven; no extra client TTL).
 func makeConfigURLSession(cacheDirectory: URL) -> URLSession {
     let cache = URLCache(
@@ -45,7 +45,7 @@ public final class PulseSdkConfigRestProvider {
 
     /// - Parameters:
     ///   - urlProvider: Returns the config URL (e.g. `{base}/v1/configs/active/`). Return nil to skip fetch.
-    ///   - urlSession: Session for the request. Use a session with disk URLCache (e.g. from makeConfigURLSession) to match Android OkHttp cache and server TTL.
+    ///   - urlSession: Session for the request. Use a session with disk URLCache (e.g. from makeConfigURLSession) to server TTL.
     ///   - headers: Optional headers (e.g. tenant, auth) to send with the request.
     public init(
         urlProvider: @escaping () -> URL?,
@@ -57,7 +57,7 @@ public final class PulseSdkConfigRestProvider {
         self.headers = headers
     }
 
-    /// Performs GET and decodes response body directly as PulseSdkConfig (matches Android: no wrapper).
+    /// Performs GET and decodes response body directly as PulseSdkConfig (no wrapper).
     /// Call from a background queue (do not block main thread).
     /// - Returns: Decoded config if HTTP 2xx and decode succeeds; nil on network error, non-2xx, or decode failure.
     public func provide() async -> PulseSdkConfig? {

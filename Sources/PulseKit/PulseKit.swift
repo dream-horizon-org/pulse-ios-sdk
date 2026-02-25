@@ -113,7 +113,7 @@ public class PulseKit {
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
 
-            // Merge projectId with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP; matches Android: X-API-KEY header).
+            // Merge projectId with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP)
             let projectIdHeader = [PulseAttributes.projectIdHeaderKey: projectId]
             let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
 
@@ -139,7 +139,7 @@ public class PulseKit {
             instrumentations?(&config)
 
             let resource = buildResource(projectId: projectId, resource: resource)
-            // 3. Read from built resource (matches Android: builtResource.getAttribute(TELEMETRY_SDK_NAME_KEY))
+            // 3. Read from built resource
             let telemetrySdkName: String? = {
                 guard let av = resource.attributes[ResourceAttributes.telemetrySdkName.rawValue] else { return nil }
                 if case .string(let s) = av { return s } else { return nil }
@@ -241,13 +241,13 @@ public class PulseKit {
         return b
     }
 
-    /// Default config endpoint URL when not provided (matches Android PulseSDKImpl: endpointBaseUrl with port 8080 + v1/configs/active/).
+    /// Default config endpoint URL when not provided
     private static func defaultConfigEndpointUrl(from endpointBaseUrl: String) -> String {
         let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
         return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
 
-    /// Matches Android PulseSDKImpl: set default telemetry.sdk.name first, then resource callback (overrides if it sets the key).
+    /// Set default telemetry.sdk.name first, then resource callback (overrides if it sets the key)
     private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
         var attributes = defaultResource.attributes
@@ -290,7 +290,7 @@ public class PulseKit {
         let otlpSpanExporter = OtlpHttpTraceExporter(endpoint: tracesUrl, envVarHeaders: envVarHeaders)
         let filteredSpanExporter = FilteringSpanExporter(delegate: otlpSpanExporter)
 
-        // Always use SelectedLogExporter (matches Android): route custom events to customEventUrl, others to logsUrl.
+        // Always use SelectedLogExporter: route custom events to customEventUrl, others to logsUrl.
         // When config is nil: customEventUrl = customEventCollectorUrl from init ?? logsUrl.
         let defaultLogsExporter = OtlpHttpLogExporter(endpoint: logsUrl, envVarHeaders: envVarHeaders)
         let customEventExporter = OtlpHttpLogExporter(endpoint: customEventUrl, envVarHeaders: envVarHeaders)

@@ -52,7 +52,6 @@ enum InteractionTestUtils {
         
         let nonBlacklistedCount = eventSequence.filter { !$0.isBlacklisted }.count
         if nonBlacklistedCount == 0 {
-            // Matches Android's AssertionError behavior
             throw InteractionConfigError(message: "event sequence doesn't have any non blacklisted event")
         }
         

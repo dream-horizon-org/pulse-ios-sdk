@@ -93,7 +93,7 @@ final class InteractionManagerTests: XCTestCase {
     }
     
     func testWhenInteractionConfigHasAllBlacklistedConfig_throwsAssertion() {
-        // This should throw an error (matches Android's AssertionError behavior)
+        // This should throw an error
         XCTAssertThrowsError(
             try InteractionTestUtils.createFakeInteractionConfig(
                 eventSequence: [

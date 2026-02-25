@@ -4,7 +4,6 @@
  *
  * Device context for session sampling rules.
  * Provides current device/app attribute values for PulseDeviceAttributeName matching.
- * Matches Android: Context provides OS version, app version, country, platform.
  */
 
 import Foundation
@@ -14,7 +13,6 @@ import UIKit
 #endif
 
 /// Provides current device and app attribute values for session sampling rule matching.
-/// Used by PulseSessionConfigParser to evaluate rules (Batch 2, LLD §6).
 public struct PulseDeviceContext {
     /// Shared instance using current device/app state.
     public static var current: PulseDeviceContext {
@@ -22,7 +20,6 @@ public struct PulseDeviceContext {
     }
 
     /// Returns the current value for the given device attribute, or nil if unavailable.
-    /// Matches Android PulseDeviceAttributeName.matches behavior (LLD §4.15, §11).
     public func value(for attribute: PulseDeviceAttributeName) -> String? {
         let val: String?
         switch attribute {
@@ -33,7 +30,7 @@ public struct PulseDeviceContext {
         case .country:
             val = Self.country
         case .state:
-            val = nil // TODO: state handling (LLD: can leave unimplemented initially)
+            val = nil // TODO: state handling
         case .platform:
             val = PulseSdkName.pulse_ios_swift.rawValue
         case .unknown:
@@ -72,7 +69,6 @@ public struct PulseDeviceContext {
 
 extension PulseDeviceAttributeName {
     /// Returns true if the current device value for this attribute matches the given regex pattern.
-    /// Matches Android: name.matches(context, value) (PulseDeviceAttributeName.kt).
     public func matches(deviceContext: PulseDeviceContext, value regexPattern: String) -> Bool {
         guard let currentValue = deviceContext.value(for: self) else {
             return false
@@ -103,7 +99,7 @@ extension PulseDeviceAttributeName {
 
 extension PulseSessionSamplingRule {
     /// Returns true if this rule matches the current device context.
-    /// Matches Android: rule.matches(context) which calls name.matches(context, value).
+    /// Calls name.matches(context, value).
     public func matches(deviceContext: PulseDeviceContext) -> Bool {
         return name.matches(deviceContext: deviceContext, value: value)
     }

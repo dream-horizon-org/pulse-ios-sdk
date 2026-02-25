@@ -43,7 +43,6 @@ public class InteractionInstrumentation {
     private var stateObservationTask: Task<Void, Never>?
     
     /// Attribute extractors for adding custom attributes to interaction spans
-    /// Matches Android's additionalAttributeExtractors pattern
     private var attributeExtractors: [(Interaction) -> [String: AttributeValue]] = []
 
     public init(configuration: InteractionInstrumentationConfiguration) {
@@ -92,7 +91,7 @@ public class InteractionInstrumentation {
         }
     }
     
-    /// Default attribute extractor (matches Android's InteractionDefaultAttributesExtractor)
+    /// Default attribute extractor
     private func defaultAttributeExtractor(interaction: Interaction) -> [String: AttributeValue] {
         var attributes = putAttributesFrom(interaction.props)
         
@@ -121,7 +120,7 @@ public class InteractionInstrumentation {
             .setNoParent()
             .setStartTime(time: Date(timeIntervalSince1970: Double(timeSpan.start) / 1_000_000_000))
         
-        // Apply all attribute extractors (matches Android's pattern)
+        // Apply all attribute extractors
         // Default extractor is added in install(), custom extractor from configuration
         // Note: configId is already in interaction.props, so it's included via default extractor
         var attributes: [String: AttributeValue] = [:]
@@ -176,7 +175,6 @@ public class InteractionInstrumentation {
     }
     
     /// Convert [String: Any?] to [String: AttributeValue]
-    /// Matches Android's putAttributesFrom utility
     private func putAttributesFrom(_ map: [String: Any?]) -> [String: AttributeValue] {
         var attributes: [String: AttributeValue] = [:]
         

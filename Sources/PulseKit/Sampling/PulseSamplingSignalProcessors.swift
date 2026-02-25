@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Sampling exporters: session sampling, critical events, filters, attribute drop/add (Batch 4, LLD §8).
- * Matches Android PulseSamplingSignalProcessors.
  */
 
 import Foundation
@@ -14,7 +13,6 @@ import Security
 // MARK: - PulseSamplingSignalProcessors
 
 /// Holds SampledSpanExporter, SampledLogExporter, SampledMetricExporter and getEnabledFeatures.
-/// Matches Android PulseSamplingSignalProcessors (pulse-sampling-core).
 public final class PulseSamplingSignalProcessors {
     private let sdkConfig: PulseSdkConfig
     private let currentSdkName: PulseSdkName
@@ -308,7 +306,7 @@ public final class PulseSamplingSignalProcessors {
         }
     }
 
-    /// Log name for sampling/filter matching. Matches Android: always use body (bodyValue?.asString()).
+    /// Log name for sampling/filter matching. Always use body (bodyValue?.asString()).
     /// Extract string from AttributeValue; .description returns debug format, not the actual value.
     static func logNameForMatching(_ record: ReadableLogRecord) -> String {
         guard let body = record.body else { return "" }

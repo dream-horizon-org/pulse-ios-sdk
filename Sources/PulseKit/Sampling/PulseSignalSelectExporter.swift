@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * Signal-select exporter: route spans/logs to different exporters by first matching condition (Batch 5, LLD §9).
- * Matches Android PulseSignalSelectExporter.
  */
 
 import Foundation
@@ -13,7 +12,6 @@ import OpenTelemetrySdk
 // MARK: - PulseSignalSelectExporter
 
 /// Routes each signal to the first matching exporter. Used for custom events → custom endpoint.
-/// Matches Android PulseSignalSelectExporter (pulse-sampling-core).
 public final class PulseSignalSelectExporter {
     private let currentSdkName: PulseSdkName
     private let signalMatcher: PulseSignalMatcher

@@ -24,7 +24,7 @@ public final class PulseSdkConfigCoordinator {
     }
 
     /// Starts a background fetch for config and persists only when version changed (apply on next launch).
-    /// Matches Android: Dispatchers.IO, fetch via PulseSdkConfigRestProvider, persist only if newConfig != null && newConfig.version != currentVersion.
+    /// Dispatchers.IO, fetch via PulseSdkConfigRestProvider, persist only if newConfig != null && newConfig.version != currentVersion.
     /// - Parameters:
     ///   - configEndpointUrl: Final config URL (already resolved by PulseKit from endpointBaseUrl when nil; e.g. `{base:8080}/v1/configs/active/`).
     ///   - endpointHeaders: Headers sent with the GET request (e.g. X-API-KEY / project id).

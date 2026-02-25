@@ -19,7 +19,7 @@ PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com", projectI
 
 #### `initialize(endpointBaseUrl:projectId:configEndpointUrl:endpointHeaders:...)`
 
-Initializes the Pulse SDK with the specified configuration. **projectId** is sent as the `X-API-KEY` header on all API calls (config, traces, logs); optional **endpointHeaders** are merged with it (projectId wins for X-API-KEY). Matches Android behavior.
+Initializes the Pulse SDK with the specified configuration. **projectId** is sent as the `X-API-KEY` header on all API calls (config, traces, logs); optional **endpointHeaders** are merged with it (projectId wins for X-API-KEY).
 
 **Parameters:**
 - `endpointBaseUrl: String` - **Required**. The base URL for the OTLP endpoint (e.g., `"https://your-backend.com"` or `"http://localhost:4318"`)

@@ -2,7 +2,7 @@
  * Copyright The OpenTelemetry Authors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Signal matching for filters, critical events, attribute drop/add (Batch 3, LLD §7).
+ * Signal matching for filters, critical events, attribute drop/add.
  * Decides if a signal (span/log/metric) matches a PulseSignalMatchCondition.
  */
 
@@ -11,7 +11,6 @@ import Foundation
 // MARK: - PulseSignalMatcher protocol
 
 /// Returns true iff the signal matches the given condition.
-/// Matches Android PulseSignalMatcher (pulse-sampling-core).
 public protocol PulseSignalMatcher {
     /// - Parameters:
     ///   - scope: Signal type (traces, logs, metrics, baggage)
@@ -30,7 +29,7 @@ public protocol PulseSignalMatcher {
 
 // MARK: - PulseSignalsAttrMatcher (default implementation)
 
-/// Default matcher: name regex, scope, sdk, props matching (LLD §7.2).
+/// Default matcher: name regex, scope, sdk, props matching.
 public struct PulseSignalsAttrMatcher: PulseSignalMatcher {
     private let regexCache = RegexCache()
 
@@ -87,7 +86,6 @@ private func normalizedSignalNamePattern(_ pattern: String) -> String {
 }
 
 /// Thread-safe regex cache for full-string matching.
-/// Matches Android matchesFromRegexCache semantics (Kotlin String.matches(Regex)).
 private final class RegexCache {
     private var cache: [String: NSRegularExpression] = [:]
     private let lock = NSLock()

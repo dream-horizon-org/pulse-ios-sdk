@@ -48,7 +48,7 @@ public class InteractionLogListener: LogRecordProcessor {
                 params[key] = value.description
             }
             
-            // Get observed timestamp from log record (matches Android's logRecord.observedTimestampEpochNanos)
+            // Get observed timestamp from log record
             // Use log record's observed timestamp if available, otherwise fallback to current time
             let observedTimeNanos: Int64
             if let observedTimestamp = logRecord.observedTimestamp {
@@ -72,7 +72,7 @@ public class InteractionLogListener: LogRecordProcessor {
             // Create mutable copy of log record to add attributes (matches SessionLogRecordProcessor pattern)
             var enhancedRecord = logRecord
             
-            // Add interaction attributes to log record (matches Android behavior)
+            // Add interaction attributes to log record
             // This enriches the log record with interaction context
             if let interactionAttrs = createInteractionAttributes(manager) {
                 interactionAttrs.forEach { key, value in
@@ -89,7 +89,7 @@ public class InteractionLogListener: LogRecordProcessor {
                     params["log.record.uid"] = uid.description
                 }
                 
-                // Get observed timestamp from log record (matches Android's logRecord.observedTimestampEpochNanos)
+                // Get observed timestamp from log record
                 let observedTimeNanos: Int64
                 if let observedTimestamp = enhancedRecord.observedTimestamp {
                     observedTimeNanos = Int64(observedTimestamp.timeIntervalSince1970 * 1_000_000_000)
