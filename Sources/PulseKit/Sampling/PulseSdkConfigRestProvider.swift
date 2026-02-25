@@ -7,10 +7,10 @@
  * Validation: required fields must be present (decode fails otherwise), same as Retrofit + kotlinx.serialization.
  *
  * Caching (TTL): Uses URLSession with disk URLCache (10MB); requestCachePolicy = .useProtocolCachePolicy
- * so server Cache-Control (e.g. max-age) is respected. TTL is server-driven, same as Android OkHttp Cache.
+ * so server Cache-Control (e.g. max-age) is respected. TTL is server-driven.
  *
  * Retry: No application-level retry. One attempt per background fetch; on failure returns nil and does not persist.
- * Next fetch happens on next app launch (when init runs again). Android behaves the same (one provide() call per launch).
+ * Next fetch happens on next app launch (when init runs again).
  */
 
 import Foundation

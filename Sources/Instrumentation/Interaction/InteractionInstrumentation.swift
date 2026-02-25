@@ -14,7 +14,6 @@ import OpenTelemetrySdk
 /// an OpenTelemetry span with timing and event data.
 public class InteractionInstrumentation {
     // Static storage for instrumentation instance (for processor access)
-    // Similar to Android's AndroidInstrumentationLoader
     private static var sharedInstance: InteractionInstrumentation?
     
     public static func getInstance() -> InteractionInstrumentation? {
@@ -47,7 +46,7 @@ public class InteractionInstrumentation {
 
     public init(configuration: InteractionInstrumentationConfiguration) {
         self._configuration = configuration
-        // Store instance for processor access (like Android's loader)
+        // Store instance for processor access
         InteractionInstrumentation.sharedInstance = self
     }
     

@@ -104,7 +104,7 @@ public class InteractionLogListener: LogRecordProcessor {
                     eventTimeInNano: observedTimeNanos
                 )
             }
-            // Note: Android throws error if pulse.type is missing, but iOS silently skips
+            // Note: throws error if pulse.type is missing, but iOS silently skips
             // This is acceptable as it's more lenient and won't crash the app
             
             // Forward enhanced record (with interaction attributes) to next processor

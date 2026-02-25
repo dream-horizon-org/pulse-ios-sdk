@@ -9,7 +9,7 @@
 import Foundation
 
 /// Coordinates loading current SDK config from storage and starting a background config fetch.
-/// Receives the final config URL from PulseKit (PulseKit applies Android-style default when app passes nil).
+/// Receives the final config URL from PulseKit (PulseKit applies default when app passes nil).
 public final class PulseSdkConfigCoordinator {
     private let storage: PulseSdkConfigStorage
 
@@ -39,7 +39,7 @@ public final class PulseSdkConfigCoordinator {
         let endpointHeadersForConfig = endpointHeaders
         let storageRef = storage
 
-        // Async, non-blocking: work runs on a background thread (QoS .utility ≈ Android Dispatchers.IO).
+        // Async, non-blocking: work runs on a background thread (QoS .utility).
         Task.detached(priority: .utility) {
             guard let url = URL(string: configEndpointUrlFinal) else {
                 PulseLogger.log("Config fetch: invalid config URL (skipping fetch) \(configEndpointUrlFinal)")

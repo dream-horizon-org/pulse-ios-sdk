@@ -34,7 +34,7 @@ public class ApplicationResourceProvider: ResourceProvider {
     
     // Pulse-specific: app.build_name ("version_build" format)
     // iOS provides: CFBundleShortVersionString (version) and CFBundleVersion (build) separately
-    // This combines them to match Android's "${versionName}_${versionCode}" format
+    // This combines them to match "${versionName}_${versionCode}" format
     if let version = applicationDataSource.version, let build = applicationDataSource.build {
       attributes["app.build_name"] = AttributeValue.string("\(version)_\(build)")
     } else if let version = applicationDataSource.version {

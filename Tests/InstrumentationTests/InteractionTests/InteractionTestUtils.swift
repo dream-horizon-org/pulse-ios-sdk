@@ -7,7 +7,6 @@ import Foundation
 @testable import InteractionInstrumentation
 
 /// Test utilities for creating fake interaction configs and events
-/// Similar to Android's InteractionRemoteFakeUtils
 enum InteractionTestUtils {
     /// Create a fake interaction event
     static func createFakeInteractionEvent(
@@ -44,7 +43,6 @@ enum InteractionTestUtils {
             var description: String { message }
         }
         
-        // Android throws NoSuchElementException for empty sequence
         if eventSequence.isEmpty {
             struct EmptySequenceError: Error {}
             throw EmptySequenceError()

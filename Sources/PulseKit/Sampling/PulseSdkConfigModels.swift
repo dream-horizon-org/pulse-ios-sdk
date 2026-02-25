@@ -2,9 +2,9 @@
  * Copyright The OpenTelemetry Authors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Pulse sampling config models. JSON keys match Android @SerialName for API compatibility.
+ * Pulse sampling config models. JSON keys match API compatibility.
  * Validation: required fields are non-optional so decoding fails when the API payload is missing
- * them (same behaviour as Android Retrofit + kotlinx.serialization). Optional lists use (try? decode) ?? [].
+ * them. Optional lists use (try? decode) ?? [].
  */
 
 import Foundation
@@ -286,7 +286,7 @@ public struct PulseFeatureConfig: Codable, Equatable {
     public let sdks: [PulseSdkName]
 }
 
-// MARK: - Enums (JSON string values match Android)
+// MARK: - Enums (JSON string values match API compatibility)
 
 public enum PulseSignalScope: String, Codable, CaseIterable {
     case logs

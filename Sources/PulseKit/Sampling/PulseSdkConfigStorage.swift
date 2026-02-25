@@ -10,9 +10,9 @@ import Foundation
 /// Storage for persisted SDK config. Uses a single UserDefaults instance (either a named suite or standard).
 /// All access is serialized on a dedicated queue for thread safety.
 public final class PulseSdkConfigStorage {
-    /// UserDefaults suite name for production; equivalent to Android SharedPreferences name "pulse_sdk_config".
+    /// UserDefaults suite name for production.
     public static let suiteName = "pulse_sdk_config"
-    /// Key for the JSON string; equivalent to Android PULSE_SDK_CONFIG_KEY = "sdk_config".
+    /// Key for the JSON string.
     public static let configKey = "sdk_config"
 
     private let queue = DispatchQueue(label: "com.pulse.ios.sdk.sampling.config.storage", qos: .utility)
