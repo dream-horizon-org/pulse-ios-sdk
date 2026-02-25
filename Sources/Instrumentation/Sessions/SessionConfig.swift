@@ -37,8 +37,8 @@ public struct SessionConfig {
   ///   - startEventName: Event name for session start (default: "session.start")
   ///   - endEventName: Event name for session end (default: "session.end")
   public init(
-    backgroundInactivityTimeout: TimeInterval? = 15 * 60,  // 15 minutes
-    maxLifetime: TimeInterval? = 4 * 60 * 60,  // 15 seconds for testing (4 * 60 * 60 for production)
+    backgroundInactivityTimeout: TimeInterval? = 15 * 60,
+    maxLifetime: TimeInterval? = 4 * 60 * 60,
     shouldPersist: Bool = false,
     startEventName: String? = SessionConstants.sessionStartEvent,
     endEventName: String? = SessionConstants.sessionEndEvent
@@ -57,7 +57,7 @@ public struct SessionConfig {
 /// Builder for SessionConfig with fluent API
 public class SessionConfigBuilder {
   public private(set) var backgroundInactivityTimeout: TimeInterval? = 15 * 60
-  public private(set) var maxLifetime: TimeInterval? = 15  // 15 seconds for testing
+  public private(set) var maxLifetime: TimeInterval? = 4 * 60 * 60
   public private(set) var shouldPersist: Bool = false
   
   public init() {}
