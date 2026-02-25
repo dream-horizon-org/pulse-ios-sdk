@@ -461,15 +461,12 @@ public class PulseKit {
             logProcessor = otelProcessors.otelLogProcessor
         }
         
-        if let meteredProcessors = meteredConfig.createProcessors(
+        let meteredProcessors = meteredConfig.createProcessors(
             baseLogProcessor: logProcessor,
             meteredManager: meteredManager
-        ) {
-            spanProcessors.append(meteredProcessors.meteredSpanProcessor)
-            logProcessors = [meteredProcessors.meteredLogProcessor]
-        } else {
-            logProcessors = [logProcessor]
-        }
+        )
+        spanProcessors.append(meteredProcessors.meteredSpanProcessor)
+        logProcessors = [meteredProcessors.meteredLogProcessor]
         
         if config.interaction.enabled,
            let interactionLogProcessor = config.interaction.createLogProcessor(baseLogProcessor: logProcessors.last ?? pulseLogProcessor) {

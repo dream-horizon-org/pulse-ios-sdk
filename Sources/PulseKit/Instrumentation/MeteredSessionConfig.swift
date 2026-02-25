@@ -9,16 +9,9 @@ import OpenTelemetrySdk
 
 /// Manages metered session processors independently from OTEL session instrumentation
 public struct MeteredSessionConfig {
-    public private(set) var enabled: Bool = true
     private var meteredManager: SessionManager?
     
-    public init(enabled: Bool = true) {
-        self.enabled = enabled
-    }
-    
-    public mutating func enabled(_ value: Bool) {
-        self.enabled = value
-    }
+    public init() {}
     
     /// Creates metered session manager with default internal config
     internal mutating func createMeteredManager() -> SessionManager {
@@ -41,9 +34,7 @@ public struct MeteredSessionConfig {
     internal func createProcessors(
         baseLogProcessor: LogRecordProcessor,
         meteredManager: SessionManager
-    ) -> (meteredSpanProcessor: SpanProcessor, meteredLogProcessor: LogRecordProcessor)? {
-        guard self.enabled else { return nil }
-        
+    ) -> (meteredSpanProcessor: SpanProcessor, meteredLogProcessor: LogRecordProcessor) {
         let meteredSpanProcessor = MeteredSessionSpanProcessor(meteredManager: meteredManager)
         let meteredLogProcessor = MeteredSessionLogProcessor(nextProcessor: baseLogProcessor, meteredManager: meteredManager)
         
