@@ -7,7 +7,6 @@ import Foundation
 @testable import InteractionInstrumentation
 
 /// Test utilities for creating fake interaction configs and events
-/// Similar to Android's InteractionRemoteFakeUtils
 enum InteractionTestUtils {
     /// Create a fake interaction event
     static func createFakeInteractionEvent(
@@ -44,7 +43,6 @@ enum InteractionTestUtils {
             var description: String { message }
         }
         
-        // Android throws NoSuchElementException for empty sequence
         if eventSequence.isEmpty {
             struct EmptySequenceError: Error {}
             throw EmptySequenceError()
@@ -52,7 +50,6 @@ enum InteractionTestUtils {
         
         let nonBlacklistedCount = eventSequence.filter { !$0.isBlacklisted }.count
         if nonBlacklistedCount == 0 {
-            // Matches Android's AssertionError behavior
             throw InteractionConfigError(message: "event sequence doesn't have any non blacklisted event")
         }
         

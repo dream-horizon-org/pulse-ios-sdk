@@ -44,7 +44,7 @@ public struct InteractionConfig: Codable {
         self.uptimeUpperLimitInMs = uptimeUpperLimitInMs
         self.thresholdInMs = thresholdInMs
 
-        // Validation (similar to Android)
+        // Validation
         #if DEBUG
         assert(events.count { !$0.isBlacklisted } > 0, "event sequence doesn't have any non blacklisted event")
         assert(!events.first!.isBlacklisted, "event first event is blacklisted")

@@ -13,9 +13,10 @@ internal struct InstallationContext {
     let loggerProvider: LoggerProvider
 
     let openTelemetry: OpenTelemetry
-    
+
     let endpointBaseUrl: String
 
-    /// Flushes the batch log processor immediately.
+    let endpointHeaders: [String: String]
+
     let flushLogProcessor: (() -> Void)?
 }
