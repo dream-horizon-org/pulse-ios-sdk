@@ -18,37 +18,25 @@ public struct SessionsInstrumentationConfig {
         self.enabled = value
     }
 
-    /// Creates processors for both metered and OTEL sessions
-    /// Returns a tuple with both span and log processors
-    /// - Parameter meteredManager: Pre-created metered session manager (created in buildOpenTelemetrySDK for headers)
-    internal func createProcessors(baseLogProcessor: LogRecordProcessor, meteredManager: SessionManager) -> (
-        meteredSpanProcessor: SpanProcessor,
-        meteredLogProcessor: LogRecordProcessor,
+    internal func createProcessors(baseLogProcessor: LogRecordProcessor) -> (
         otelSpanProcessor: SpanProcessor,
         otelLogProcessor: LogRecordProcessor
     )? {
         guard self.enabled else { return nil }
         
-        // Create OTEL session manager (15 seconds for testing, in-memory, emits events)
-        // backgroundInactivityTimeout: 3 seconds for testing (15 * 60 for production)
-        // This means if app stays in background > 3 seconds, session expires when app returns to foreground
         let otelConfig = SessionConfig(
-            backgroundInactivityTimeout: 15 * 60,
-            maxLifetime: 4 * 60 * 60, 
-            shouldPersist: false,  // In-memory
-            startEventName: SessionConstants.sessionStartEvent,  // "session.start"
-            endEventName: SessionConstants.sessionEndEvent  // "session.end"
+            backgroundInactivityTimeout: SessionConfigDefaults.backgroundInactivityTimeout,
+            maxLifetime: SessionConfigDefaults.maxLifetime,
+            shouldPersist: SessionConfigDefaults.shouldPersist,
+            startEventName: SessionConstants.sessionStartEvent,
+            endEventName: SessionConstants.sessionEndEvent
         )
         let otelManager = SessionManager(configuration: otelConfig)
         
-        // Create processors - OTEL wraps base, metered wraps OTEL
         let otelSpanProcessor = SessionSpanProcessor(sessionManager: otelManager)
         let otelLogProcessor = SessionLogRecordProcessor(nextProcessor: baseLogProcessor, sessionManager: otelManager)
         
-        let meteredSpanProcessor = MeteredSessionSpanProcessor(meteredManager: meteredManager)
-        let meteredLogProcessor = MeteredSessionLogProcessor(nextProcessor: otelLogProcessor, meteredManager: meteredManager)
-        
-        return (meteredSpanProcessor, meteredLogProcessor, otelSpanProcessor, otelLogProcessor)
+        return (otelSpanProcessor, otelLogProcessor)
     }
 }
 

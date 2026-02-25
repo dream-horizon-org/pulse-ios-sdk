@@ -16,11 +16,7 @@ public enum SessionEventType {
 public struct SessionEvent {
   public let session: Session
   public let eventType: SessionEventType
-  public let eventName: String  // "session.start" or "metered.session.start"
-  /// Optional timestamp for session.end events (used for background expiration)
-  /// When provided, this timestamp is used as the observed timestamp for the log record
-  /// instead of the current time. This ensures session.end timestamp = backgroundStartTime
-  /// when session expired in background (matches Android behavior)
+  public let eventName: String
   public let endTimestamp: Date?
   
   public init(session: Session, eventType: SessionEventType, eventName: String, endTimestamp: Date? = nil) {
@@ -116,12 +112,6 @@ public class SessionEventInstrumentation {
   }
 
   /// Create session start or end log record based on the specified event type.
-  ///
-  /// - Parameters:
-  ///   - session: The session to create an event for
-  ///   - eventType: The type of event to create (start or end)
-  ///   - eventName: The event name ("session.start" or "metered.session.start")
-  ///   - endTimestamp: Optional timestamp for session.end events (used for background expiration)
   private func createSessionEvent(session: Session, eventType: SessionEventType, eventName: String, endTimestamp: Date? = nil) {
     switch eventType {
     case .start:
@@ -132,12 +122,6 @@ public class SessionEventInstrumentation {
   }
 
   /// Create a log record for a session start event.
-  ///
-  /// Creates an OpenTelemetry log record with session attributes including ID, start time,
-  /// and previous session ID (if available).
-  /// - Parameters:
-  ///   - session: The session that has started
-  ///   - eventName: The event name ("session.start" or "metered.session.start")
   private func createSessionStartEvent(session: Session, eventName: String) {
     var attributes: [String: AttributeValue] = [
       SessionConstants.id: AttributeValue.string(session.id),
@@ -158,15 +142,6 @@ public class SessionEventInstrumentation {
   }
 
   /// Create a log record for a session end event.
-  ///
-  /// Creates an OpenTelemetry log record with session attributes including ID, start time,
-  /// end time, duration, and previous session ID (if available).
-  /// - Parameters:
-  ///   - session: The expired session
-  ///   - eventName: The event name ("session.end" or "metered.session.end")
-  ///   - endTimestamp: Optional timestamp to use for the log record's observed timestamp
-  ///                   When provided (for background expiration), this is used instead of current time
-  ///                   This ensures session.end timestamp = backgroundStartTime (matches Android behavior)
   private func createSessionEndEvent(session: Session, eventName: String, endTimestamp: Date? = nil) {
     guard let endTime = session.endTime,
           let duration = session.duration else {
@@ -184,26 +159,12 @@ public class SessionEventInstrumentation {
       attributes[SessionConstants.previousId] = AttributeValue.string(previousId)
     }
 
-    /// Create session end log record according to otel semantic convention
-    /// https://opentelemetry.io/docs/specs/semconv/general/session/
-    /// If endTimestamp is provided (background expiration), use it as the event timestamp
-    /// This ensures the log record timestamp (timeUnixNano) matches when the session actually ended
-    /// (background start time) rather than when the event is emitted (foreground return time)
-    /// 
-    /// OpenTelemetry has two timestamps:
-    /// - timestamp (timeUnixNano): When the event occurred - this is what we set for background expiration
-    /// - observedTimestamp (observedTimeUnixNano): When the event was observed - defaults to current time
     var logRecordBuilder = logger.logRecordBuilder()
       .setEventName(eventName)
       .setBody(AttributeValue.string(eventName))
       .setAttributes(attributes)
     
-    // Set event timestamp to endTimestamp if provided (background expiration)
-    // This sets timeUnixNano (the primary timestamp) to when the session actually ended
-    // Otherwise, use default (current time when event is emitted)
     if let timestamp = endTimestamp {
-      // Set timestamp (timeUnixNano) to background start time - this is the primary timestamp
-      // This matches Android: session.end timestamp = backgroundStartTime when expired in background
       logRecordBuilder = logRecordBuilder.setTimestamp(timestamp)
     }
     
@@ -211,17 +172,6 @@ public class SessionEventInstrumentation {
   }
 
   /// Add a session to the queue or send notification if instrumentation is already applied.
-  ///
-  /// This static method is the main entry point for handling new sessions. It either:
-  /// - Adds the session to the static queue if instrumentation hasn't been applied yet (max 32 items)
-  /// - Posts a notification with the session if instrumentation has been applied
-  ///
-  /// - Parameters:
-  ///   - session: The session to process
-  ///   - eventType: The type of event (start or end)
-  ///   - eventName: The event name ("session.start" or "metered.session.start")
-  ///   - endTimestamp: Optional timestamp for session.end events (used for background expiration)
-  ///                   When provided, this timestamp is used as the observed timestamp for the log record
   static func addSession(session: Session, eventType: SessionEventType, eventName: String, endTimestamp: Date? = nil) {
     let sessionEvent = SessionEvent(session: session, eventType: eventType, eventName: eventName, endTimestamp: endTimestamp)
     if isApplied {

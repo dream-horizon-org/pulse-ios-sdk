@@ -19,10 +19,7 @@ public class SessionManager {
   private var lock = NSLock()
   private var sessionStorage: SessionStorage
   private var defaultMaxlifetime: TimeInterval = 4 * 60 * 60
-  
-  /// Tracks when app went to background (for background inactivity timeout)
   private var backgroundStartTime: Date?
-  /// Flag to track if session expired in background (so we can use expired session ID as previousId)
   private var sessionExpiredInBackground: Bool = false
   private var backgroundObserver: NSObjectProtocol?
   private var foregroundObserver: NSObjectProtocol?
@@ -32,12 +29,13 @@ public class SessionManager {
     self.sessionStorage = configuration.shouldPersist ? PersistentSessionStorage() : InMemorySessionStorage()
     restoreSessionFromDisk()
     
-    // Set up background/foreground observers only if backgroundInactivityTimeout is configured
     if configuration.backgroundInactivityTimeout != nil {
       setupAppLifecycleObservers()
     }
   }
   
+  /// Cleans up notification observers when SessionManager is deallocated
+  /// This prevents memory leaks by removing observers registered with NotificationCenter
   deinit {
     [backgroundObserver, foregroundObserver].compactMap { $0 }.forEach {
       NotificationCenter.default.removeObserver($0)
@@ -112,15 +110,9 @@ public class SessionManager {
     return session
   }
 
-  /// Creates a new session with a unique identifier
-  /// **Session ID Format:** Matches Android TraceId format - 32-character hex string (no hyphens)
-  /// Example: "3e041e0beaa74bc8d9e7b58c53efe646"
-
   private func startSession() {
     let now = Date()
     let previousId = session?.id
-    /// **Implementation:** Uses OpenTelemetry's TraceId.random() to generate session ID
-    /// This matches Android's approach: TraceId.fromLongs(random.nextLong(), random.nextLong())
     let newId = TraceId.random().hexString
 
     /// Queue the previous session for a session.end event
@@ -149,19 +141,13 @@ public class SessionManager {
   /// Refreshes the current session, creating new one if expired
   /// Checks both maxLifetime expiration and background inactivity timeout
   private func refreshSession() {
-    // Check if session expired due to maxLifetime (fixed lifetime from start time)
     let expiredByMaxLifetime = session == nil || session!.isExpired()
-    
-    // Check if session expired in background (flag set by foreground observer)
     let expiredByBackground = sessionExpiredInBackground
     
-    // Start new session if expired by maxLifetime or background timeout
     if expiredByMaxLifetime || expiredByBackground {
       startSession()
-      // Clear the background expiration flag after creating new session
       sessionExpiredInBackground = false
     } else {
-      // Otherwise, use existing session (no changes needed)
       session = Session(
         id: session!.id,
         expireTime: session!.expireTime,

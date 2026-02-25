@@ -6,7 +6,6 @@
 import Foundation
 
 /// Persistent session storage implementation using SessionStore (UserDefaults)
-/// Matches Android's PersistentSessionStorage behavior
 internal class PersistentSessionStorage: SessionStorage {
     func get() -> Session? {
         return SessionStore.load()

@@ -297,22 +297,9 @@ public class PulseKit {
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
-        // Create metered session manager early to get session ID for HTTP headers
-        let meteredConfig = SessionConfig(
-            backgroundInactivityTimeout: nil,
-            maxLifetime: 30 * 60,  // 30 seconds for testing (30 * 60 for production)
-            shouldPersist: true,
-            startEventName: nil,  // No events for metered session
-            endEventName: nil  // No events for metered session
-        )
-        let meteredManager = SessionManager(configuration: meteredConfig)
-        let meteredSessionId = meteredManager.getSession().id
-        
-        // Add metered session ID to HTTP headers (matches Android: X-Pulse-Metering-Session-ID)
-        var headers = endpointHeaders ?? [:]
-        headers["X-Pulse-Metering-Session-ID"] = meteredSessionId
-        
-        // Convert headers to exporter format [(String, String)]?
+        var meteredConfig = MeteredSessionConfig()
+        let meteredManager = meteredConfig.createMeteredManager()
+        let headers = meteredConfig.addMeteredSessionHeader(to: endpointHeaders, meteredManager: meteredManager)
         let envVarHeaders: [(String, String)]? = headers.map { ($0.key, $0.value) }
 
         // URL resolution (see expectations in PulseKit README):
@@ -376,7 +363,8 @@ public class PulseKit {
             baseSpanProcessor: spanProcessor,
             baseLogProcessor: baseLogProcessor,
             config: config,
-            meteredManager: meteredManager,  // Pass metered manager for processors
+            meteredConfig: meteredConfig,
+            meteredManager: meteredManager,
             loggerProviderCustomizer: loggerProviderCustomizer
         )
 
@@ -411,7 +399,8 @@ public class PulseKit {
         baseSpanProcessor: SpanProcessor,
         baseLogProcessor: LogRecordProcessor,
         config: InstrumentationConfiguration,
-        meteredManager: SessionManager,  // Pre-created metered manager (for processors)
+        meteredConfig: MeteredSessionConfig,
+        meteredManager: SessionManager,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         let pulseSignalProcessor = PulseSignalProcessor()
@@ -467,15 +456,19 @@ public class PulseKit {
         let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
-        // Create both metered and OTEL session processors with wrapping logic
-        if let sessionProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor, meteredManager: meteredManager) {
-            // Add span processors (both metered and OTEL)
-            spanProcessors.append(sessionProcessors.meteredSpanProcessor)
-            spanProcessors.append(sessionProcessors.otelSpanProcessor)
-            
-            // Log processors are already wrapped: metered wraps OTEL wraps pulse
-            // Chain: pulseLogProcessor → otelLogProcessor → meteredLogProcessor
-            logProcessors = [sessionProcessors.meteredLogProcessor]
+        if let otelProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
+            spanProcessors.append(otelProcessors.otelSpanProcessor)
+            logProcessor = otelProcessors.otelLogProcessor
+        }
+        
+        if let meteredProcessors = meteredConfig.createProcessors(
+            baseLogProcessor: logProcessor,
+            meteredManager: meteredManager
+        ) {
+            spanProcessors.append(meteredProcessors.meteredSpanProcessor)
+            logProcessors = [meteredProcessors.meteredLogProcessor]
+        } else {
+            logProcessors = [logProcessor]
         }
         
         if config.interaction.enabled,

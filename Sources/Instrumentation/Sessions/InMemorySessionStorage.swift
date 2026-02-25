@@ -5,7 +5,6 @@
 
 import Foundation
 
-/// In-memory session storage implementation
 /// Stores session in memory only, does not persist across app restarts
 internal class InMemorySessionStorage: SessionStorage {
     private var session: Session?
