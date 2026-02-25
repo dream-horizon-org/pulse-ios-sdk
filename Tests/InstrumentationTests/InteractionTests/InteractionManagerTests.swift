@@ -7,7 +7,6 @@ import XCTest
 @testable import InteractionInstrumentation
 
 /// Tests for InteractionManager
-/// Based on Android's InteractionManagerTest.kt
 final class InteractionManagerTests: XCTestCase {
     private var interactionManager: InteractionManager!
     private var mockConfigFetcher: MockInteractionConfigFetcher!
@@ -83,7 +82,6 @@ final class InteractionManagerTests: XCTestCase {
     }
     
     func testWhenInteractionConfigHasNoEventConfig_throwsAssertion() {
-        // Android throws NoSuchElementException for empty sequence
         XCTAssertThrowsError(
             try InteractionTestUtils.createFakeInteractionConfig(
                 eventSequence: []
@@ -93,7 +91,7 @@ final class InteractionManagerTests: XCTestCase {
     }
     
     func testWhenInteractionConfigHasAllBlacklistedConfig_throwsAssertion() {
-        // This should throw an error (matches Android's AssertionError behavior)
+        // This should throw an error
         XCTAssertThrowsError(
             try InteractionTestUtils.createFakeInteractionConfig(
                 eventSequence: [

@@ -14,7 +14,7 @@ internal final class InteractionEventsTracker {
     /// Current interaction running status
     private var interactionRunningStatus: InteractionRunningStatus = .noOngoingMatch(oldOngoingInteractionRunningStatus: nil) {
         didSet {
-            // Emit state changes reactively (matches Android's StateFlow pattern)
+            // Emit state changes reactively
             stateSubject.send(interactionRunningStatus)
         }
     }
@@ -22,7 +22,7 @@ internal final class InteractionEventsTracker {
     /// Subject for state changes (reactive updates)
     private let stateSubject = CurrentValueSubject<InteractionRunningStatus, Never>(.noOngoingMatch(oldOngoingInteractionRunningStatus: nil))
     
-    /// Publisher for state changes (matches Android's StateFlow)
+    /// Publisher for state changes
     var statePublisher: AnyPublisher<InteractionRunningStatus, Never> {
         stateSubject.eraseToAnyPublisher()
     }

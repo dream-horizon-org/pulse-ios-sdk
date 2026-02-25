@@ -8,7 +8,6 @@ import OpenTelemetrySdk
 import OpenTelemetryApi
 
 // PulseAttributes constants (copied here to avoid dependency on PulseKit)
-// TODO: Ideally we should publish attributes as diffrence module like Android semconv module. 
 internal enum PulseAttributes {
     static let pulseType = "pulse.type"
     static let pulseSpanId = "pulse.span.id"

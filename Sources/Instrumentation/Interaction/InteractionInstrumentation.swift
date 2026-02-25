@@ -14,7 +14,6 @@ import OpenTelemetrySdk
 /// an OpenTelemetry span with timing and event data.
 public class InteractionInstrumentation {
     // Static storage for instrumentation instance (for processor access)
-    // Similar to Android's AndroidInstrumentationLoader
     private static var sharedInstance: InteractionInstrumentation?
     
     public static func getInstance() -> InteractionInstrumentation? {
@@ -36,19 +35,18 @@ public class InteractionInstrumentation {
     private lazy var interactionManager: InteractionManager = {
         let configFetcher: InteractionConfigFetcher = configuration.useMockFetcher
             ? InteractionConfigMockFetcher()
-            : InteractionConfigRestFetcher(urlProvider: configuration.configUrlProvider)
+            : InteractionConfigRestFetcher(urlProvider: configuration.configUrlProvider, headers: configuration.headers)
         return InteractionManager(interactionFetcher: configFetcher)
     }()
     
     private var stateObservationTask: Task<Void, Never>?
     
     /// Attribute extractors for adding custom attributes to interaction spans
-    /// Matches Android's additionalAttributeExtractors pattern
     private var attributeExtractors: [(Interaction) -> [String: AttributeValue]] = []
 
     public init(configuration: InteractionInstrumentationConfiguration) {
         self._configuration = configuration
-        // Store instance for processor access (like Android's loader)
+        // Store instance for processor access
         InteractionInstrumentation.sharedInstance = self
     }
     
@@ -92,7 +90,7 @@ public class InteractionInstrumentation {
         }
     }
     
-    /// Default attribute extractor (matches Android's InteractionDefaultAttributesExtractor)
+    /// Default attribute extractor
     private func defaultAttributeExtractor(interaction: Interaction) -> [String: AttributeValue] {
         var attributes = putAttributesFrom(interaction.props)
         
@@ -121,7 +119,7 @@ public class InteractionInstrumentation {
             .setNoParent()
             .setStartTime(time: Date(timeIntervalSince1970: Double(timeSpan.start) / 1_000_000_000))
         
-        // Apply all attribute extractors (matches Android's pattern)
+        // Apply all attribute extractors
         // Default extractor is added in install(), custom extractor from configuration
         // Note: configId is already in interaction.props, so it's included via default extractor
         var attributes: [String: AttributeValue] = [:]
@@ -176,7 +174,6 @@ public class InteractionInstrumentation {
     }
     
     /// Convert [String: Any?] to [String: AttributeValue]
-    /// Matches Android's putAttributesFrom utility
     private func putAttributesFrom(_ map: [String: Any?]) -> [String: AttributeValue] {
         var attributes: [String: AttributeValue] = [:]
         

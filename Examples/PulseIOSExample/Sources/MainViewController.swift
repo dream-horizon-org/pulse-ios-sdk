@@ -230,7 +230,7 @@ class MainViewController: UIViewController {
         print("━━━ trackEventTapped ━━━")
         let timestamp = Date().timeIntervalSince1970 * 1000
         PulseKit.shared.trackEvent(
-            name: "tract_custom_event",
+            name: "track_custom_event",
             observedTimeStampInMs: timestamp,
             params: [
                 "button_name": AttributeValue.string("track_event"),

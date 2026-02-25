@@ -58,7 +58,7 @@ public final class InteractionManager {
             
             startStateObservation()
         } catch {
-            print("[PulseKit] Interaction: Failed to initialize - \(error.localizedDescription)")
+            print("[Pulse] Interaction: Failed to initialize - \(error.localizedDescription). Error: \(error)")
         }
     }
     
@@ -87,7 +87,7 @@ public final class InteractionManager {
     }
     
     /// Start observing state changes from all trackers reactively
-    /// Uses Combine to reactively combine all tracker states (matches Android's combine flow pattern)
+    /// Uses Combine to reactively combine all tracker states
     private func startStateObservation() {
         guard let trackers = interactionTrackers, !trackers.isEmpty else {
             return

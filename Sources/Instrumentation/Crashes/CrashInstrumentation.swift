@@ -68,7 +68,7 @@ public final class CrashInstrumentation {
             try CrashInstrumentation.reporter.install(with: KSCrashConfiguration())
             CrashInstrumentation.isInstalled = true
         } catch {
-            print("Failed to install KSCrash: \(error)")
+            print("[Pulse] Failed to install KSCrash: \(error)")
             return
         }
 
