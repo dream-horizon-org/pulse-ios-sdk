@@ -182,7 +182,7 @@ final class SessionLogRecordProcessorTests: XCTestCase {
       body: AttributeValue.string("session.end"),
       attributes: [
         SessionConstants.id: AttributeValue.string("ending-session-789"),
-        "session.duration": AttributeValue.double(123.45)
+        SessionConstants.duration: AttributeValue.double(123.45)
       ]
     )
 

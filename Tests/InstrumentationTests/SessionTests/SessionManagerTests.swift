@@ -84,8 +84,7 @@ final class SessionManagerTests: XCTestCase {
   }
 
   func testSessionExpiresAfterMaxLifetime() {
-    let maxLifetime: TimeInterval = 1 // 1 second for testing
-    sessionManager = SessionManager(configuration: SessionConfig(maxLifetime: maxLifetime))
+    sessionManager = SessionManager(configuration: SessionConfig(maxLifetime: 1))
     
     let firstSession = sessionManager.getSession()
     let firstSessionId = firstSession.id
@@ -298,6 +297,7 @@ final class SessionManagerTests: XCTestCase {
     XCTAssertEqual(startEvents.count, 2)
     XCTAssertEqual(endEvents.count, 1)
     XCTAssertEqual(endEvents[0].session.id, firstSession.id)
+    XCTAssertEqual(startEvents[1].session.id, sessionManager.getSession().id)
   }
 
   // MARK: - Thread Safety Tests
@@ -367,28 +367,61 @@ final class SessionManagerTests: XCTestCase {
     let config = SessionConfig(shouldPersist: false)
     sessionManager = SessionManager(configuration: config)
     
-    let session = sessionManager.getSession()
+    // Get session from first manager instance
+    let session1 = sessionManager.getSession()
+    let sessionId1 = session1.id
     
-    // In-memory storage should not save to UserDefaults
-    Thread.sleep(forTimeInterval: 0.1)
-    _ = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
+    // Verify session persists during app lifecycle (same instance)
+    let session2 = sessionManager.getSession()
+    XCTAssertEqual(session2.id, sessionId1, "In-memory storage should persist during app lifecycle")
     
-    // Should be nil or different (not persisted)
-    // Note: This test may be flaky if SessionStore is shared
-    XCTAssertNotNil(session.id)
+    // Verify session is NOT saved to UserDefaults
+    let savedId = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
+    // Note: savedId might be from previous test, but it should NOT match our in-memory session
+    // OR it should be nil if no previous persistent session existed
+    if let savedId = savedId {
+      XCTAssertNotEqual(savedId, sessionId1, "In-memory session should NOT be in UserDefaults")
+    }
+    
+    // Simulate app restart/kill: Create a NEW manager instance
+    // In-memory storage should NOT restore the session
+    let newManager = SessionManager(configuration: config)
+    let newSession = newManager.getSession()
+    
+    // New session should be different (not restored from disk)
+    XCTAssertNotEqual(newSession.id, sessionId1, "In-memory storage should NOT persist across app restarts/kills")
+    XCTAssertNil(newSession.previousId, "New in-memory session should not have previous ID")
   }
 
   func testPersistentStorage() {
     let config = SessionConfig(shouldPersist: true)
     sessionManager = SessionManager(configuration: config)
     
-    let session = sessionManager.getSession()
+    // Get session from first manager instance
+    let session1 = sessionManager.getSession()
+    let sessionId1 = session1.id
     
-    // Force immediate save
-    SessionStore.saveImmediately(session: session)
+    // Verify session persists during app lifecycle (same instance)
+    let session2 = sessionManager.getSession()
+    XCTAssertEqual(session2.id, sessionId1, "Persistent storage should persist during app lifecycle")
     
+    // Force immediate save to UserDefaults
+    SessionStore.saveImmediately(session: session1)
+    
+    // Verify session is saved to UserDefaults
     let savedId = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
-    XCTAssertEqual(session.id, savedId)
+    XCTAssertNotNil(savedId, "Persistent session should be saved to UserDefaults")
+    XCTAssertEqual(sessionId1, savedId, "Saved session ID should match current session")
+    
+    // Simulate app restart/kill: Create a NEW manager instance
+    // Persistent storage SHOULD restore the session from disk
+    let newManager = SessionManager(configuration: config)
+    let restoredSession = newManager.getSession()
+    
+    // Restored session should match the original (persisted across app restarts/kills)
+    XCTAssertEqual(restoredSession.id, sessionId1, "Persistent storage should restore session across app restarts/kills")
+    XCTAssertEqual(restoredSession.startTime, session1.startTime, "Restored session should have same start time")
+    XCTAssertEqual(restoredSession.expireTime, session1.expireTime, "Restored session should have same expire time")
   }
 
   // MARK: - Fixed Lifetime Tests (Not Sliding Window)

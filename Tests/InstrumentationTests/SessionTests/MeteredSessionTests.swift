@@ -53,31 +53,8 @@ final class MeteredSessionTests: XCTestCase {
     
     let session = manager.getSession()
     XCTAssertNotNil(session)
-    XCTAssertEqual(session.sessionTimeout, 30 * 60)
-  }
-
-  func testMeteredSessionNoBackgroundTimeout() {
-    // Metered session should not have background timeout
-    let config = SessionConfig(
-      backgroundInactivityTimeout: nil,
-      maxLifetime: 30 * 60,
-      shouldPersist: true
-    )
-    let manager = SessionManager(configuration: config)
-    
-    let session = manager.getSession()
-    XCTAssertNotNil(session)
-    
-    // Background timeout should be nil (not configured)
+    XCTAssertEqual(session.sessionTimeout, config.maxLifetime)
     XCTAssertNil(config.backgroundInactivityTimeout)
-  }
-
-  func testMeteredSessionPersistenceEnabled() {
-    let config = SessionConfig(
-      backgroundInactivityTimeout: nil,
-      maxLifetime: 30 * 60,
-      shouldPersist: true
-    )
     XCTAssertTrue(config.shouldPersist)
   }
 
@@ -143,7 +120,7 @@ final class MeteredSessionTests: XCTestCase {
     SessionStore.saveImmediately(session: session1)
     
     // Wait for expiration
-    Thread.sleep(forTimeInterval: 0.2)
+    Thread.sleep(forTimeInterval: 0.11)
     
     // Create new manager - expired session should not be restored
     let manager2 = SessionManager(configuration: config)
@@ -152,6 +129,7 @@ final class MeteredSessionTests: XCTestCase {
     // New session should be created (expired one not restored)
     // Note: This depends on restoreSessionFromDisk() checking expiration
     XCTAssertNotNil(session2)
+    XCTAssertNotEqual(session1.id, session2.id)
   }
 
   // MARK: - Metered Session Event Emission Tests
@@ -241,14 +219,51 @@ final class MeteredSessionTests: XCTestCase {
   func testDualSessionSystemDifferentStorage() {
     // Metered uses persistent storage, OTEL uses in-memory
     let meteredSession = meteredManager.getSession()
+    let meteredSessionId = meteredSession.id
+    
+    // Force save metered session to UserDefaults
     SessionStore.saveImmediately(session: meteredSession)
     
-    // Metered session should be in UserDefaults
+    // Verify metered session is in UserDefaults
     let savedId = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
-    XCTAssertEqual(meteredSession.id, savedId)
+    XCTAssertNotNil(savedId, "Metered session should be saved to UserDefaults")
+    XCTAssertEqual(meteredSessionId, savedId, "Saved session ID should match metered session")
     
-    // OTEL session should not be in UserDefaults (in-memory)
-    // Note: This test may be flaky if storage is shared, but conceptually they should be separate
+    // Get OTEL session (in-memory only)
+    let otelSession = otelManager.getSession()
+    let otelSessionId = otelSession.id
+    
+    // Verify OTEL session is NOT in UserDefaults (it uses InMemorySessionStorage)
+    // The saved ID should still be the metered session ID, not the OTEL session ID
+    let currentSavedId = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
+    XCTAssertNotNil(currentSavedId, "UserDefaults should still have metered session")
+    XCTAssertEqual(currentSavedId, meteredSessionId, "UserDefaults should still have metered session ID")
+    XCTAssertNotEqual(currentSavedId, otelSessionId, "UserDefaults should NOT have OTEL session ID (in-memory only)")
+    
+    // Verify sessions are different
+    XCTAssertNotEqual(meteredSessionId, otelSessionId, "Metered and OTEL sessions should have different IDs")
+    
+    // Create a new OTEL manager - should get a NEW session (not restored from disk)
+    let newOtelManager = SessionManager(configuration: SessionConfig(
+      backgroundInactivityTimeout: 15 * 60,
+      maxLifetime: 4 * 60 * 60,
+      shouldPersist: false  // In-memory
+    ))
+    let newOtelSession = newOtelManager.getSession()
+    
+    // New OTEL session should be different (not persisted)
+    XCTAssertNotEqual(newOtelSession.id, otelSessionId, "OTEL session should not persist - new manager gets new session")
+    
+    // Create a new metered manager - should restore the SAME session from disk
+    let newMeteredManager = SessionManager(configuration: SessionConfig(
+      backgroundInactivityTimeout: nil,
+      maxLifetime: 30 * 60,
+      shouldPersist: true  // Persistent
+    ))
+    let restoredMeteredSession = newMeteredManager.getSession()
+    
+    // Restored metered session should match original
+    XCTAssertEqual(restoredMeteredSession.id, meteredSessionId, "Metered session should be restored from disk")
   }
 
   // MARK: - Metered Session ID Format Tests
@@ -293,22 +308,20 @@ final class MeteredSessionTests: XCTestCase {
     let manager = SessionManager(configuration: config)
     
     let session1 = manager.getSession()
-    let sessionId1 = session1.id
     
     Thread.sleep(forTimeInterval: 0.11)
     
     let session2 = manager.getSession()
-    let sessionId2 = session2.id
     
-    XCTAssertNotEqual(sessionId1, sessionId2)
-    XCTAssertEqual(session2.previousId, sessionId1)
+      XCTAssertNotEqual(session1.id, session2.id)
+      XCTAssertEqual(session2.previousId, session1.id)
   }
 
   func testMeteredSessionNotAffectedByBackground() {
     #if canImport(UIKit)
     let config = SessionConfig(
       backgroundInactivityTimeout: nil,  // No background timeout
-      maxLifetime: 1,  // 1 second
+      maxLifetime: 0.1,
       shouldPersist: true
     )
     let manager = SessionManager(configuration: config)
@@ -323,7 +336,7 @@ final class MeteredSessionTests: XCTestCase {
     )
     
     // Wait longer than maxLifetime but less than any background timeout
-    Thread.sleep(forTimeInterval: 1.1)
+      Thread.sleep(forTimeInterval: 0.11)
     
     // Return to foreground
     NotificationCenter.default.post(
