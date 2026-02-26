@@ -33,7 +33,6 @@ final class SessionManagerTests: XCTestCase {
 
   func testSessionIdFormat() {
     let session = sessionManager.getSession()
-    // Session ID should be 32-character hex string (no hyphens)
     XCTAssertEqual(session.id.count, 32)
     let hexPattern = "^[a-f0-9]{32}$"
     let regex = try! NSRegularExpression(pattern: hexPattern)
@@ -51,7 +50,6 @@ final class SessionManagerTests: XCTestCase {
   }
 
   func testPeekSessionWithoutSession() {
-    // Before first getSession(), peek should return nil
     XCTAssertNil(sessionManager.peekSession())
   }
 
@@ -89,7 +87,6 @@ final class SessionManagerTests: XCTestCase {
     let firstSession = sessionManager.getSession()
     let firstSessionId = firstSession.id
     
-    // Wait for session to expire
     Thread.sleep(forTimeInterval: 1.1)
     
     let secondSession = sessionManager.getSession()
@@ -137,7 +134,6 @@ final class SessionManagerTests: XCTestCase {
     sessionManager = SessionManager(configuration: config)
     
     let session = sessionManager.getSession()
-    // Default maxLifetime is 4 hours
     let expectedExpiry = session.startTime.addingTimeInterval(4 * 60 * 60)
     XCTAssertEqual(session.expireTime.timeIntervalSince1970, expectedExpiry.timeIntervalSince1970, accuracy: 1.0)
   }
@@ -181,7 +177,6 @@ final class SessionManagerTests: XCTestCase {
     sessionManager = SessionManager(configuration: config)
     let session = sessionManager.getSession()
     
-    // Wait for save interval (30 seconds) or force immediate save
     Thread.sleep(forTimeInterval: 0.1)
     
     let savedId = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
@@ -216,7 +211,6 @@ final class SessionManagerTests: XCTestCase {
     let originalSession = sessionManager.getSession()
     let originalId = originalSession.id
     
-    // Create new manager - should restore from disk
     sessionManager = SessionManager(configuration: config)
     let restoredSession = sessionManager.getSession()
     
@@ -228,14 +222,11 @@ final class SessionManagerTests: XCTestCase {
     sessionManager = SessionManager(configuration: config)
     
     _ = sessionManager.getSession()
-    Thread.sleep(forTimeInterval: 1.1) // Wait for expiration
+    Thread.sleep(forTimeInterval: 1.1)
     
-    // Create new manager - expired session should not be restored
     sessionManager = SessionManager(configuration: config)
     let newSession = sessionManager.getSession()
     
-    // New session should be created (expired session not restored)
-    // Note: This depends on restoreSessionFromDisk() checking expiration
     XCTAssertNotNil(newSession)
   }
 
@@ -290,7 +281,6 @@ final class SessionManagerTests: XCTestCase {
     Thread.sleep(forTimeInterval: 0.11)
     _ = sessionManager.getSession()
     
-    // Should have 2 start events and 1 end event
     let startEvents = SessionEventInstrumentation.queue.filter { $0.eventType == .start }
     let endEvents = SessionEventInstrumentation.queue.filter { $0.eventType == .end }
     
@@ -321,7 +311,6 @@ final class SessionManagerTests: XCTestCase {
     
     wait(for: [expectation], timeout: 1.0)
     
-    // All sessions should have the same ID (no expiration during test)
     let firstId = sessionIds.first!
     for id in sessionIds {
       XCTAssertEqual(id, firstId)
@@ -332,10 +321,8 @@ final class SessionManagerTests: XCTestCase {
     let maxLifetime: TimeInterval = 0.1
     sessionManager = SessionManager(configuration: SessionConfig(maxLifetime: maxLifetime))
     
-    // Get initial session
     let initialSession = sessionManager.getSession()
     
-    // Wait for expiration
     Thread.sleep(forTimeInterval: 0.11)
     
     let expectation = XCTestExpectation(description: "Concurrent access after expiration")
@@ -356,7 +343,6 @@ final class SessionManagerTests: XCTestCase {
     
     wait(for: [expectation], timeout: 1.0)
     
-    // All concurrent accesses should get the same new session ID
     XCTAssertEqual(sessionIds.count, 1)
     XCTAssertNotEqual(sessionIds.first!, initialSession.id)
   }
@@ -367,28 +353,20 @@ final class SessionManagerTests: XCTestCase {
     let config = SessionConfig(shouldPersist: false)
     sessionManager = SessionManager(configuration: config)
     
-    // Get session from first manager instance
     let session1 = sessionManager.getSession()
     let sessionId1 = session1.id
     
-    // Verify session persists during app lifecycle (same instance)
     let session2 = sessionManager.getSession()
     XCTAssertEqual(session2.id, sessionId1, "In-memory storage should persist during app lifecycle")
     
-    // Verify session is NOT saved to UserDefaults
     let savedId = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
-    // Note: savedId might be from previous test, but it should NOT match our in-memory session
-    // OR it should be nil if no previous persistent session existed
     if let savedId = savedId {
       XCTAssertNotEqual(savedId, sessionId1, "In-memory session should NOT be in UserDefaults")
     }
     
-    // Simulate app restart/kill: Create a NEW manager instance
-    // In-memory storage should NOT restore the session
     let newManager = SessionManager(configuration: config)
     let newSession = newManager.getSession()
     
-    // New session should be different (not restored from disk)
     XCTAssertNotEqual(newSession.id, sessionId1, "In-memory storage should NOT persist across app restarts/kills")
     XCTAssertNil(newSession.previousId, "New in-memory session should not have previous ID")
   }
@@ -397,28 +375,21 @@ final class SessionManagerTests: XCTestCase {
     let config = SessionConfig(shouldPersist: true)
     sessionManager = SessionManager(configuration: config)
     
-    // Get session from first manager instance
     let session1 = sessionManager.getSession()
     let sessionId1 = session1.id
     
-    // Verify session persists during app lifecycle (same instance)
     let session2 = sessionManager.getSession()
     XCTAssertEqual(session2.id, sessionId1, "Persistent storage should persist during app lifecycle")
     
-    // Force immediate save to UserDefaults
     SessionStore.saveImmediately(session: session1)
     
-    // Verify session is saved to UserDefaults
     let savedId = UserDefaults.standard.object(forKey: SessionStore.idKey) as? String
     XCTAssertNotNil(savedId, "Persistent session should be saved to UserDefaults")
     XCTAssertEqual(sessionId1, savedId, "Saved session ID should match current session")
     
-    // Simulate app restart/kill: Create a NEW manager instance
-    // Persistent storage SHOULD restore the session from disk
     let newManager = SessionManager(configuration: config)
     let restoredSession = newManager.getSession()
     
-    // Restored session should match the original (persisted across app restarts/kills)
     XCTAssertEqual(restoredSession.id, sessionId1, "Persistent storage should restore session across app restarts/kills")
     XCTAssertEqual(restoredSession.startTime, session1.startTime, "Restored session should have same start time")
     XCTAssertEqual(restoredSession.expireTime, session1.expireTime, "Restored session should have same expire time")
@@ -438,7 +409,6 @@ final class SessionManagerTests: XCTestCase {
     let session2 = sessionManager.getSession()
     let expireTime2 = session2.expireTime
     
-    // Expire time should be the same (fixed lifetime, not sliding window)
     XCTAssertEqual(expireTime1, expireTime2)
     XCTAssertEqual(session1.id, session2.id)
   }

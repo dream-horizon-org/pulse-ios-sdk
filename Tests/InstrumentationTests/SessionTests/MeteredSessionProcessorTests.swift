@@ -3,8 +3,7 @@ import XCTest
 @testable import OpenTelemetrySdk
 @testable import OpenTelemetryApi
 
-/// Tests for metered session processors
-/// These processors add pulse.metering.session.id to spans and log records
+
 final class MeteredSessionProcessorTests: XCTestCase {
   var meteredManager: SessionManager!
   var mockNextProcessor: MockMeteredLogRecordProcessor!
@@ -43,10 +42,8 @@ final class MeteredSessionProcessorTests: XCTestCase {
     
     meteredLogProcessor.onEmit(logRecord: logRecord)
     
-    // Verify next processor was called
     XCTAssertEqual(mockNextProcessor.emitCount, 1)
     
-    // Verify metered session ID was added to the processed record
     guard let processedRecord = mockNextProcessor.lastLogRecord else {
       XCTFail("Processed log record should not be nil")
       return
@@ -66,13 +63,11 @@ final class MeteredSessionProcessorTests: XCTestCase {
   }
 
   func testMeteredLogProcessorDoesNotOverwriteExistingId() {
-    // Create log record with existing metered session ID
     let existingId = "existing-id-123456789012345678901234567890"
     let logRecord = createMockLogRecord()
     var attributes = logRecord.attributes
     attributes[SessionConstants.meteredId] = AttributeValue.string(existingId)
     
-    // Create new record with pre-populated attribute
     let logRecordWithId = ReadableLogRecord(
       resource: logRecord.resource,
       instrumentationScopeInfo: logRecord.instrumentationScopeInfo,
@@ -86,10 +81,8 @@ final class MeteredSessionProcessorTests: XCTestCase {
     
     meteredLogProcessor.onEmit(logRecord: logRecordWithId)
     
-    // Verify next processor was called
     XCTAssertEqual(mockNextProcessor.emitCount, 1)
     
-    // Verify existing ID was NOT overwritten
     guard let processedRecord = mockNextProcessor.lastLogRecord else {
       XCTFail("Processed log record should not be nil")
       return
@@ -106,7 +99,6 @@ final class MeteredSessionProcessorTests: XCTestCase {
     
     XCTAssertEqual(sessionId, existingId, "Existing session ID should not be overwritten")
     
-    // Verify it's different from current session ID
     let currentSession = meteredManager.getSession()
     XCTAssertNotEqual(sessionId, currentSession.id, "Existing ID should not match current session")
   }
@@ -114,7 +106,7 @@ final class MeteredSessionProcessorTests: XCTestCase {
   func testMeteredLogProcessorUpdatesOnSessionExpiration() {
     let config = SessionConfig(
       backgroundInactivityTimeout: nil,
-      maxLifetime: 0.1,  // Short for testing
+      maxLifetime: 0.1,
       shouldPersist: true
     )
     let manager = SessionManager(configuration: config)
@@ -123,12 +115,10 @@ final class MeteredSessionProcessorTests: XCTestCase {
       meteredManager: manager
     )
     
-    // Get first session and process log record
     let session1 = manager.getSession()
     let logRecord1 = createMockLogRecord()
     processor.onEmit(logRecord: logRecord1)
     
-    // Verify first record has first session ID
     guard let firstRecord = mockNextProcessor.lastLogRecord else {
       XCTFail("First processed log record should not be nil")
       return
@@ -142,18 +132,14 @@ final class MeteredSessionProcessorTests: XCTestCase {
     }
     XCTAssertEqual(sessionId1, session1.id, "First record should have first session ID")
     
-    // Wait for expiration
     Thread.sleep(forTimeInterval: 0.11)
     
-    // Get new session and process another log record
     let session2 = manager.getSession()
     let logRecord2 = createMockLogRecord()
     processor.onEmit(logRecord: logRecord2)
     
-    // Verify both records were processed
     XCTAssertEqual(mockNextProcessor.emitCount, 2)
     
-    // Verify second record has second session ID
     guard let secondRecord = mockNextProcessor.lastLogRecord else {
       XCTFail("Second processed log record should not be nil")
       return
@@ -167,7 +153,6 @@ final class MeteredSessionProcessorTests: XCTestCase {
     }
     XCTAssertEqual(sessionId2, session2.id, "Second record should have second session ID")
     
-    // Sessions should be different (expired)
     XCTAssertNotEqual(session1.id, session2.id, "Sessions should be different after expiration")
     XCTAssertNotEqual(sessionId1, sessionId2, "Session IDs in log records should be different")
   }
@@ -177,7 +162,6 @@ final class MeteredSessionProcessorTests: XCTestCase {
     
     meteredLogProcessor.onEmit(logRecord: logRecord)
     
-    // Verify next processor was called
     XCTAssertEqual(mockNextProcessor.emitCount, 1)
     XCTAssertNotNil(mockNextProcessor.lastLogRecord)
   }
@@ -200,7 +184,6 @@ final class MeteredSessionProcessorTests: XCTestCase {
     
     meteredSpanProcessor.onStart(parentContext: nil, span: span)
     
-    // Verify metered session ID was added
     let attributes = span.getAttributes()
     let meteredId = attributes[SessionConstants.meteredId]
     XCTAssertNotNil(meteredId)
@@ -222,13 +205,12 @@ XCTAssertEqual(sessionId.count, 32)
   func testMeteredSpanProcessorUpdatesOnSessionExpiration() {
     let config = SessionConfig(
       backgroundInactivityTimeout: nil,
-      maxLifetime: 0.1,  // Short for testing
+      maxLifetime: 0.1,
       shouldPersist: true
     )
     let manager = SessionManager(configuration: config)
     let processor = MeteredSessionSpanProcessor(meteredManager: manager)
     
-    // Get first session
     let session1 = manager.getSession()
     let span1 = createMockSpan()
     processor.onStart(parentContext: nil, span: span1)
@@ -236,10 +218,8 @@ XCTAssertEqual(sessionId.count, 32)
     let firstAttributes = span1.getAttributes()
     let firstId = firstAttributes[SessionConstants.meteredId]
     
-    // Wait for expiration
     Thread.sleep(forTimeInterval: 0.11)
     
-    // Get new session
     let session2 = manager.getSession()
     let span2 = createMockSpan()
     processor.onStart(parentContext: nil, span: span2)
@@ -247,7 +227,6 @@ XCTAssertEqual(sessionId.count, 32)
     let secondAttributes = span2.getAttributes()
     let secondId = secondAttributes[SessionConstants.meteredId]
     
-    // IDs should be different (session expired)
     XCTAssertNotEqual(firstId, secondId)
     
     if case .string(let id1) = firstId,
@@ -259,19 +238,15 @@ XCTAssertEqual(sessionId.count, 32)
 
   func testMeteredSpanProcessorOnEnd() {
     let span = createMockSpan()
-    
-    // Should not crash
     meteredSpanProcessor.onEnd(span: span)
   }
 
   func testMeteredSpanProcessorShutdown() {
     meteredSpanProcessor.shutdown(explicitTimeout: nil)
-    // Should not crash
   }
 
   func testMeteredSpanProcessorForceFlush() {
     meteredSpanProcessor.forceFlush(timeout: nil)
-    // Should not crash
   }
 
   func testMeteredSpanProcessorProperties() {
