@@ -24,3 +24,13 @@ extension LocationInstrumentationConfig: InstrumentationInitializer {
         #endif
     }
 }
+
+extension LocationInstrumentationConfig: InstrumentationUninstaller {
+    internal func uninstall() {
+        guard enabled else { return }
+        #if canImport(Location)
+        LocationInstrumentation.uninstall()
+        UserDefaults.standard.removeObject(forKey: "location_cache")
+        #endif
+    }
+}

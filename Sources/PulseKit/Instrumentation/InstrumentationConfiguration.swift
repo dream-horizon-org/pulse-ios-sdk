@@ -56,4 +56,12 @@ public struct InstrumentationConfiguration {
             _crash
         ]
     }
+
+    internal var uninstallers: [InstrumentationUninstaller] {
+        [
+            _crash,
+            _interaction,
+            _location
+        ]
+    }
 }

@@ -50,3 +50,10 @@ extension InteractionInstrumentationConfig: InstrumentationInitializer {
     }
 }
 
+extension InteractionInstrumentationConfig: InstrumentationUninstaller {
+    internal func uninstall() {
+        guard self.enabled else { return }
+        InteractionInstrumentation.getInstance()?.uninstall()
+    }
+}
+

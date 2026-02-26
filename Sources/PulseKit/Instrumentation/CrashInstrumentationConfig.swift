@@ -28,3 +28,10 @@ extension CrashInstrumentationConfig: InstrumentationInitializer {
         ).install()
     }
 }
+
+extension CrashInstrumentationConfig: InstrumentationUninstaller {
+    internal func uninstall() {
+        guard self.enabled else { return }
+        CrashInstrumentation.uninstall()
+    }
+}

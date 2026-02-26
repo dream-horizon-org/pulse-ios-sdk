@@ -42,6 +42,7 @@ public class PulseKit {
     private var openTelemetry: OpenTelemetry?
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
+    private var instrumentationConfig: InstrumentationConfiguration?
     
     // User session emitter
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
@@ -191,6 +192,7 @@ public class PulseKit {
                     self?.batchLogProcessor?.forceFlush()
                 }
             )
+            self.instrumentationConfig = config
             installInstrumentations(config: config, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
@@ -463,6 +465,13 @@ public class PulseKit {
         }
     }
 
+    private func uninstallInstrumentations() {
+        guard let config = instrumentationConfig else { return }
+        for uninstaller in config.uninstallers {
+            uninstaller.uninstall()
+        }
+    }
+
     // MARK: - Shutdown
 
     /// Permanently shuts down the SDK. Cannot be re-initialized in this process.
@@ -470,16 +479,11 @@ public class PulseKit {
         initializationQueue.sync {
             guard _isInitialized, !_isShutdown else { return }
 
-            let defaults = UserDefaults.standard
+            uninstallInstrumentations()
 
-            CrashInstrumentation.uninstall()
-            InteractionInstrumentation.getInstance()?.uninstall()
+            let defaults = UserDefaults.standard
             defaults.removeObject(forKey: "pulse_installation_id")
             defaults.removeObject(forKey: "user_id")
-            #if canImport(Location)
-            LocationInstrumentation.uninstall()
-            defaults.removeObject(forKey: "location_cache")
-            #endif
 
             batchSpanProcessor?.shutdown()
             _ = batchLogProcessor?.shutdown()
