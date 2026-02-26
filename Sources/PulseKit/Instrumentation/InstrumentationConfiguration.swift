@@ -46,7 +46,7 @@ public struct InstrumentationConfiguration {
     internal var location: LocationInstrumentationConfig { _location }
     internal var crash: CrashInstrumentationConfig { _crash }
 
-    internal var initializers: [InstrumentationInitializer] {
+    internal var instrumentations: [InstrumentationLifecycle] {
         [
             _urlSession,
             _sessions,
@@ -54,14 +54,6 @@ public struct InstrumentationConfiguration {
             _interaction,
             _location,
             _crash
-        ]
-    }
-
-    internal var uninstallers: [InstrumentationUninstaller] {
-        [
-            _crash,
-            _interaction,
-            _location
         ]
     }
 }

@@ -4,7 +4,9 @@
  */
 
 import Foundation
+import OpenTelemetrySdk
 
-internal protocol InstrumentationUninstaller {
+internal protocol InstrumentationLifecycle {
+    func initialize(ctx: InstallationContext)
     func uninstall()
 }

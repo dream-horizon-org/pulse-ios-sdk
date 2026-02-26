@@ -48,7 +48,7 @@ public struct URLSessionInstrumentationConfig {
     }
 }
 
-extension URLSessionInstrumentationConfig: InstrumentationInitializer {
+extension URLSessionInstrumentationConfig: InstrumentationLifecycle {
     internal func initialize(ctx: InstallationContext) {
         guard self.enabled else { return }
 
@@ -62,4 +62,6 @@ extension URLSessionInstrumentationConfig: InstrumentationInitializer {
         )
         _ = URLSessionInstrumentation(configuration: urlSessionConfig)
     }
+
+    internal func uninstall() {}
 }

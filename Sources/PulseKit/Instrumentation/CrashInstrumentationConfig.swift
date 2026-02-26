@@ -19,7 +19,7 @@ public struct CrashInstrumentationConfig {
     }
 }
 
-extension CrashInstrumentationConfig: InstrumentationInitializer {
+extension CrashInstrumentationConfig: InstrumentationLifecycle {
     internal func initialize(ctx: InstallationContext) {
         guard self.enabled else { return }
         CrashInstrumentation(
@@ -27,9 +27,7 @@ extension CrashInstrumentationConfig: InstrumentationInitializer {
             flushLogProcessor: ctx.flushLogProcessor
         ).install()
     }
-}
 
-extension CrashInstrumentationConfig: InstrumentationUninstaller {
     internal func uninstall() {
         guard self.enabled else { return }
         CrashInstrumentation.uninstall()

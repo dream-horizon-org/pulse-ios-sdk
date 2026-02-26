@@ -26,9 +26,11 @@ public struct SessionsInstrumentationConfig {
     }
 }
 
-extension SessionsInstrumentationConfig: InstrumentationInitializer {
+extension SessionsInstrumentationConfig: InstrumentationLifecycle {
     internal func initialize(ctx: InstallationContext) {
         guard self.enabled else { return }
         _ = SessionEventInstrumentation()
     }
+
+    internal func uninstall() {}
 }

@@ -460,15 +460,15 @@ public class PulseKit {
         config: InstrumentationConfiguration,
         ctx: InstallationContext
     ) {
-        for initializer in config.initializers {
-            initializer.initialize(ctx: ctx)
+        for instrumentation in config.instrumentations {
+            instrumentation.initialize(ctx: ctx)
         }
     }
 
     private func uninstallInstrumentations() {
         guard let config = instrumentationConfig else { return }
-        for uninstaller in config.uninstallers {
-            uninstaller.uninstall()
+        for instrumentation in config.instrumentations {
+            instrumentation.uninstall()
         }
     }
 
