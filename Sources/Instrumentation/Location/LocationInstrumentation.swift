@@ -128,6 +128,8 @@ public final class LocationInstrumentation {
         initializedLocationProvider?.stopPeriodicRefresh()
         initializedLocationProvider = nil
 
+        UserDefaults.standard.removeObject(forKey: LocationConstants.locationCacheKey)
+
         #if canImport(UIKit)
         for observer in lifecycleObservers {
             NotificationCenter.default.removeObserver(observer)

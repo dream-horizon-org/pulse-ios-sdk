@@ -28,7 +28,6 @@ extension LocationInstrumentationConfig: InstrumentationLifecycle {
         guard enabled else { return }
         #if canImport(Location)
         LocationInstrumentation.uninstall()
-        UserDefaults.standard.removeObject(forKey: "location_cache")
         #endif
     }
 }
