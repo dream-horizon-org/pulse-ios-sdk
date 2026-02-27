@@ -6,6 +6,7 @@
 import Foundation
 import OpenTelemetrySdk
 
-internal protocol InstrumentationInitializer {
+internal protocol InstrumentationLifecycle {
     func initialize(ctx: InstallationContext)
+    func uninstall()
 }

@@ -33,7 +33,7 @@ public struct InteractionInstrumentationConfig {
     }
 }
 
-extension InteractionInstrumentationConfig: InstrumentationInitializer {
+extension InteractionInstrumentationConfig: InstrumentationLifecycle {
     internal func initialize(ctx: InstallationContext) {
         guard self.enabled else { return }
 
@@ -47,6 +47,11 @@ extension InteractionInstrumentationConfig: InstrumentationInitializer {
         )
         let instrumentation = InteractionInstrumentation(configuration: interactionConfig)
         instrumentation.install()
+    }
+
+    internal func uninstall() {
+        guard self.enabled else { return }
+        InteractionInstrumentation.getInstance()?.uninstall()
     }
 }
 

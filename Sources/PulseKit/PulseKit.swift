@@ -1,6 +1,7 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+import Crashes
 import InteractionInstrumentation
 import OpenTelemetryProtocolExporterHttp
 import ResourceExtension
@@ -22,15 +23,28 @@ public class PulseKit {
     // Thread-safe initialization
     private let initializationQueue = DispatchQueue(label: "com.pulse.ios.sdk.initialization")
     private var _isInitialized = false
+    private var _isShutdown = false
+
     private var isInitialized: Bool {
         initializationQueue.sync { _isInitialized }
+    }
+
+    public var isShutdown: Bool {
+        initializationQueue.sync { _isShutdown }
+    }
+
+    /// `true` when the SDK is initialized **and** has not been shut down.
+    /// Used to guard every public API entry point.
+    private var isActive: Bool {
+        initializationQueue.sync { _isInitialized && !_isShutdown }
     }
 
     private var openTelemetry: OpenTelemetry?
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
-
-    // User session emitter 
+    private var instrumentationConfig: InstrumentationConfiguration?
+    
+    // User session emitter
     internal lazy var userSessionEmitter: PulseUserSessionEmitter = {
         PulseUserSessionEmitter(
             loggerProvider: { [weak self] in
@@ -102,6 +116,7 @@ public class PulseKit {
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])? = nil
     ) {
         initializationQueue.sync {
+            guard !_isShutdown else { return }
             guard !_isInitialized else {
                 PulseLogger.log("Already initialized, skipping.")
                 return
@@ -177,6 +192,7 @@ public class PulseKit {
                     self?.batchLogProcessor?.forceFlush()
                 }
             )
+            self.instrumentationConfig = config
             installInstrumentations(config: config, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
@@ -377,7 +393,7 @@ public class PulseKit {
         let pulseSignalProcessor = PulseSignalProcessor()
         var spanProcessors: [SpanProcessor] = []
         var logProcessor = baseLogProcessor
-        
+
         // Apply customizer first, right after baseLogProcessor
         if let customizer = loggerProviderCustomizer {
             let modified = customizer([logProcessor])
@@ -385,7 +401,7 @@ public class PulseKit {
                 logProcessor = firstModified
             }
         }
-        
+
         // Build SDK processor chain
         if _configuration.includeGlobalAttributes {
             let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
@@ -423,7 +439,7 @@ public class PulseKit {
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
         spanProcessors.append(pulseSpanProcessor)
         spanProcessors.append(baseSpanProcessor)
-        
+
         let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
@@ -444,8 +460,37 @@ public class PulseKit {
         config: InstrumentationConfiguration,
         ctx: InstallationContext
     ) {
-        for initializer in config.initializers {
-            initializer.initialize(ctx: ctx)
+        for instrumentation in config.instrumentations {
+            instrumentation.initialize(ctx: ctx)
+        }
+    }
+
+    private func uninstallInstrumentations() {
+        guard let config = instrumentationConfig else { return }
+        for instrumentation in config.instrumentations {
+            instrumentation.uninstall()
+        }
+    }
+
+    // MARK: - Shutdown
+
+    /// Permanently shuts down the SDK. Cannot be re-initialized in this process.
+    public func shutdown() {
+        initializationQueue.sync {
+            guard _isInitialized, !_isShutdown else { return }
+
+            uninstallInstrumentations()
+
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: "pulse_installation_id")
+            defaults.removeObject(forKey: "user_id")
+
+            batchSpanProcessor?.shutdown()
+            _ = batchLogProcessor?.shutdown()
+            PersistenceUtils.clearStorage()
+
+            openTelemetry = nil
+            _isShutdown = true
         }
     }
 
@@ -454,7 +499,7 @@ public class PulseKit {
         observedTimeStampInMs: Double,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isInitialized, _customEventsEnabled else { return }
+        guard isActive, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.customEvent)
@@ -476,7 +521,7 @@ public class PulseKit {
         observedTimeStampInMs: Int64,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isInitialized, _customEventsEnabled else { return }
+        guard isActive, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal)
@@ -498,7 +543,7 @@ public class PulseKit {
         observedTimeStampInMs: Int64,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isInitialized, _customEventsEnabled else { return }
+        guard isActive, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal),
@@ -528,7 +573,7 @@ public class PulseKit {
         params: [String: AttributeValue] = [:],
         action: () throws -> T
     ) rethrows -> T {
-        guard isInitialized else {
+        guard isActive else {
             return try action()
         }
 
@@ -536,7 +581,6 @@ public class PulseKit {
         defer { span.end() }
 
         span.setAttributes(params)
-
         return try action()
     }
 
@@ -546,19 +590,23 @@ public class PulseKit {
     ) -> Span {
         let span = tracer.spanBuilder(spanName: name).startSpan()
         span.setAttributes(params)
-
         return span
     }
 
     public func getOpenTelemetry() -> OpenTelemetry? {
+        guard !isShutdown else { return nil }
         return openTelemetry
     }
     
     public func getOtelOrNull() -> OpenTelemetry? {
+        guard !isShutdown else { return nil }
         return openTelemetry
     }
     
     public func getOtelOrThrow() -> OpenTelemetry {
+        if isShutdown {
+            fatalError("Pulse SDK has been shut down. No further API calls are allowed.")
+        }
         guard let otel = openTelemetry else {
             
             fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
@@ -571,18 +619,22 @@ public class PulseKit {
     }
     
     public func setUserId(_ id: String?) {
+        guard isActive else { return }
         userSessionEmitter.userId = id
     }
     
     public func setUserProperty(name: String, value: AttributeValue?) {
+        guard isActive else { return }
         userSessionEmitter.setUserProperty(name: name, value: value)
     }
     
     public func setUserProperties(_ properties: [String: AttributeValue?]) {
+        guard isActive else { return }
         userSessionEmitter.setUserProperties(properties)
     }
 
     public func setUserProperties(_ builderAction: (inout [String: AttributeValue?]) -> Void) {
+        guard isActive else { return }
         var properties: [String: AttributeValue?] = [:]
         builderAction(&properties)
         setUserProperties(properties)
@@ -597,3 +649,4 @@ internal enum BatchProcessorDefaults {
     static let maxExportBatchSize: Int = 512
     static let exportTimeout: TimeInterval = 30
 }
+

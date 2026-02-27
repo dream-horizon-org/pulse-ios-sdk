@@ -45,4 +45,3 @@ internal class UIViewControllerSwizzler {
         swizzled = true
     }
 }
-

@@ -19,7 +19,7 @@ public struct SignPostInstrumentationConfig {
     }
 }
 
-extension SignPostInstrumentationConfig: InstrumentationInitializer {
+extension SignPostInstrumentationConfig: InstrumentationLifecycle {
     internal func initialize(ctx: InstallationContext) {
         guard self.enabled else { return }
 
@@ -31,4 +31,6 @@ extension SignPostInstrumentationConfig: InstrumentationInitializer {
             }
         }
     }
+
+    internal func uninstall() {}
 }

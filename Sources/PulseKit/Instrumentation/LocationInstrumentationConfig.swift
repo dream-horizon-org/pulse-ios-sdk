@@ -16,11 +16,18 @@ public struct LocationInstrumentationConfig {
     }
 }
 
-extension LocationInstrumentationConfig: InstrumentationInitializer {
+extension LocationInstrumentationConfig: InstrumentationLifecycle {
     internal func initialize(ctx: InstallationContext) {
         guard enabled else { return }
         #if canImport(Location)
         LocationInstrumentation.install()
+        #endif
+    }
+
+    internal func uninstall() {
+        guard enabled else { return }
+        #if canImport(Location)
+        LocationInstrumentation.uninstall()
         #endif
     }
 }

@@ -9,14 +9,20 @@ import OpenTelemetrySdk
 import PersistenceExporter
 
 internal class PersistenceUtils {
+    private static let storagePath = "com.pulse.persistence"
+
+    private static var storageBaseURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+            .appendingPathComponent(storagePath, isDirectory: true)
+    }
+
     /// Creates persistence-backed span and log exporters. On failure, returns the original exporters.
     /// Export from disk is gated by network availability on non-watchOS.
     static func createPersistentExporters(
         spanExporter: SpanExporter,
         logExporter: LogRecordExporter
     ) -> (spanExporter: SpanExporter, logExporter: LogRecordExporter) {
-        let persistenceStorageBase = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-            .appendingPathComponent("com.pulse.persistence", isDirectory: true)
+        let persistenceStorageBase = storageBaseURL
 
         #if !os(watchOS)
         let monitor: NetworkMonitorProtocol? = try? NetworkMonitor()
@@ -46,5 +52,12 @@ internal class PersistenceUtils {
         } catch {
             return (spanExporter, logExporter)
         }
+    }
+
+    /// Removes the entire persistence directory from Caches.
+    static func clearStorage() {
+        let base = storageBaseURL
+        guard FileManager.default.fileExists(atPath: base.path) else { return }
+        try? FileManager.default.removeItem(at: base)
     }
 }
