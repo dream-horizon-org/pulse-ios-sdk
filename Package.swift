@@ -253,6 +253,7 @@ extension Package {
         .library(name: "InteractionInstrumentation", targets: ["InteractionInstrumentation"]),
         .library(name: "Location", targets: ["Location"]),
         .library(name: "Crashes", targets: ["Crashes"]),
+        .library(name: "AppLifecycle", targets: ["AppLifecycle"]),
         .library(name: "ZipkinExporter", targets: ["ZipkinExporter"]),
         .executable(name: "OTLPExporter", targets: ["OTLPExporter"]),
         .executable(name: "OTLPHTTPExporter", targets: ["OTLPHTTPExporter"]),
@@ -350,6 +351,13 @@ extension Package {
           ],
           path: "Sources/Instrumentation/Crashes",
           exclude: ["README.md"]
+        ),
+        .target(
+          name: "AppLifecycle",
+          dependencies: [
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core")
+          ],
+          path: "Sources/Instrumentation/AppLifecycle"
         ),
         .executableTarget(
           name: "NetworkSample",
@@ -482,7 +490,9 @@ extension Package {
             "NetworkStatus",
             "SignPostIntegration",
             "InteractionInstrumentation",
-            "Crashes"
+            "Crashes",
+            "AppLifecycle",
+            "Location"
           ],
           path: "Sources/PulseKit"
         ),

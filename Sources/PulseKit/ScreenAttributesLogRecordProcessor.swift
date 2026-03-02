@@ -23,6 +23,9 @@ internal class ScreenAttributesLogRecordProcessor: LogRecordProcessor {
         var enhancedRecord = logRecord
         let screenName = visibleScreenTracker.currentlyVisibleScreen
         enhancedRecord.setAttribute(key: PulseAttributes.screenName, value: AttributeValue.string(screenName))
+        if let previousScreen = visibleScreenTracker.previouslyVisibleScreen {
+            enhancedRecord.setAttribute(key: PulseAttributes.lastScreenName, value: AttributeValue.string(previousScreen))
+        }
         nextProcessor.onEmit(logRecord: enhancedRecord)
     }
     

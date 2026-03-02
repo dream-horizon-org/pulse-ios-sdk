@@ -12,6 +12,7 @@ public struct InstrumentationConfiguration {
     private var _interaction: InteractionInstrumentationConfig = InteractionInstrumentationConfig()
     private var _location: LocationInstrumentationConfig = LocationInstrumentationConfig()
     private var _crash: CrashInstrumentationConfig = CrashInstrumentationConfig()
+    private var _appLifecycle: AppLifecycleInstrumentationConfig = AppLifecycleInstrumentationConfig()
 
     public init() {}
 
@@ -39,12 +40,17 @@ public struct InstrumentationConfiguration {
         configure(&_crash)
     }
 
+    public mutating func appLifecycle(_ configure: (inout AppLifecycleInstrumentationConfig) -> Void) {
+        configure(&_appLifecycle)
+    }
+
     internal var urlSession: URLSessionInstrumentationConfig { _urlSession }
     internal var sessions: SessionsInstrumentationConfig { _sessions }
     internal var signPost: SignPostInstrumentationConfig { _signPost }
     internal var interaction: InteractionInstrumentationConfig { _interaction }
     internal var location: LocationInstrumentationConfig { _location }
     internal var crash: CrashInstrumentationConfig { _crash }
+    internal var appLifecycle: AppLifecycleInstrumentationConfig { _appLifecycle }
 
     internal var instrumentations: [InstrumentationLifecycle] {
         [
@@ -53,7 +59,8 @@ public struct InstrumentationConfiguration {
             _signPost,
             _interaction,
             _location,
-            _crash
+            _crash,
+            _appLifecycle
         ]
     }
 }

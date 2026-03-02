@@ -2,6 +2,7 @@ import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import Crashes
+import AppLifecycle
 import InteractionInstrumentation
 import OpenTelemetryProtocolExporterHttp
 import ResourceExtension
@@ -196,14 +197,15 @@ public class PulseKit {
             installInstrumentations(config: config, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
+            AppStateWatcher.shared.start()
+
             if _configuration.includeScreenAttributes {
-                AppStartupTimer.shared.start(
-                    tracer: tracerProvider.get(
-                        instrumentationName: PulseKitConstants.instrumentationScopeName,
-                        instrumentationVersion: PulseKitConstants.instrumentationVersion
-                    )
+                let screenTracer = tracerProvider.get(
+                    instrumentationName: PulseKitConstants.instrumentationScopeName,
+                    instrumentationVersion: PulseKitConstants.instrumentationVersion
                 )
-                
+                AppStartupTimer.shared.start(tracer: screenTracer)
+                VisibleScreenTracker.shared.start(tracer: screenTracer)
                 UIViewControllerSwizzler.swizzle()
             }
             #endif

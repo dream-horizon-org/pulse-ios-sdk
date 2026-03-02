@@ -5,9 +5,10 @@
 
 import Foundation
 import OpenTelemetryApi
+import AppLifecycle
 
 /// Tracks app startup time from SDK initialization to first screen appearance.
-internal class AppStartupTimer {
+internal class AppStartupTimer: AppStateListener {
     static let shared = AppStartupTimer()
     
     private let lock = NSLock()
@@ -20,6 +21,9 @@ internal class AppStartupTimer {
     
     /// Whether the first screen has appeared (span has ended)
     private var hasEnded: Bool = false
+
+    /// Tracer reference retained from start() for creating warm-start spans.
+    private var tracer: Tracer?
     
     private init() {}
     
@@ -32,6 +36,7 @@ internal class AppStartupTimer {
         // Guard against double-start
         guard appStartSpan == nil else { return }
         
+        self.tracer = tracer
         startTimestamp = Date()
         
         let span = tracer.spanBuilder(spanName: "AppStart")
@@ -40,6 +45,10 @@ internal class AppStartupTimer {
             .startSpan()
         
         appStartSpan = span
+
+        #if os(iOS)
+        AppStateWatcher.shared.registerListener(self)
+        #endif
     }
     
     /// End the app startup span. Called when first screen appears.
@@ -60,5 +69,32 @@ internal class AppStartupTimer {
         defer { lock.unlock() }
         return appStartSpan != nil && !hasEnded
     }
-}
 
+    // MARK: - AppStateListener (warm start)
+
+    func appForegrounded() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard hasEnded, appStartSpan == nil, let tracer = tracer else { return }
+
+        hasEnded = false
+        let span = tracer.spanBuilder(spanName: "AppStart")
+            .setAttribute(key: PulseAttributes.startType, value: "warm")
+            .setAttribute(key: PulseAttributes.pulseType, value: PulseAttributes.PulseTypeValues.appStart)
+            .startSpan()
+
+        appStartSpan = span
+    }
+
+    func appBackgrounded() {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard !hasEnded, let span = appStartSpan else { return }
+        span.setAttribute(key: "start.cancelled", value: true)
+        span.end()
+        appStartSpan = nil
+        hasEnded = true
+    }
+}
