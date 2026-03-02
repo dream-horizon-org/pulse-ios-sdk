@@ -26,20 +26,8 @@ public class PulseKit {
     private var _isInitialized = false
     private var _isShutdown = false
 
-    private var _isShutdown = false
-
     private var isInitialized: Bool {
         initializationQueue.sync { _isInitialized }
-    }
-
-    public var isShutdown: Bool {
-        initializationQueue.sync { _isShutdown }
-    }
-
-    /// `true` when the SDK is initialized **and** has not been shut down.
-    /// Used to guard every public API entry point.
-    private var isActive: Bool {
-        initializationQueue.sync { _isInitialized && !_isShutdown }
     }
 
     public var isShutdown: Bool {
@@ -55,9 +43,6 @@ public class PulseKit {
     private var openTelemetry: OpenTelemetry?
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
-    private var instrumentationConfig: InstrumentationConfiguration?
-    
-    // User session emitter
     private var instrumentationConfig: InstrumentationConfiguration?
     
     // User session emitter
@@ -132,7 +117,6 @@ public class PulseKit {
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])? = nil
     ) {
         initializationQueue.sync {
-            guard !_isShutdown else { return }
             guard !_isShutdown else { return }
             guard !_isInitialized else {
                 PulseLogger.log("Already initialized, skipping.")
@@ -209,7 +193,6 @@ public class PulseKit {
                     self?.batchLogProcessor?.forceFlush()
                 }
             )
-            self.instrumentationConfig = config
             self.instrumentationConfig = config
             installInstrumentations(config: config, ctx: installationContext)
 
@@ -513,37 +496,6 @@ public class PulseKit {
 
             openTelemetry = nil
             _isShutdown = true
-        for instrumentation in config.instrumentations {
-            instrumentation.initialize(ctx: ctx)
-        }
-    }
-
-    private func uninstallInstrumentations() {
-        guard let config = instrumentationConfig else { return }
-        for instrumentation in config.instrumentations {
-            instrumentation.uninstall()
-        }
-    }
-
-    // MARK: - Shutdown
-
-    /// Permanently shuts down the SDK. Cannot be re-initialized in this process.
-    public func shutdown() {
-        initializationQueue.sync {
-            guard _isInitialized, !_isShutdown else { return }
-
-            uninstallInstrumentations()
-
-            let defaults = UserDefaults.standard
-            defaults.removeObject(forKey: "pulse_installation_id")
-            defaults.removeObject(forKey: "user_id")
-
-            batchSpanProcessor?.shutdown()
-            _ = batchLogProcessor?.shutdown()
-            PersistenceUtils.clearStorage()
-
-            openTelemetry = nil
-            _isShutdown = true
         }
     }
 
@@ -552,7 +504,6 @@ public class PulseKit {
         observedTimeStampInMs: Double,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isActive, _customEventsEnabled else { return }
         guard isActive, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
@@ -576,7 +527,6 @@ public class PulseKit {
         params: [String: AttributeValue] = [:]
     ) {
         guard isActive, _customEventsEnabled else { return }
-        guard isActive, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
             PulseAttributes.pulseType: AttributeValue.string(PulseAttributes.PulseTypeValues.nonFatal)
@@ -598,7 +548,6 @@ public class PulseKit {
         observedTimeStampInMs: Int64,
         params: [String: AttributeValue] = [:]
     ) {
-        guard isActive, _customEventsEnabled else { return }
         guard isActive, _customEventsEnabled else { return }
 
         var attributes: [String: AttributeValue] = [
@@ -630,7 +579,6 @@ public class PulseKit {
         action: () throws -> T
     ) rethrows -> T {
         guard isActive else {
-        guard isActive else {
             return try action()
         }
 
@@ -652,12 +600,10 @@ public class PulseKit {
 
     public func getOpenTelemetry() -> OpenTelemetry? {
         guard !isShutdown else { return nil }
-        guard !isShutdown else { return nil }
         return openTelemetry
     }
     
     public func getOtelOrNull() -> OpenTelemetry? {
-        guard !isShutdown else { return nil }
         guard !isShutdown else { return nil }
         return openTelemetry
     }
@@ -666,11 +612,7 @@ public class PulseKit {
         if isShutdown {
             fatalError("Pulse SDK has been shut down. No further API calls are allowed.")
         }
-        if isShutdown {
-            fatalError("Pulse SDK has been shut down. No further API calls are allowed.")
-        }
         guard let otel = openTelemetry else {
-            
             fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
         }
         return otel
@@ -682,24 +624,20 @@ public class PulseKit {
     
     public func setUserId(_ id: String?) {
         guard isActive else { return }
-        guard isActive else { return }
         userSessionEmitter.userId = id
     }
     
     public func setUserProperty(name: String, value: AttributeValue?) {
-        guard isActive else { return }
         guard isActive else { return }
         userSessionEmitter.setUserProperty(name: name, value: value)
     }
     
     public func setUserProperties(_ properties: [String: AttributeValue?]) {
         guard isActive else { return }
-        guard isActive else { return }
         userSessionEmitter.setUserProperties(properties)
     }
 
     public func setUserProperties(_ builderAction: (inout [String: AttributeValue?]) -> Void) {
-        guard isActive else { return }
         guard isActive else { return }
         var properties: [String: AttributeValue?] = [:]
         builderAction(&properties)
