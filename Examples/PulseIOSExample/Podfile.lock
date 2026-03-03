@@ -33,7 +33,7 @@ PODS:
   - SwiftProtobuf (1.34.1)
 
 DEPENDENCIES:
-  - PulseKit (from `../../`)
+  - PulseKit (from `../../build/`)
 
 SPEC REPOS:
   trunk:
@@ -44,15 +44,15 @@ SPEC REPOS:
 
 EXTERNAL SOURCES:
   PulseKit:
-    :path: "../../"
+    :path: "../../build/"
 
 SPEC CHECKSUMS:
   KSCrash: 8c4464fd5da7de520f2ce4a00fdf63f169a80f18
   OpenTelemetry-Swift-Api: 0785e3b9888286449aa297c0b48269797bfcaf7f
   OpenTelemetry-Swift-Sdk: b856396d6147c01829a88ad782f481c0e1cd0966
-  PulseKit: 397f29185c52e1f89c0d4badd0093b36afba79fe
+  PulseKit: 3dee0242e264ff2f43f4a31e00673f050bec7056
   SwiftProtobuf: c901f00a3e125dc33cac9b16824da85682ee47da
 
-PODFILE CHECKSUM: f062e09aa835ba60cec9e8cb40ef5083c212cfc1
+PODFILE CHECKSUM: cb5b579430ad3da6b02f7d78b58ab616cc9564f2
 
 COCOAPODS: 1.15.2
