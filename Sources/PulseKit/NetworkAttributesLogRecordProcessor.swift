@@ -7,7 +7,6 @@ import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
 #if os(iOS) && !targetEnvironment(macCatalyst)
-import NetworkStatus
 import CoreTelephony
 #endif
 

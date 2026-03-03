@@ -7,22 +7,6 @@ import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
 
-// PulseAttributes constants (copied here to avoid dependency on PulseKit)
-internal enum PulseAttributes {
-    static let pulseType = "pulse.type"
-    static let pulseSpanId = "pulse.span.id"
-    
-    enum PulseTypeValues {
-        static let network = "network"
-        static let screenLoad = "screen_load"
-        static let appStart = "app_start"
-        static let screenSession = "screen_session"
-        static func isNetworkType(_ pulseType: String) -> Bool {
-            return pulseType == network || pulseType.hasPrefix("\(network).")
-        }
-    }
-}
-
 /// SpanProcessor that adds interaction attributes to spans and forwards span events to InteractionManager
 internal class InteractionAttributesSpanAppender: SpanProcessor {
     /// Lazy access to interaction manager (accessed when onStart/onEnd is called, after install())

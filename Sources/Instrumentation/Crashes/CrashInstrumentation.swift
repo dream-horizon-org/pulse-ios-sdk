@@ -6,7 +6,6 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import Sessions
 
 #if canImport(KSCrashRecording)
   import KSCrashRecording

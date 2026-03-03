@@ -15,31 +15,31 @@ internal class GlobalAttributesSpanProcessor: SpanProcessor {
     var isStartRequired: Bool = true
     var isEndRequired: Bool = false
     
-    private weak var pulseKit: PulseKit?
+    private weak var pulse: Pulse?
 
-    init(pulseKit: PulseKit) {
-        self.pulseKit = pulseKit
+    init(pulse: Pulse) {
+        self.pulse = pulse
     }
     
     func onStart(parentContext: SpanContext?, span: ReadableSpan) {
-        guard let pulseKit = pulseKit else { return }
+        guard let pulse = pulse else { return }
         
         var allAttributes: [String: AttributeValue] = [:]
         
         // Add static global attributes (set during initialization)
-        if let globalAttributes = pulseKit._globalAttributes {
+        if let globalAttributes = pulse._globalAttributes {
             allAttributes.merge(globalAttributes) { _, new in new }
         }
         
         // Add installation ID (persists across app launches until uninstall)
-        allAttributes[PulseAttributes.appInstallationId] = AttributeValue.string(pulseKit.installationIdManager.installationId)
+        allAttributes[PulseAttributes.appInstallationId] = AttributeValue.string(pulse.installationIdManager.installationId)
         
         // Add dynamic user properties (can be updated after initialization)
-        if let userId = pulseKit.userSessionEmitter.userId {
+        if let userId = pulse.userSessionEmitter.userId {
             allAttributes[PulseAttributes.userId] = AttributeValue.string(userId)
         }
         
-        for (key, value) in pulseKit.userSessionEmitter.userProperties {
+        for (key, value) in pulse.userSessionEmitter.userProperties {
             allAttributes[PulseAttributes.pulseUserParameter(key)] = value
         }
         

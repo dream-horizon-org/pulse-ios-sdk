@@ -7,9 +7,6 @@ import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import os.log
-#if os(iOS) && !targetEnvironment(macCatalyst)
-  import NetworkStatus
-#endif // os(iOS) && !targetEnvironment(macCatalyst)
 
 class URLSessionLogger {
   static var runningSpans = [String: Span]()
