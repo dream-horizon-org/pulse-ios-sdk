@@ -263,6 +263,14 @@ public class PulseKit {
         return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
 
+    /// Extracts the project ID prefix from a tenant ID.
+    internal static func extractProjectID(from projectId: String) -> String {
+        if let hyphenIndex = projectId.firstIndex(of: "-"), hyphenIndex > projectId.startIndex {
+            return String(projectId[..<hyphenIndex])
+        }
+        return projectId
+    }
+
     /// Set default telemetry.sdk.name first, then resource callback (overrides if it sets the key)
     private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
@@ -270,7 +278,7 @@ public class PulseKit {
 
         // 1. Set default (native iOS = pulse_ios_swift)
         attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
-        attributes[PulseAttributes.projectId] = AttributeValue.string(projectId)
+        attributes[PulseAttributes.projectId] = AttributeValue.string(Self.extractProjectID(from: projectId))
 
         // 2. Resource callback can override (e.g. RN bridge sets pulse_ios_rn)
         if let resourceCustomizer = resource {
