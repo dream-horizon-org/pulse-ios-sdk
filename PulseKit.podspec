@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = "PulseKit"
-  spec.version = "0.0.1"
+  spec.version = "0.0.1-beta"
   spec.summary = "Pulse iOS SDK - Simplified OpenTelemetry for iOS"
   spec.description = <<-DESC
     Pulse iOS SDK is a simplified, production-ready SDK for instrumenting iOS 
