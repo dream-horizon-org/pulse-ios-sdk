@@ -2,9 +2,6 @@ name: Create Framework and Release PR for Pulse iOS
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches:
-      - main
 
 env:
   RELEASE_REPO: dream-horizon-org/pulse-ios
@@ -57,20 +54,17 @@ jobs:
           echo "::notice::Zip size: $(du -sh PulseKit.xcframework.zip | cut -f1)"
           echo "::notice::Checksum: $CHECKSUM"
 
-      - name: Clone release repo
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
-        run: |
-          gh repo clone ${{ env.RELEASE_REPO }} release-repo
-          cd release-repo
-          git remote set-url origin https://x-access-token:${GH_TOKEN}@github.com/${{ env.RELEASE_REPO }}.git
-          echo "::notice::Cloned release repo"
+      - name: Checkout release repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RELEASE_REPO }}
+          token: ${{ secrets.RELEASE_REPO_TOKEN }}
+          path: release-repo
 
       - name: Prepare release branch
-        env:
-          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         run: |
           cd release-repo
+          git remote set-url origin https://x-access-token:${{ secrets.RELEASE_REPO_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

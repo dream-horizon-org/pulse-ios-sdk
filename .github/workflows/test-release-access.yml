@@ -1,0 +1,34 @@
+name: Test Release Repo Access
+
+on:
+  workflow_dispatch:
+
+env:
+  RELEASE_REPO: dream-horizon-org/pulse-ios
+
+jobs:
+  test-access:
+    name: Verify release repo clone & push
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout release repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RELEASE_REPO }}
+          token: ${{ secrets.RELEASE_REPO_TOKEN }}
+          path: test-clone
+
+      - name: Test push access
+        run: |
+          cd test-clone
+          git remote set-url origin https://x-access-token:${{ secrets.RELEASE_REPO_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="temp/$RANDOM"
+          git checkout -b "$BRANCH"
+          git commit --allow-empty -m "test: verify CI access"
+          git push origin "$BRANCH"
+          echo "::notice::Push succeeded"
+          git push origin --delete "$BRANCH"
+          echo "::notice::Branch deleted. All access verified."
