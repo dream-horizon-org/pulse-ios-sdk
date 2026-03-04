@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Setup git credentials
         run: |
-          echo "https://${{ secrets.GIT_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
+          echo "https://${{ secrets.RELEASE_REPO_TOKEN }}:x-oauth-basic@github.com" > ~/.git-credentials
           git config --global credential.helper store
 
       - name: Clone release repo
