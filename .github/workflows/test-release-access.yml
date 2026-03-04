@@ -19,13 +19,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RELEASE_REPO }}
-          token: ${{ secrets.RELEASE_REPO_TOKEN }}
+          token: ${{ secrets.GIT_TOKEN }}
           path: test-clone
 
       - name: Test push access
         run: |
           cd test-clone
-          git remote set-url origin https://x-access-token:${{ secrets.RELEASE_REPO_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git
+          git remote set-url origin https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="temp/$RANDOM"
