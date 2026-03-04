@@ -17,7 +17,7 @@ jobs:
     steps:
       - name: Clone release repo
         run: |
-          git clone https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git test-clone
+          git clone https://x-access-token:${{ secrets.RELEASE_REPO_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git test-clone
           echo "::notice::Clone succeeded"
 
       - name: Test push access
