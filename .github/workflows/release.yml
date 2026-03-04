@@ -1,7 +1,10 @@
-name: Build and Create Release PR for Pulse iOS SDK
+name: Release PulseKit
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
 
 env:
   RELEASE_REPO: dream-horizon-org/pulse-ios
@@ -22,6 +25,7 @@ jobs:
           echo "::notice::Release version: $VERSION"
 
       - name: Check version doesn't already exist in release repo
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         run: |
@@ -54,7 +58,10 @@ jobs:
           echo "::notice::Zip size: $(du -sh PulseKit.xcframework.zip | cut -f1)"
           echo "::notice::Checksum: $CHECKSUM"
 
+      # --- Steps below only run on manual trigger (actual release) ---
+
       - name: Clone release repo
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         run: |
@@ -62,6 +69,7 @@ jobs:
           echo "::notice::Cloned release repo"
 
       - name: Prepare release branch
+        if: github.event_name == 'workflow_dispatch'
         run: |
           cd release-repo
 
@@ -86,6 +94,7 @@ jobs:
           echo "::notice::Pushed branch $BRANCH to release repo"
 
       - name: Create PR in release repo
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
         run: |
@@ -121,4 +130,5 @@ jobs:
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Checksum | \`${CHECKSUM:-N/A}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Mode | ${{ github.event_name == 'workflow_dispatch' && 'Release' || 'Dry Run (PR)' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Release Repo | [${{ env.RELEASE_REPO }}](https://github.com/${{ env.RELEASE_REPO }}) |" >> $GITHUB_STEP_SUMMARY
