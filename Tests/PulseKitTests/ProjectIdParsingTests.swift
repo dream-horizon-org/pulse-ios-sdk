@@ -2,65 +2,70 @@
  * Copyright The OpenTelemetry Authors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Unit tests for project ID prefix extraction.
+ * Unit tests for project ID extraction from API keys.
  */
 
 import XCTest
 @testable import PulseKit
 
 final class ProjectIdParsingTests: XCTestCase {
-
     func testWhenProjectIdContainsHyphenShouldReturnPrefixBeforeHyphen() {
-        let projectId = "tenant123-7876796bhbghb"
+        let projectId = "tenant123-7876796bhbghb_bhbhvub"
         let result = PulseKit.extractProjectID(from: projectId)
-        XCTAssertEqual(result, "tenant123")
+        XCTAssertEqual(result, "tenant123-7876796bhbghb")
     }
 
-    func testWhenProjectIdHasNoHyphenShouldReturnOriginalId() {
-        let projectId = "simpleid"
-        let result = PulseKit.extractProjectID(from: projectId)
+    func testWhenApiKeyHasNoUnderscoreShouldReturnOriginalId() {
+        let apiKey = "simpleid"
+        let result = PulseKit.extractProjectID(from: apiKey)
         XCTAssertEqual(result, "simpleid")
     }
 
-    func testWhenProjectIdContainsMultipleHyphensShouldReturnPrefixBeforeFirstHyphen() {
-        let projectId = "tenant123-7876796bhbghb-extra-suffix"
-        let result = PulseKit.extractProjectID(from: projectId)
-        XCTAssertEqual(result, "tenant123")
+    func testWhenApiKeyContainsMultipleUnderscoresShouldReturnPrefixBeforeLastUnderscore() {
+        let apiKey = "project_name_random_secret"
+        let result = PulseKit.extractProjectID(from: apiKey)
+        XCTAssertEqual(result, "project_name_random")
     }
 
-    func testWhenHyphenIsAtStartOfProjectIdShouldReturnOriginalId() {
-        let projectId = "-tenant123"
-        let result = PulseKit.extractProjectID(from: projectId)
-        XCTAssertEqual(result, "-tenant123")
+    func testWhenUnderscoreIsAtStartOfApiKeyShouldReturnOriginalId() {
+        let apiKey = "_project123"
+        let result = PulseKit.extractProjectID(from: apiKey)
+        XCTAssertEqual(result, "_project123")
     }
 
-    func testWhenProjectIdIsEmptyStringShouldReturnEmptyString() {
-        let projectId = ""
-        let result = PulseKit.extractProjectID(from: projectId)
+    func testWhenApiKeyIsEmptyStringShouldReturnEmptyString() {
+        let apiKey = ""
+        let result = PulseKit.extractProjectID(from: apiKey)
         XCTAssertEqual(result, "")
     }
 
-    func testWhenProjectIdHasSingleCharacterBeforeHyphenShouldReturnThatCharacter() {
-        let projectId = "a-123456"
-        let result = PulseKit.extractProjectID(from: projectId)
+    func testWhenApiKeyHasSingleCharacterBeforeLastUnderscoreShouldReturnThatCharacter() {
+        let apiKey = "a_secret"
+        let result = PulseKit.extractProjectID(from: apiKey)
         XCTAssertEqual(result, "a")
     }
 
-    func testWhenProjectIdIsOnlyHyphenShouldReturnHyphen() {
-        let projectId = "-"
-        let result = PulseKit.extractProjectID(from: projectId)
-        XCTAssertEqual(result, "-")
+    func testWhenApiKeyIsOnlyUnderscoreShouldReturnUnderscoreString() {
+        let apiKey = "_"
+        let result = PulseKit.extractProjectID(from: apiKey)
+        XCTAssertEqual(result, "_")
     }
 
-    func testWhenProjectIdContainsNumbersAndLettersShouldReturnPrefixCorrectly() {
-        let projectId = "project123-abc456def"
-        let result = PulseKit.extractProjectID(from: projectId)
-        XCTAssertEqual(result, "project123")
+    func testWhenApiKeyContainsProjectIdWithHyphenAndSecretShouldReturnProjectIdCorrectly() {
+        let apiKey = "test_project-XwzBrFCb_fYJmt8hy0wmZcXvDq3DGRn7x"
+        let result = PulseKit.extractProjectID(from: apiKey)
+        XCTAssertEqual(result, "test_project-XwzBrFCb")
     }
 
-    func testWhenProjectIdPrefixContainsUnderscoresShouldReturnPrefixWithUnderscores() {
-        let projectId = "tenant_123-7876796bhbghb"
-        let result = PulseKit.extractProjectID(from: projectId)
+    func testWhenApiKeyContainsUnderscoresInProjectIdPartShouldReturnAllBeforeLastUnderscore() {
+        let apiKey = "tenant_123_secret456"
+        let result = PulseKit.extractProjectID(from: apiKey)
         XCTAssertEqual(result, "tenant_123")
+    }
+
+    func testWhenApiKeyEndsWithUnderscoreShouldReturnPrefixCorrectly() {
+        let apiKey = "project123_"
+        let result = PulseKit.extractProjectID(from: apiKey)
+        XCTAssertEqual(result, "project123")
     }
 }

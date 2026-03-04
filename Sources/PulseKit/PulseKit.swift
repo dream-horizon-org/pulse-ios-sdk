@@ -262,11 +262,9 @@ public class PulseKit {
         let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
         return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
-
-    /// Extracts the project ID prefix from a tenant ID.
     internal static func extractProjectID(from projectId: String) -> String {
-        if let hyphenIndex = projectId.firstIndex(of: "-"), hyphenIndex > projectId.startIndex {
-            return String(projectId[..<hyphenIndex])
+        if let lastUnderscoreIndex = projectId.lastIndex(of: "_"), lastUnderscoreIndex > projectId.startIndex {
+            return String(projectId[..<lastUnderscoreIndex])
         }
         return projectId
     }
