@@ -1,6 +1,9 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+import OpenTelemetryProtocolExporterHttp
+import ResourceExtension
+import Location
 
 // MARK: - SDK Constants
 internal enum PulseKitConstants {

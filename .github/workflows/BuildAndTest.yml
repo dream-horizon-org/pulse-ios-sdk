@@ -71,34 +71,22 @@ jobs:
     - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
       with:
         xcode-version: 16.4
-    - name: Install dependencies
-      run: |
-        brew install xcodegen
-        brew install xcbeautify || true
-    - name: Generate Xcode project
+    - name: Install CocoaPods
+      run: gem install cocoapods
+    - name: Pod install
       working-directory: Examples/PulseIOSExample
-      run: xcodegen generate
+      run: pod install
     - name: Build Example App
       working-directory: Examples/PulseIOSExample
       run: |
         set -o pipefail
-        if command -v xcbeautify &> /dev/null; then
-          xcodebuild \
-            -project PulseIOSExample.xcodeproj \
-            -scheme PulseIOSExample \
-            -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
-            -derivedDataPath ./build \
-            build | xcbeautify
-        else
-          xcodebuild \
-            -project PulseIOSExample.xcodeproj \
-            -scheme PulseIOSExample \
-            -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
-            -derivedDataPath ./build \
-            build
-        fi
+        xcodebuild \
+          -workspace PulseIOSExample.xcworkspace \
+          -scheme PulseIOSExample \
+          -configuration Debug \
+          -destination 'platform=iOS Simulator,name=iPhone 16,arch=arm64' \
+          -derivedDataPath ./build \
+          build
   
   required-status-checks:
     needs: 

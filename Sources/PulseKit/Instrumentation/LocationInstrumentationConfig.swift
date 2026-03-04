@@ -1,4 +1,5 @@
 import Foundation
+import Location
 
 /// Configuration for location instrumentation
 public struct LocationInstrumentationConfig {

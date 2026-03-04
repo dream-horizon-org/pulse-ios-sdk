@@ -9,6 +9,10 @@ import OpenTelemetryApi
 
 /// SpanProcessor that adds interaction attributes to spans and forwards span events to InteractionManager
 internal class InteractionAttributesSpanAppender: SpanProcessor {
+    private static let pulseTypeKey = "pulse.type"
+    private static let pulseSpanIdKey = "pulse.span.id"
+    private static let networkTypePrefix = "network"
+
     /// Lazy access to interaction manager (accessed when onStart/onEnd is called, after install())
     private var interactionManager: InteractionManager? {
         guard let instrumentation = InteractionInstrumentation.getInstance() else {
@@ -23,9 +27,9 @@ internal class InteractionAttributesSpanAppender: SpanProcessor {
     /// Span pulse types that should be added as events to interactions
     /// Note: Network types are checked separately via isNetworkType() to handle "network.XXX" patterns
     private static let listOfSpanPulseTypeToAddInInteraction = [
-        PulseAttributes.PulseTypeValues.screenLoad,
-        PulseAttributes.PulseTypeValues.appStart,
-        PulseAttributes.PulseTypeValues.screenSession
+        "screen_load",
+        "app_start",
+        "screen_session"
     ]
     
     init() {
@@ -56,15 +60,13 @@ internal class InteractionAttributesSpanAppender: SpanProcessor {
         let spanData = span.toSpanData()
         
         // Check if span has a pulse type that should be added to interactions
-        if let pulseTypeAttr = spanData.attributes[PulseAttributes.pulseType],
+        if let pulseTypeAttr = spanData.attributes[Self.pulseTypeKey],
            case .string(let pulseTypeString) = pulseTypeAttr,
            Self.shouldAddToInteraction(pulseType: pulseTypeString) {
             
             var params: [String: Any?] = [:]
-            // Add span ID (use span context directly)
-            params[PulseAttributes.pulseSpanId] = span.context.spanId.hexString
+            params[Self.pulseSpanIdKey] = span.context.spanId.hexString
             
-            // Get span end time (convert from TimeInterval to nanoseconds)
             let endTimeNanos = Int64(spanData.endTime.timeIntervalSince1970 * 1_000_000_000)
             
             manager.addEvent(
@@ -78,12 +80,10 @@ internal class InteractionAttributesSpanAppender: SpanProcessor {
     /// Check if a pulse type should be added to interactions
     /// Handles exact matches and network types (including "network.XXX" patterns)
     private static func shouldAddToInteraction(pulseType: String) -> Bool {
-        // Check if it's a network type (handles both "network" and "network.XXX")
-        if PulseAttributes.PulseTypeValues.isNetworkType(pulseType) {
+        if pulseType == networkTypePrefix || pulseType.hasPrefix("\(networkTypePrefix).") {
             return true
         }
         
-        // Check exact matches for other types
         return listOfSpanPulseTypeToAddInInteraction.contains(pulseType)
     }
     

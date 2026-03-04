@@ -5,6 +5,7 @@
 
 import Foundation
 import OpenTelemetrySdk
+import Sessions
 
 public struct SessionsInstrumentationConfig {
     public private(set) var enabled: Bool = true

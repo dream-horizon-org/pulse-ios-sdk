@@ -482,7 +482,8 @@ extension Package {
             "NetworkStatus",
             "SignPostIntegration",
             "InteractionInstrumentation",
-            "Crashes"
+            "Crashes",
+            "Location"
           ],
           path: "Sources/PulseKit"
         ),
