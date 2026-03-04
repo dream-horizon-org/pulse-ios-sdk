@@ -1,0 +1,124 @@
+name: Build and Create Release PR for Pulse iOS SDK
+
+on:
+  workflow_dispatch:
+
+env:
+  RELEASE_REPO: dream-horizon-org/pulse-ios
+
+jobs:
+  build-and-release:
+    name: Build XCFramework & Create Release PR
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+
+      - name: Read version from podspec
+        run: |
+          VERSION=$(grep "spec.version" PulseKit.podspec | head -1 | sed "s/.*\"\(.*\)\"/\1/")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "::notice::Release version: $VERSION"
+
+      - name: Check version doesn't already exist in release repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          if gh api repos/${{ env.RELEASE_REPO }}/git/refs/tags/$VERSION 2>/dev/null; then
+            echo "::error::Version $VERSION already exists in release repo. Bump spec.version in PulseKit.podspec first."
+            exit 1
+          fi
+          echo "::notice::Version $VERSION is available in release repo."
+
+      - name: Install CocoaPods
+        run: gem install cocoapods
+
+      - name: Pod install
+        run: |
+          cd Examples/PulseIOSExample
+          pod install
+          echo "::notice::Pod install completed"
+
+      - name: Build XCFramework
+        run: |
+          ./scripts/build-xcframework.sh
+          echo "::notice::XCFramework built successfully"
+
+      - name: Create zip and compute checksum
+        run: |
+          cd build
+          zip -r -q PulseKit.xcframework.zip PulseKit.xcframework
+          CHECKSUM=$(swift package compute-checksum PulseKit.xcframework.zip)
+          echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
+          echo "::notice::Zip size: $(du -sh PulseKit.xcframework.zip | cut -f1)"
+          echo "::notice::Checksum: $CHECKSUM"
+
+      - name: Clone release repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          git clone https://x-access-token:${GH_TOKEN}@github.com/${{ env.RELEASE_REPO }}.git release-repo
+          echo "::notice::Cloned release repo"
+
+      - name: Prepare release branch
+        run: |
+          cd release-repo
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="release/${VERSION}"
+          git checkout -b "$BRANCH"
+
+          rm -rf PulseKit.xcframework
+          cp -R ../build/PulseKit.xcframework .
+
+          cp ../build/PulseKit.xcframework.zip .
+
+          sed -i '' "s/spec.version.*=.*/spec.version      = \"${VERSION}\"/" PulseKit.podspec
+          sed -i '' "s/let version = \"[^\"]*\"/let version = \"${VERSION}\"/" Package.swift
+          sed -i '' "s/let checksum = \"[^\"]*\"/let checksum = \"${CHECKSUM}\"/" Package.swift
+
+          git add -A
+          git commit -m "Release PulseKit v${VERSION}"
+          git push origin "$BRANCH"
+          echo "::notice::Pushed branch $BRANCH to release repo"
+
+      - name: Create PR in release repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_REPO_TOKEN }}
+        run: |
+          gh pr create \
+            --repo ${{ env.RELEASE_REPO }} \
+            --base main \
+            --head "release/${VERSION}" \
+            --title "Release PulseKit v${VERSION}" \
+            --body "$(cat <<EOF
+          ## Release PulseKit v${VERSION}
+
+          Automated release from [pulse-ios-sdk@${GITHUB_SHA::7}](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}).
+
+          ### Checklist
+          - [ ] Review xcframework contents
+          - [ ] Verify podspec version: \`${VERSION}\`
+          - [ ] Verify Package.swift checksum: \`${CHECKSUM}\`
+
+          ### On merge, the publish workflow will:
+          1. Create git tag \`${VERSION}\`
+          2. Create GitHub Release with xcframework zip
+          3. Publish to CocoaPods trunk
+          EOF
+          )"
+          echo "::notice::Created PR in release repo"
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Checksum | \`${CHECKSUM:-N/A}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Repo | [${{ env.RELEASE_REPO }}](https://github.com/${{ env.RELEASE_REPO }}) |" >> $GITHUB_STEP_SUMMARY
