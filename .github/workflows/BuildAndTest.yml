@@ -20,7 +20,7 @@ jobs:
       - name: Check if the workflow should run
         id: check
         run: |
-          git diff --name-only origin/${{ github.base_ref }} HEAD | grep -qE "^(Sources/|Tests/)" && echo "should-run=true" >> "$GITHUB_OUTPUT" || echo "should-run=false" >> "$GITHUB_OUTPUT"
+          git diff --name-only origin/${{ github.base_ref }} HEAD | grep -qE "^(Sources/|Tests/|scripts/)" && echo "should-run=true" >> "$GITHUB_OUTPUT" || echo "should-run=false" >> "$GITHUB_OUTPUT"
   
   UnitTests:
     needs: should-run
@@ -88,12 +88,43 @@ jobs:
           -derivedDataPath ./build \
           build
   
+  XCFramework:
+    needs: should-run
+    if: ${{ needs.should-run.outputs.should-run == 'true' }}
+    runs-on: macos-15
+    steps:
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+    - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+      with:
+        xcode-version: 16.4
+    - name: Install CocoaPods
+      run: gem install cocoapods
+    - name: Pod install
+      working-directory: Examples/PulseIOSExample
+      run: pod install
+    - name: Build XCFramework
+      run: |
+        chmod +x scripts/build-xcframework.sh
+        ./scripts/build-xcframework.sh
+    - name: Verify XCFramework output
+      run: |
+        if [ ! -d "build/PulseKit.xcframework" ]; then
+          echo "::error::PulseKit.xcframework was not created"
+          exit 1
+        fi
+        echo "XCFramework size: $(du -sh build/PulseKit.xcframework | cut -f1)"
+        echo "Architectures:"
+        find build/PulseKit.xcframework -name "PulseKit" -type f | while read f; do
+          echo "  $f: $(file "$f" | sed 's/.*: //')"
+        done
+
   required-status-checks:
     needs: 
       - SwiftLint
       - UnitTests
       - iOS
       - ExampleApp
+      - XCFramework
     runs-on: ubuntu-latest
     if: always()
     steps:
@@ -102,7 +133,8 @@ jobs:
           if [[ ${{ needs.SwiftLint.result }} == 'failure' || \
           ${{ needs.UnitTests.result }} == 'failure' || \
           ${{ needs.iOS.result }} == 'failure' || \
-          ${{ needs.ExampleApp.result }} == 'failure' ]]; then
+          ${{ needs.ExampleApp.result }} == 'failure' || \
+          ${{ needs.XCFramework.result }} == 'failure' ]]; then
             echo "One or more required jobs failed. Failing the workflow."
             exit 1
           else
