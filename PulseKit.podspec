@@ -46,13 +46,13 @@ Pod::Spec.new do |spec|
   ]
   
   spec.swift_version = "5.10"
-  spec.ios.deployment_target = "13.0"
+  spec.ios.deployment_target = "15.1"
   spec.module_name = "PulseKit"
 
   spec.ios.frameworks = "CoreTelephony", "CoreLocation"
   
-  spec.dependency 'OpenTelemetry-Swift-Api', '2.2.0'
-  spec.dependency 'OpenTelemetry-Swift-Sdk', '2.2.0'
+  spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
+  spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
   spec.dependency 'SwiftProtobuf', '~> 1.28'
   spec.dependency 'KSCrash', '~> 2.5'
 
