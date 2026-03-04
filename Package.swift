@@ -468,6 +468,14 @@ extension Package {
           ],
           path: "Tests/InstrumentationTests/CrashTests"
         ),
+        .testTarget(
+          name: "AppLifecycleTests",
+          dependencies: [
+            "AppLifecycle",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/AppLifecycleTests"
+        ),
         .executableTarget(
           name: "PrometheusSample",
           dependencies: [
