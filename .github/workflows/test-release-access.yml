@@ -15,17 +15,14 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Checkout release repo
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.RELEASE_REPO }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: test-clone
+      - name: Clone release repo
+        run: |
+          git clone https://x-access-token:${{ secrets.GIT_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git test-clone
+          echo "::notice::Clone succeeded"
 
       - name: Test push access
         run: |
           cd test-clone
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ env.RELEASE_REPO }}.git
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="temp/$RANDOM"
