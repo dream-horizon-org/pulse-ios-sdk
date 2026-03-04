@@ -12,7 +12,6 @@ env:
 jobs:
   build-and-release:
     name: Build XCFramework & Create Release PR
-    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
 
     steps:
