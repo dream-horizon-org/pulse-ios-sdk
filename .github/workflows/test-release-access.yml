@@ -13,22 +13,23 @@ jobs:
   test-access:
     name: Verify release repo clone & push
     runs-on: macos-15
+    permissions:
+      contents: write
 
     steps:
       - name: Clone release repo
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RELEASE_REPO }}
-          token: ${{ secrets.RELEASE_REPO_TOKEN }}
           path: test-clone
 
       - name: Test push access
         run: |
           cd test-clone
-          git config user.name "d11-horizon-bot"
-          git config user.email "horizon-bot@dream11.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="temp/$RANDOM"
           git checkout -b "$BRANCH"
           git commit --allow-empty -m "test: verify CI access"
-          git push https://d11-horizon-bot:${secrets.RELEASE_REPO_TOKEN}@github.com/dream-horizon-org/pulse-ios.git HEAD:${BRANCH}
+          git push origin "$BRANCH"
           echo "::notice::Push succeeded"
