@@ -32,5 +32,3 @@ jobs:
           git commit --allow-empty -m "test: verify CI access"
           git push origin "$BRANCH"
           echo "::notice::Push succeeded"
-          git push origin --delete "$BRANCH"
-          echo "::notice::Branch deleted. All access verified."
