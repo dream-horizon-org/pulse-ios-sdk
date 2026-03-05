@@ -59,6 +59,10 @@ public class SessionEventInstrumentation {
   /// Flag to track if the instrumentation has been applied.
   /// Controls whether new sessions are queued or immediately processed via notifications.
   static var isApplied = false
+  
+  /// Serial queue for posting notifications asynchronously while maintaining order.
+  /// This prevents deadlock (by posting async) while ensuring events are processed in order.
+  private static let notificationQueue = DispatchQueue(label: "io.opentelemetry.sessions.notifications", qos: .utility)
 
   public init() {
     logger = OpenTelemetry.instance.loggerProvider.get(instrumentationScopeName: SessionEventInstrumentation.instrumentationKey)
@@ -175,10 +179,13 @@ public class SessionEventInstrumentation {
   static func addSession(session: Session, eventType: SessionEventType, eventName: String, endTimestamp: Date? = nil) {
     let sessionEvent = SessionEvent(session: session, eventType: eventType, eventName: eventName, endTimestamp: endTimestamp)
     if isApplied {
-      NotificationCenter.default.post(
-        name: sessionEventNotification,
-        object: sessionEvent
-      )
+      
+      notificationQueue.async {
+        NotificationCenter.default.post(
+          name: sessionEventNotification,
+          object: sessionEvent
+        )
+      }
     } else {
       /// SessionManager creates sessions before SessionEventInstrumentation is applied,
       /// which the notification observer cannot see. So we need to keep the sessions in a queue.

@@ -118,7 +118,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
 
     SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
 
-    wait(for: [expectation], timeout: 0)
+    wait(for: [expectation], timeout: 0.5)
 
     XCTAssertNotNil(receivedSessionEvent)
     XCTAssertEqual(receivedSessionEvent?.session.id, sessionId1)
@@ -144,11 +144,19 @@ final class SessionEventInstrumentationTests: XCTestCase {
   func testMultipleInitializationDoesNotAddDuplicateObservers() {
     _ = SessionEventInstrumentation()
     _ = SessionEventInstrumentation()
+
+    let expectation = XCTestExpectation(description: "Session event processed")
     
     SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
+  
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 0.5)
     
     let logRecords = logExporter.getFinishedLogRecords()
-    XCTAssertEqual(logRecords.count, 1)
+    XCTAssertEqual(logRecords.count, 1, "Should have exactly 1 log record, not 2 (duplicate observers would create 2)")
     XCTAssertEqual(logRecords[0].body, AttributeValue.string("session.start"))
   }
 
@@ -250,6 +258,13 @@ final class SessionEventInstrumentationTests: XCTestCase {
     _ = SessionEventInstrumentation()
     SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end, eventName: SessionConstants.sessionEndEvent)
 
+    // Wait for async notification processing
+    let expectation = XCTestExpectation(description: "Session events processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
+
     let logRecords = logExporter.getFinishedLogRecords()
     XCTAssertEqual(logRecords.count, 2)
 
@@ -297,6 +312,12 @@ final class SessionEventInstrumentationTests: XCTestCase {
     SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     SessionEventInstrumentation.addSession(session: session2, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end, eventName: SessionConstants.sessionEndEvent)
+
+    let expectation = XCTestExpectation(description: "All session events processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
 
     let logRecords = logExporter.getFinishedLogRecords()
     XCTAssertEqual(logRecords.count, 3)
@@ -349,6 +370,12 @@ final class SessionEventInstrumentationTests: XCTestCase {
     // Queue should remain empty as sessions are processed via notifications
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 0)
 
+    let expectation = XCTestExpectation(description: "All session events processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
+
     // All sessions should be processed
     let logRecords = logExporter.getFinishedLogRecords()
     XCTAssertEqual(logRecords.count, Int(max))
@@ -360,6 +387,12 @@ final class SessionEventInstrumentationTests: XCTestCase {
     
     _ = SessionEventInstrumentation()
     SessionEventInstrumentation.addSession(session: activeSession, eventType: .end, eventName: SessionConstants.sessionEndEvent)
+    
+    let expectation = XCTestExpectation(description: "Session event processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
     
     // Should not create log record for active session end event
     let logRecords = logExporter.getFinishedLogRecords()
