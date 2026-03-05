@@ -7,6 +7,7 @@ import PackagePlugin
 struct PulseUploadPlugin: CommandPlugin {
     func performCommand(context: PluginContext, arguments: [String]) async throws {
         var apiUrl: String?
+        var apiKey: String?
         var filePath: String?
         var appVersion: String?
         var versionCode: Int?
@@ -31,6 +32,7 @@ struct PulseUploadPlugin: CommandPlugin {
                 
                 switch key {
                 case "--api-url", "-u": apiUrl = value
+                case "--api-key", "-k": apiKey = value
                 case "--dsym-path", "-p": filePath = value
                 case "--app-version", "-v": appVersion = value
                 case "--version-code", "-c": versionCode = Int(value)
@@ -43,6 +45,7 @@ struct PulseUploadPlugin: CommandPlugin {
             } else {
                 switch arg {
                 case "--api-url", "-u": apiUrl = iterator.next()
+                case "--api-key", "-k": apiKey = iterator.next()
                 case "--dsym-path", "-p": filePath = iterator.next()
                 case "--app-version", "-v": appVersion = iterator.next()
                 case "--version-code", "-c": versionCode = Int(iterator.next() ?? "")
@@ -66,7 +69,13 @@ struct PulseUploadPlugin: CommandPlugin {
             throw PulseUploadError.missingArgument("--api-url is required")
         }
         
+        guard let apiKeyValue = apiKey, !apiKeyValue.trimmingCharacters(in: .whitespaces).isEmpty else {
+            PulseUploadUtils.printUsage()
+            throw PulseUploadError.missingArgument("--api-key is required")
+        }
+        
         let apiUrlFinal = apiUrlValue.trimmingCharacters(in: .whitespaces)
+        let apiKeyFinal = apiKeyValue.trimmingCharacters(in: .whitespaces)
         
         guard let testURL = URL(string: apiUrlFinal),
               let scheme = testURL.scheme,
@@ -124,6 +133,7 @@ struct PulseUploadPlugin: CommandPlugin {
         do {
             try await PulseUploadTask.upload(
                 apiUrl: apiUrlFinal,
+                apiKey: apiKeyFinal,
                 fileURL: uploadURL,
                 appVersion: appVersion,
                 versionCode: versionCode,

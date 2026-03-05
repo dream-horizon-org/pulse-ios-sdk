@@ -12,6 +12,7 @@ enum PulseUploadTask {
     
     static func upload(
         apiUrl: String,
+        apiKey: String,
         fileURL: URL,
         appVersion: String,
         versionCode: Int,
@@ -53,6 +54,7 @@ enum PulseUploadTask {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-KEY")
         request.timeoutInterval = 300.0
         
         let (data, response) = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(Data, URLResponse), Error>) in

@@ -124,6 +124,7 @@ enum PulseUploadUtils {
         Usage:
           swift package plugin uploadSourceMaps \\
             -u <url> | --api-url=<url> \\
+            -k <key> | --api-key=<key> \\
             -p <path> | --dsym-path=<path> \\
             -v <version> | --app-version=<version> \\
             -c <code> | --version-code=<code> \\
@@ -132,6 +133,7 @@ enum PulseUploadUtils {
         
         Required Arguments:
           -u, --api-url=<url>           API URL for uploading files
+          -k, --api-key=<key>           API key for authenticating API requests (sent as X-API-KEY header)
           -p, --dsym-path=<path>       Path to dSYM file or directory to upload
           -v, --app-version=<version>  App version (e.g., 1.0.0)
           -c, --version-code=<code>    Version code (positive integer, e.g., 1)
@@ -144,6 +146,7 @@ enum PulseUploadUtils {
         Example:
           swift package plugin uploadSourceMaps \\
             -u http://localhost:8080/v1/symbolicate/file/upload \\
+            -k your-api-key \\
             -p ~/Library/Developer/Xcode/DerivedData/YourApp-*/Build/Products/Release-iphoneos/YourApp.app.dSYM \\
             -v 1.0.0 \\
             -c 1 \\
