@@ -123,3 +123,4 @@ internal class UIViewControllerSwizzler {
     }
     #endif
 }
+

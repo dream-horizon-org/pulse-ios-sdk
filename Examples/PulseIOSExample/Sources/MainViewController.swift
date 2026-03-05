@@ -1,6 +1,7 @@
 import UIKit
 import PulseKit
 import OpenTelemetryApi
+import AppLifecycle
 
 class MainViewController: UIViewController {
     
@@ -183,6 +184,35 @@ class MainViewController: UIViewController {
             color: .systemOrange
         )
         stackView.addArrangedSubview(event2Button)
+        
+        stackView.addArrangedSubview(createSeparator())
+        
+        // ── App Lifecycle Testing ──
+        stackView.addArrangedSubview(createSectionHeader("App Lifecycle Testing"))
+        
+        let lifecycleHint = UILabel()
+        lifecycleHint.text = "Push screens to trigger viewDidAppear swizzle.\nscreen.name and last.screen.name update on every transition.\nBackground/foreground the app to trigger device.app.lifecycle logs."
+        lifecycleHint.font = .systemFont(ofSize: 12)
+        lifecycleHint.textColor = .secondaryLabel
+        lifecycleHint.textAlignment = .center
+        lifecycleHint.numberOfLines = 0
+        stackView.addArrangedSubview(lifecycleHint)
+        
+        stackView.addArrangedSubview(createButton(
+            title: "Push Second Screen →",
+            action: #selector(pushSecondScreenTapped),
+            color: .systemIndigo
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Present Modal Screen",
+            action: #selector(presentModalScreenTapped),
+            color: .systemIndigo
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Show Current Lifecycle State",
+            action: #selector(showLifecycleStateTapped),
+            color: .systemIndigo
+        ))
         
         stackView.addArrangedSubview(createSeparator())
         
@@ -617,6 +647,44 @@ class MainViewController: UIViewController {
             ]
         )
         showAlert(title: "Event2 Triggered", message: "Event 'event2' tracked. If 'event1' was triggered first, the interaction sequence should be complete!")
+    }
+    
+    // MARK: - App Lifecycle Testing
+    
+    @objc private func pushSecondScreenTapped() {
+        print("━━━ pushSecondScreenTapped ━━━")
+        print("  Pushing SecondViewController")
+        print("  screen.name will change to \"SecondViewController\"")
+        print("  last.screen.name will become \"MainViewController\"")
+        navigationController?.pushViewController(SecondViewController(), animated: true)
+    }
+    
+    @objc private func presentModalScreenTapped() {
+        print("━━━ presentModalScreenTapped ━━━")
+        let modal = ThirdViewController()
+        modal.title = "Modal Screen"
+        let nav = UINavigationController(rootViewController: modal)
+        nav.modalPresentationStyle = .pageSheet
+        modal.navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .done,
+            target: self,
+            action: #selector(dismissModal)
+        )
+        print("  Presenting ThirdViewController modally")
+        print("  screen.name will change to \"ThirdViewController\"")
+        present(nav, animated: true)
+    }
+    
+    @objc private func dismissModal() {
+        dismiss(animated: true)
+    }
+    
+    @objc private func showLifecycleStateTapped() {
+        print("━━━ showLifecycleStateTapped ━━━")
+        let state = AppStateWatcher.shared.currentState
+        let message = "AppStateWatcher.currentState = \"\(state.rawValue)\"\n\nBackground the app and reopen to see foreground/background transitions in the console.\n\nEach transition emits a device.app.lifecycle log with ios.app.state attribute."
+        print("  currentState: \(state.rawValue)")
+        showAlert(title: "Lifecycle State: \(state.rawValue)", message: message)
     }
     
     // MARK: - Helpers

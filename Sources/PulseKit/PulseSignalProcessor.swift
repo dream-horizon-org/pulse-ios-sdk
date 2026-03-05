@@ -48,11 +48,10 @@ internal class PulseSignalProcessor {
                 // but if it arrives here without one, tag cold starts.
                 pulseType = PulseAttributes.PulseTypeValues.appStart
             }
-            
             else if span.name == "ViewControllerSession" {
                 pulseType = PulseAttributes.PulseTypeValues.screenSession
             }
-            else if span.name == "ViewDidAppear" {
+            else if span.name == "ViewAppearing" {
                 pulseType = PulseAttributes.PulseTypeValues.screenLoad
             }
             else {
@@ -196,4 +195,3 @@ internal class PulseSignalProcessor {
         return PulseLogTypeAttributesAppender(parent: self, nextProcessor: nextProcessor)
     }
 }
-
