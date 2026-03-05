@@ -13,14 +13,13 @@ jobs:
   test-access:
     name: Verify release repo clone & push
     runs-on: macos-15
-    permissions:
-      contents: write
 
     steps:
       - name: Clone release repo
         uses: actions/checkout@v4
         with:
           repository: ${{ env.RELEASE_REPO }}
+          token: ${{ secrets.RELEASE_REPO_TOKEN }}
           path: test-clone
 
       - name: Test push access
@@ -33,3 +32,5 @@ jobs:
           git commit --allow-empty -m "test: verify CI access"
           git push origin "$BRANCH"
           echo "::notice::Push succeeded"
+          git push origin --delete "$BRANCH"
+          echo "::notice::Branch deleted. All access verified."
