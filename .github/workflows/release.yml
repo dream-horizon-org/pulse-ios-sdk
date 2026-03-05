@@ -1,4 +1,4 @@
-name: Create Framework and Release PR for Pulse iOS
+name: Create XC Framework and Release PR for Pulse iOS
 
 on:
   workflow_dispatch:
