@@ -5,8 +5,9 @@
 
 import Foundation
 import OpenTelemetrySdk
-import NetworkStatus
+#if canImport(PersistenceExporter)
 import PersistenceExporter
+#endif
 
 internal class PersistenceUtils {
     private static let storagePath = "com.pulse.persistence"

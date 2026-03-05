@@ -6,7 +6,6 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import NetworkStatus
 import os.log
 
 class URLSessionLogger {

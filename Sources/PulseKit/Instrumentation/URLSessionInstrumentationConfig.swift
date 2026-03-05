@@ -4,7 +4,6 @@
  */
 
 import Foundation
-import URLSessionInstrumentation
 
 public struct URLSessionInstrumentationConfig {
     public private(set) var enabled: Bool = true

@@ -1,7 +1,7 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-@testable import Location
+@testable import PulseKit
 
 class MockReadableSpan: ReadableSpan {
     var capturedAttributes: [String: AttributeValue] = [:]

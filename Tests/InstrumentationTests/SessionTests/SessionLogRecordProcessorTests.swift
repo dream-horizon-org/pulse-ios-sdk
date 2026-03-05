@@ -1,6 +1,6 @@
 import XCTest
 import OpenTelemetryApi
-@testable import Sessions
+@testable import PulseKit
 @testable import OpenTelemetrySdk
 
 final class SessionLogRecordProcessorTests: XCTestCase {

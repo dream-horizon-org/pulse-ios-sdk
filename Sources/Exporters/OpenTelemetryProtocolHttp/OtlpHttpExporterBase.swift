@@ -5,7 +5,9 @@
 
 import Foundation
 import SwiftProtobuf
+#if canImport(OpenTelemetryProtocolExporterCommon)
 import OpenTelemetryProtocolExporterCommon
+#endif
 #if canImport(FoundationNetworking)
   import FoundationNetworking
 #endif

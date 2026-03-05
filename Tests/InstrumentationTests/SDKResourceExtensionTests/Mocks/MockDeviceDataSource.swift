@@ -4,7 +4,7 @@
  */
 
 import Foundation
-@testable import ResourceExtension
+@testable import PulseKit
 
 class MockDeviceDataSource: IDeviceDataSource {
   var identifier: String?

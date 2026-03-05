@@ -6,7 +6,6 @@
 import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
-import Sessions
 
 internal class PulseSignalProcessor {
     private var recordedRelevantLogEvents: [String: Int64] = [:]

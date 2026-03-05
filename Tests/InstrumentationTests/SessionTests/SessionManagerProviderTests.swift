@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sessions
+@testable import PulseKit
 
 final class SessionManagerProviderTests: XCTestCase {
   

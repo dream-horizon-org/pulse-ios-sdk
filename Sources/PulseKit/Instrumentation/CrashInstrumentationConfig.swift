@@ -5,7 +5,6 @@
 
 import Foundation
 import OpenTelemetrySdk
-import Crashes
 
 public struct CrashInstrumentationConfig {
     public private(set) var enabled: Bool = true

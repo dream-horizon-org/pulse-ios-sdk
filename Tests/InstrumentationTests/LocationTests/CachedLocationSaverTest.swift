@@ -1,5 +1,5 @@
 import XCTest
-@testable import Location
+@testable import PulseKit
 
 final class CachedLocationSaverTest: XCTestCase {
     override func tearDown() {

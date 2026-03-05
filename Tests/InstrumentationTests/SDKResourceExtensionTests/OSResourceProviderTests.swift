@@ -5,7 +5,7 @@
 import Foundation
 
 import OpenTelemetrySdk
-@testable import ResourceExtension
+@testable import PulseKit
 import XCTest
 
 #if canImport(UIKit)

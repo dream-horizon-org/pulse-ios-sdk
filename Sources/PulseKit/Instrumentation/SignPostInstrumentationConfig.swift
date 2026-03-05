@@ -5,7 +5,6 @@
 
 import Foundation
 import OpenTelemetrySdk
-import SignPostIntegration
 
 public struct SignPostInstrumentationConfig {
     public private(set) var enabled: Bool = true

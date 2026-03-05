@@ -6,7 +6,9 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+#if canImport(OpenTelemetryProtocolExporterCommon)
 import OpenTelemetryProtocolExporterCommon
+#endif
 
 #if canImport(FoundationNetworking)
   import FoundationNetworking

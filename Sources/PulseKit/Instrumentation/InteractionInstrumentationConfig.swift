@@ -5,7 +5,6 @@
 
 import Foundation
 import OpenTelemetrySdk
-import InteractionInstrumentation
 
 /// Configuration for Interaction Instrumentation in PulseKit DSL
 public struct InteractionInstrumentationConfig {

@@ -6,7 +6,6 @@
 import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
-import NetworkStatus
 
 internal class NetworkAttributesSpanProcessor: SpanProcessor {
     var isStartRequired: Bool = true
