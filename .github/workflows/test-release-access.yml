@@ -15,15 +15,12 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - name: Setup git credentials
-        run: |
-          echo "https://x-access-token:${{ secrets.RELEASE_REPO_TOKEN }}@github.com" > ~/.git-credentials
-          git config --global credential.helper store
-
       - name: Clone release repo
-        run: |
-          git clone https://github.com/${{ env.RELEASE_REPO }}.git test-clone
-          echo "::notice::Clone succeeded"
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.RELEASE_REPO }}
+          token: ${{ secrets.RELEASE_REPO_TOKEN }}
+          path: test-clone
 
       - name: Test push access
         run: |
