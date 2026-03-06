@@ -122,9 +122,11 @@ jobs:
         # Swap podspec to use vendored framework instead of source files
         sed -i '' '/spec.source_files/,/\]/d' PulseKit.podspec
         sed -i '' '/spec.exclude_files/,/\]/d' PulseKit.podspec
-        sed -i '' '/spec.pod_target_xcconfig/d' PulseKit.podspec
-        sed -i '' '/spec.ios.deployment_target/a\
-          spec.vendored_frameworks = "build/PulseKit.xcframework"' PulseKit.podspec
+        sed -i '' 's|.*spec.pod_target_xcconfig.*|  spec.vendored_frameworks = "build/PulseKit.xcframework"|' PulseKit.podspec
+
+        echo "::group::Modified PulseKit.podspec"
+        cat PulseKit.podspec
+        echo "::endgroup::"
 
         cd Examples/PulseIOSExample
         pod install
