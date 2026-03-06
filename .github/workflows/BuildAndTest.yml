@@ -117,6 +117,25 @@ jobs:
         find build/PulseKit.xcframework -name "PulseKit" -type f | while read f; do
           echo "  $f: $(file "$f" | sed 's/.*: //')"
         done
+    - name: Test XCFramework with Example App
+      run: |
+        # Swap podspec to use vendored framework instead of source files
+        sed -i '' '/spec.source_files/,/\]/d' PulseKit.podspec
+        sed -i '' '/spec.exclude_files/,/\]/d' PulseKit.podspec
+        sed -i '' '/spec.pod_target_xcconfig/d' PulseKit.podspec
+        sed -i '' '/spec.ios.deployment_target/a\
+          spec.vendored_frameworks = "build/PulseKit.xcframework"' PulseKit.podspec
+
+        cd Examples/PulseIOSExample
+        pod install
+
+        set -o pipefail
+        xcodebuild \
+          -workspace PulseIOSExample.xcworkspace \
+          -scheme PulseIOSExample \
+          -configuration Debug \
+          -destination 'platform=iOS Simulator,name=iPhone 16' \
+          build
 
   required-status-checks:
     needs: 
