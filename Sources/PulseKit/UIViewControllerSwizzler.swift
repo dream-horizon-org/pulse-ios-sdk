@@ -20,7 +20,9 @@ internal class UIViewControllerSwizzler {
         guard !swizzled else { return }
         
         #if os(iOS) || os(tvOS)
+        swizzleViewDidLoad()
         swizzleViewWillAppear()
+        swizzleViewIsAppearing()
         swizzleViewDidAppear()
         swizzleViewWillDisappear()
         swizzleViewDidDisappear()
@@ -30,6 +32,43 @@ internal class UIViewControllerSwizzler {
     }
 
     #if os(iOS) || os(tvOS)
+
+    /// Returns true only for VCs that belong to the main app bundle and are
+    /// not container controllers (UINavigationController, UITabBarController,
+    /// UISplitViewController). This filters out system VCs and UIKit internals
+    /// that would otherwise produce "unknown" or noisy spans.
+    private static func shouldTrack(_ viewController: UIViewController) -> Bool {
+        guard Bundle(for: type(of: viewController)) == Bundle.main else { return false }
+        guard !(viewController is UINavigationController) else { return false }
+        guard !(viewController is UITabBarController) else { return false }
+        guard !(viewController is UISplitViewController) else { return false }
+        return true
+    }
+
+    private static func swizzleViewDidLoad() {
+        guard let method = class_getInstanceMethod(UIViewController.self, #selector(UIViewController.viewDidLoad)) else {
+            return
+        }
+
+        var originalIMP: IMP?
+
+        let block: @convention(block) (UIViewController) -> Void = { viewController in
+            if shouldTrack(viewController) {
+                VisibleScreenTracker.shared.viewControllerDidLoad(viewController)
+            }
+            if let originalIMP = originalIMP {
+                let castedIMP = unsafeBitCast(
+                    originalIMP,
+                    to: (@convention(c) (UIViewController, Selector) -> Void).self
+                )
+                castedIMP(viewController, #selector(UIViewController.viewDidLoad))
+            }
+        }
+
+        let swizzledIMP = imp_implementationWithBlock(unsafeBitCast(block, to: AnyObject.self))
+        originalIMP = method_setImplementation(method, swizzledIMP)
+    }
+
     private static func swizzleViewWillAppear() {
         guard let method = class_getInstanceMethod(UIViewController.self, #selector(UIViewController.viewWillAppear(_:))) else {
             return
@@ -38,14 +77,40 @@ internal class UIViewControllerSwizzler {
         var originalIMP: IMP?
 
         let block: @convention(block) (UIViewController, Bool) -> Void = { viewController, animated in
-            VisibleScreenTracker.shared.viewControllerWillAppear(viewController)
-
+            if shouldTrack(viewController) {
+                VisibleScreenTracker.shared.viewControllerWillAppear(viewController)
+            }
             if let originalIMP = originalIMP {
                 let castedIMP = unsafeBitCast(
                     originalIMP,
                     to: (@convention(c) (UIViewController, Selector, Bool) -> Void).self
                 )
                 castedIMP(viewController, #selector(UIViewController.viewWillAppear(_:)), animated)
+            }
+        }
+
+        let swizzledIMP = imp_implementationWithBlock(unsafeBitCast(block, to: AnyObject.self))
+        originalIMP = method_setImplementation(method, swizzledIMP)
+    }
+
+    private static func swizzleViewIsAppearing() {
+        let selector = NSSelectorFromString("viewIsAppearing:")
+        guard let method = class_getInstanceMethod(UIViewController.self, selector) else {
+            return
+        }
+
+        var originalIMP: IMP?
+
+        let block: @convention(block) (UIViewController, Bool) -> Void = { viewController, animated in
+            if shouldTrack(viewController) {
+                VisibleScreenTracker.shared.viewControllerIsAppearing(viewController)
+            }
+            if let originalIMP = originalIMP {
+                let castedIMP = unsafeBitCast(
+                    originalIMP,
+                    to: (@convention(c) (UIViewController, Selector, Bool) -> Void).self
+                )
+                castedIMP(viewController, selector, animated)
             }
         }
 
@@ -61,8 +126,9 @@ internal class UIViewControllerSwizzler {
         var originalIMP: IMP?
         
         let block: @convention(block) (UIViewController, Bool) -> Void = { viewController, animated in
-            VisibleScreenTracker.shared.viewControllerDidAppear(viewController)
-            
+            if shouldTrack(viewController) {
+                VisibleScreenTracker.shared.viewControllerDidAppear(viewController)
+            }
             if let originalIMP = originalIMP {
                 let castedIMP = unsafeBitCast(
                     originalIMP,
@@ -84,8 +150,9 @@ internal class UIViewControllerSwizzler {
         var originalIMP: IMP?
 
         let block: @convention(block) (UIViewController, Bool) -> Void = { viewController, animated in
-            VisibleScreenTracker.shared.viewControllerWillDisappear(viewController)
-
+            if shouldTrack(viewController) {
+                VisibleScreenTracker.shared.viewControllerWillDisappear(viewController)
+            }
             if let originalIMP = originalIMP {
                 let castedIMP = unsafeBitCast(
                     originalIMP,
@@ -107,8 +174,9 @@ internal class UIViewControllerSwizzler {
         var originalIMP: IMP?
 
         let block: @convention(block) (UIViewController, Bool) -> Void = { viewController, animated in
-            VisibleScreenTracker.shared.viewControllerDidDisappear(viewController)
-
+            if shouldTrack(viewController) {
+                VisibleScreenTracker.shared.viewControllerDidDisappear(viewController)
+            }
             if let originalIMP = originalIMP {
                 let castedIMP = unsafeBitCast(
                     originalIMP,
@@ -123,4 +191,3 @@ internal class UIViewControllerSwizzler {
     }
     #endif
 }
-
