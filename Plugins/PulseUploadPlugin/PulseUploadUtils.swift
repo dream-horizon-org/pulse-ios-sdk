@@ -133,7 +133,7 @@ enum PulseUploadUtils {
         
         Required Arguments:
           -u, --api-url=<url>           API URL for uploading files
-          -k, --api-key=<key>           API key for authenticating API requests (sent as X-API-KEY header)
+          -k, --api-key=<key>           API key for authenticating API requests
           -p, --dsym-path=<path>       Path to dSYM file or directory to upload
           -v, --app-version=<version>  App version (e.g., 1.0.0)
           -c, --version-code=<code>    Version code (positive integer, e.g., 1)
