@@ -12,8 +12,6 @@ public struct SessionsInstrumentationConfig {
     public private(set) var maxLifetime: TimeInterval? = SessionConfigDefaults.maxLifetime
     public private(set) var backgroundInactivityTimeout: TimeInterval? = SessionConfigDefaults.backgroundInactivityTimeout
     public private(set) var shouldPersist: Bool = SessionConfigDefaults.shouldPersist
-    public private(set) var startEventName: String? = SessionConstants.sessionStartEvent
-    public private(set) var endEventName: String? = SessionConstants.sessionEndEvent
 
     public init(enabled: Bool = true) {
         self.enabled = enabled
@@ -34,14 +32,6 @@ public struct SessionsInstrumentationConfig {
     public mutating func shouldPersist(_ value: Bool) {
         self.shouldPersist = value
     }
-    
-    public mutating func startEventName(_ value: String?) {
-        self.startEventName = value
-    }
-    
-    public mutating func endEventName(_ value: String?) {
-        self.endEventName = value
-    }
 
     internal func createProcessors(baseLogProcessor: LogRecordProcessor) -> (
         otelSpanProcessor: SpanProcessor,
@@ -53,8 +43,8 @@ public struct SessionsInstrumentationConfig {
             backgroundInactivityTimeout: backgroundInactivityTimeout,
             maxLifetime: maxLifetime,
             shouldPersist: shouldPersist,
-            startEventName: startEventName,
-            endEventName: endEventName
+            startEventName: SessionConstants.sessionStartEvent,
+            endEventName: SessionConstants.sessionEndEvent
         )
         let otelManager = SessionManager(configuration: otelConfig)
         

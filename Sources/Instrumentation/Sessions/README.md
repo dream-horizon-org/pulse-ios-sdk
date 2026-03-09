@@ -29,8 +29,6 @@ PulseSDK.initialize(
             sessionsConfig.maxLifetime(4 * 60 * 60)  // 4 hours (default)
             sessionsConfig.backgroundInactivityTimeout(15 * 60)  // 15 minutes (default)
             sessionsConfig.shouldPersist(false)  // In-memory (default)
-            sessionsConfig.startEventName("session.start")  // default
-            sessionsConfig.endEventName("session.end")  // default
         }
     }
 )
@@ -45,10 +43,6 @@ Session configuration options:
 | `maxLifetime`                | `TimeInterval?` | Fixed duration in seconds after which session expires from start time | `14400` (4 hours)   |
 | `backgroundInactivityTimeout` | `TimeInterval?` | Duration in seconds after which session expires when app is in background | `900` (15 min) |
 | `shouldPersist`              | `Bool`          | Whether session should persist across app restarts                    | `false` (in-memory)  |
-| `startEventName`             | `String?`       | Event name for session.start events                                  | `"session.start"`    |
-| `endEventName`               | `String?`       | Event name for session.end events                                    | `"session.end"`      |
-
-Set `startEventName` or `endEventName` to `nil` to disable those events.
 
 ## Session Events
 
