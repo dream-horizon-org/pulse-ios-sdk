@@ -1,6 +1,6 @@
 import XCTest
 import CoreLocation
-@testable import Location
+@testable import PulseKit
 
 final class LocationReverseGeocodingTest: XCTestCase {
     private var reverseGeocoding: LocationReverseGeocoding!

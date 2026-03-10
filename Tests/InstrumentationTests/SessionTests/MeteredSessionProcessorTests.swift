@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sessions
+@testable import PulseKit
 @testable import OpenTelemetrySdk
 @testable import OpenTelemetryApi
 

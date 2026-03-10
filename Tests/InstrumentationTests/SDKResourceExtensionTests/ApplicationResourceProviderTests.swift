@@ -6,7 +6,7 @@ import Foundation
 import OpenTelemetrySdk
 import XCTest
 
-@testable import ResourceExtension
+@testable import PulseKit
 
 class ApplicationResourceProviderTests: XCTestCase {
   func testContents() {

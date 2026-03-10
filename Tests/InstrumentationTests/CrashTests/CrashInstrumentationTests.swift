@@ -6,8 +6,7 @@
 import XCTest
 import OpenTelemetrySdk
 import OpenTelemetryApi
-import Sessions
-@testable import Crashes
+@testable import PulseKit
 
 // MARK: - Mock LogRecordBuilder
 

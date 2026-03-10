@@ -229,7 +229,7 @@ class MainViewController: UIViewController {
     @objc private func trackEventTapped() {
         print("━━━ trackEventTapped ━━━")
         let timestamp = Date().timeIntervalSince1970 * 1000
-        PulseKit.shared.trackEvent(
+        Pulse.shared.trackEvent(
             name: "track_custom_event",
             observedTimeStampInMs: timestamp,
             params: [
@@ -252,7 +252,7 @@ class MainViewController: UIViewController {
             _ = try JSONSerialization.jsonObject(with: data, options: [])
         } catch {
             let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
-            PulseKit.shared.trackNonFatal(
+            Pulse.shared.trackNonFatal(
                 error: error,
                 observedTimeStampInMs: timestamp,
                 params: [
@@ -268,7 +268,7 @@ class MainViewController: UIViewController {
     
     @objc private func trackSpanTapped() {
         print("━━━ trackSpanTapped ━━━")
-        let result = PulseKit.shared.trackSpan(
+        let result = Pulse.shared.trackSpan(
             name: "track_span",
             params: [
                 "action": AttributeValue.string("track_span"),
@@ -285,7 +285,7 @@ class MainViewController: UIViewController {
     
     @objc private func startSpanTapped() {
         print("━━━ startSpanTapped ━━━")
-        let span = PulseKit.shared.startSpan(
+        let span = Pulse.shared.startSpan(
             name: "manual_created_span",
             params: [
                 "action": AttributeValue.string("start_span_1"),
@@ -331,7 +331,7 @@ class MainViewController: UIViewController {
     
     @objc private func emitOtelLogTapped() {
         print("━━━ emitOtelLogTapped ━━━")
-        guard let otel = PulseKit.shared.getOtelOrNull() else {
+        guard let otel = Pulse.shared.getOtelOrNull() else {
             print("  ERROR: OTel not initialized")
             return
         }
@@ -368,7 +368,7 @@ class MainViewController: UIViewController {
     
     @objc private func spanWithEventsTapped() {
         print("━━━ spanWithEventsTapped ━━━")
-        guard let otel = PulseKit.shared.getOtelOrNull() else {
+        guard let otel = Pulse.shared.getOtelOrNull() else {
             print("  ERROR: OTel not initialized")
             return
         }
@@ -412,7 +412,7 @@ class MainViewController: UIViewController {
     
     @objc private func nestedSpansTapped() {
         print("━━━ nestedSpansTapped ━━━")
-        guard let otel = PulseKit.shared.getOtelOrNull() else {
+        guard let otel = Pulse.shared.getOtelOrNull() else {
             print("  ERROR: OTel not initialized")
             return
         }
@@ -459,7 +459,7 @@ class MainViewController: UIViewController {
     
     @objc private func logWithThreadInfoTapped() {
         print("━━━ logWithThreadInfoTapped ━━━")
-        guard let otel = PulseKit.shared.getOtelOrNull() else {
+        guard let otel = Pulse.shared.getOtelOrNull() else {
             print("  ERROR: OTel not initialized")
             return
         }
@@ -594,7 +594,7 @@ class MainViewController: UIViewController {
     @objc private func event1Tapped() {
         print("━━━ event1Tapped ━━━")
         let timestamp = Date().timeIntervalSince1970 * 1000
-        PulseKit.shared.trackEvent(
+        Pulse.shared.trackEvent(
             name: "event1",
             observedTimeStampInMs: timestamp,
             params: [
@@ -608,7 +608,7 @@ class MainViewController: UIViewController {
     @objc private func event2Tapped() {
         print("━━━ event2Tapped ━━━")
         let timestamp = Date().timeIntervalSince1970 * 1000
-        PulseKit.shared.trackEvent(
+        Pulse.shared.trackEvent(
             name: "event2",
             observedTimeStampInMs: timestamp,
             params: [

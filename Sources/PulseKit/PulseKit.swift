@@ -1,14 +1,8 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import Crashes
-import InteractionInstrumentation
+#if canImport(OpenTelemetryProtocolExporterHttp)
 import OpenTelemetryProtocolExporterHttp
-import ResourceExtension
-import Sessions
-import URLSessionInstrumentation
-#if canImport(Location)
-import Location
 #endif
 
 // MARK: - SDK Constants
@@ -17,8 +11,8 @@ internal enum PulseKitConstants {
     static let instrumentationVersion = "1.0.0"
 }
 
-public class PulseKit {
-    public static let shared = PulseKit()
+public class Pulse {
+    public static let shared = Pulse()
 
     // Thread-safe initialization
     private let initializationQueue = DispatchQueue(label: "com.pulse.ios.sdk.initialization")
@@ -88,14 +82,14 @@ public class PulseKit {
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+            fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
         }
         return otel.loggerProvider.get(instrumentationScopeName: PulseKitConstants.instrumentationScopeName)
     }()
 
     private lazy var tracer: Tracer = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+            fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
         }
         return otel.tracerProvider.get(instrumentationName: PulseKitConstants.instrumentationScopeName, instrumentationVersion: PulseKitConstants.instrumentationVersion)
     }()
@@ -417,9 +411,9 @@ public class PulseKit {
 
         // Build SDK processor chain
         if _configuration.includeGlobalAttributes {
-            let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
+            let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulse: self)
             let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
-                pulseKit: self,
+                pulse: self,
                 nextProcessor: logProcessor
             )
             spanProcessors.append(globalAttributesSpanProcessor)
@@ -440,14 +434,12 @@ public class PulseKit {
             logProcessor = networkAttributesLogProcessor
         }
 
-        #if canImport(Location)
         if config.location.enabled {
             let locationAttributesSpanProcessor = LocationAttributesSpanAppender()
             let locationAttributesLogProcessor = LocationAttributesLogRecordProcessor(nextProcessor: logProcessor)
             spanProcessors.append(locationAttributesSpanProcessor)
             logProcessor = locationAttributesLogProcessor
         }
-        #endif
 
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
         spanProcessors.append(pulseSpanProcessor)
@@ -629,7 +621,7 @@ public class PulseKit {
         }
         guard let otel = openTelemetry else {
             
-            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+            fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
         }
         return otel
     }

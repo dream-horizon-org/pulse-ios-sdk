@@ -6,7 +6,7 @@
 #if os(iOS) && !targetEnvironment(macCatalyst)
   import CoreTelephony
   import Foundation
-  @testable import NetworkStatus
+  @testable import PulseKit
 
   import XCTest
 

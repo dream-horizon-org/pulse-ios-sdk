@@ -4,7 +4,6 @@
  */
 
 import Foundation
-import Sessions
 import OpenTelemetrySdk
 
 public struct SessionsInstrumentationConfig {

@@ -1,5 +1,5 @@
 import XCTest
-@testable import Location
+@testable import PulseKit
 import OpenTelemetryApi
 import OpenTelemetrySdk
 

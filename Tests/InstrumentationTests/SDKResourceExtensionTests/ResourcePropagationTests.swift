@@ -6,7 +6,7 @@ import Foundation
 
 import OpenTelemetryApi
 import OpenTelemetrySdk
-@testable import ResourceExtension
+@testable import PulseKit
 import XCTest
 
 class ResourcePropagationTests: XCTestCase {

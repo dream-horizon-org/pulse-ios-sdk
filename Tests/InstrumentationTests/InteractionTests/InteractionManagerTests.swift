@@ -4,7 +4,7 @@
  */
 
 import XCTest
-@testable import InteractionInstrumentation
+@testable import PulseKit
 
 /// Tests for InteractionManager
 final class InteractionManagerTests: XCTestCase {

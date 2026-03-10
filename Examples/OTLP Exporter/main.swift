@@ -12,8 +12,7 @@
   import OpenTelemetryApi
   import OpenTelemetryProtocolExporterGrpc
   import OpenTelemetrySdk
-  import ResourceExtension
-  import SignPostIntegration
+  import PulseKit
   import StdoutExporter
   import ZipkinExporter
 
