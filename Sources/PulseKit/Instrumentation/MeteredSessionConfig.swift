@@ -4,7 +4,6 @@
  */
 
 import Foundation
-import Sessions
 import OpenTelemetrySdk
 
 /// Manages metered session processors independently from OTEL session instrumentation
