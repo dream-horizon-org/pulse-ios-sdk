@@ -11,5 +11,6 @@ final class SessionConstantsTests: XCTestCase {
     XCTAssertEqual(SessionConstants.endTime, "session.end_time")
     XCTAssertEqual(SessionConstants.duration, "session.duration")
     XCTAssertEqual(SessionConstants.sessionEventNotification, "SessionEventInstrumentation.SessionEvent")
+    XCTAssertEqual(SessionConstants.meteredId, "pulse.metering.session.id")
   }
 }
