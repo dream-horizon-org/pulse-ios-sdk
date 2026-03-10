@@ -25,7 +25,7 @@ PODS:
   - OpenTelemetry-Swift-Api (2.2.0)
   - OpenTelemetry-Swift-Sdk (2.2.0):
     - OpenTelemetry-Swift-Api (= 2.2.0)
-  - PulseKit (0.0.1-beta):
+  - PulseKit (0.0.1-beta.4):
     - KSCrash (~> 2.5)
     - OpenTelemetry-Swift-Api (~> 2.2)
     - OpenTelemetry-Swift-Sdk (~> 2.2)
@@ -50,7 +50,7 @@ SPEC CHECKSUMS:
   KSCrash: 8c4464fd5da7de520f2ce4a00fdf63f169a80f18
   OpenTelemetry-Swift-Api: 0785e3b9888286449aa297c0b48269797bfcaf7f
   OpenTelemetry-Swift-Sdk: b856396d6147c01829a88ad782f481c0e1cd0966
-  PulseKit: 04f4911cc4bf4a0a50d636dbf6aff8d8fb70ea46
+  PulseKit: 22c3eae79092ae46fc4433fa544fa57ade85921f
   SwiftProtobuf: c901f00a3e125dc33cac9b16824da85682ee47da
 
 PODFILE CHECKSUM: d7e992ed53e576159ebf29036c98bb3c0f9adf17
