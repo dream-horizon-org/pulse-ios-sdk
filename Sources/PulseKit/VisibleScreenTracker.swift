@@ -20,13 +20,13 @@ internal class VisibleScreenTracker {
     private var tracer: Tracer?
 
     /// Opened at viewDidLoad (first load) or viewWillAppear (subsequent appearances).
-    /// Closed at viewDidAppear. Span name: "ViewAppeared".
+    /// Closed at viewDidAppear. Span name: "Created".
     /// Events: ViewDidLoad → ViewWillAppear → ViewIsAppearing → ViewDidAppear.
     /// Gets pulse.type = screen_load.
     private var appearingSpan: Span?
     private var appearingScreenName: String?
 
-    /// Opened in viewWillDisappear, closed in viewDidDisappear. Span name: "ViewDisappeared".
+    /// Opened in viewWillDisappear, closed in viewDidDisappear. Span name: "Stopped".
     /// Events: ViewWillDisappear → ViewDidDisappear.
     private var disappearingSpan: Span?
     private var disappearingScreenName: String?
@@ -62,7 +62,7 @@ internal class VisibleScreenTracker {
         // Start the appearing span here so ViewDidLoad is the first event.
         // Force-close any stale span without adding a closing event.
         forceEndStaleAppearingSpan()
-        startAppearingSpan(screenName: screenName, tracer: capturedTracer, firstEvent: "ViewDidLoad")
+        startAppearingSpan(spanName: "Created", screenName: screenName, tracer: capturedTracer, firstEvent: "ViewDidLoad")
     }
 
     func viewControllerWillAppear(_ viewController: UIViewController) {
@@ -82,9 +82,9 @@ internal class VisibleScreenTracker {
         }
 
         if !spanAlreadyExists {
-            // Subsequent appearance — viewDidLoad didn't fire, start the span here
+            // Re-appearance — viewDidLoad didn't fire (VC still in memory), use "Restarted"
             forceEndStaleAppearingSpan()
-            startAppearingSpan(screenName: screenName, tracer: capturedTracer, firstEvent: "ViewWillAppear")
+            startAppearingSpan(spanName: "Restarted", screenName: screenName, tracer: capturedTracer, firstEvent: "ViewWillAppear")
         }
     }
 
@@ -151,11 +151,11 @@ internal class VisibleScreenTracker {
 
     #endif
 
-    // MARK: - Appeared Span (viewDidLoad or viewWillAppear → viewDidAppear) = screen_load
+    // MARK: - Created / Restarted Span → viewDidAppear = screen_load
 
-    private func startAppearingSpan(screenName: String, tracer: Tracer?, firstEvent: String) {
+    private func startAppearingSpan(spanName: String, screenName: String, tracer: Tracer?, firstEvent: String) {
         guard let tracer = tracer else { return }
-        let span = tracer.spanBuilder(spanName: "ViewAppeared")
+        let span = tracer.spanBuilder(spanName: spanName)
             .setAttribute(key: PulseAttributes.viewControllerName, value: screenName)
             .setAttribute(key: PulseAttributes.screenName, value: screenName)
             .setNoParent()
@@ -192,11 +192,11 @@ internal class VisibleScreenTracker {
         span?.end()
     }
 
-    // MARK: - Disappeared Span (viewWillDisappear → viewDidDisappear)
+    // MARK: - Stopped Span (viewWillDisappear → viewDidDisappear)
 
     private func startDisappearingSpan(screenName: String, tracer: Tracer?) {
         guard let tracer = tracer else { return }
-        let span = tracer.spanBuilder(spanName: "ViewDisappeared")
+        let span = tracer.spanBuilder(spanName: "Stopped")
             .setAttribute(key: PulseAttributes.viewControllerName, value: screenName)
             .setAttribute(key: PulseAttributes.screenName, value: screenName)
             .setNoParent()

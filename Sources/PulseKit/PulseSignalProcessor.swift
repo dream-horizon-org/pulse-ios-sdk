@@ -51,7 +51,7 @@ internal class PulseSignalProcessor {
             else if span.name == "ViewControllerSession" {
                 pulseType = PulseAttributes.PulseTypeValues.screenSession
             }
-            else if span.name == "ViewAppeared" {
+            else if span.name == "Created" {
                 pulseType = PulseAttributes.PulseTypeValues.screenLoad
             }
             else {
