@@ -291,7 +291,10 @@ public class Pulse {
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
-        let envVarHeaders: [(String, String)]? = endpointHeaders?.map { ($0.key, $0.value) }
+        var meteredConfig = MeteredSessionConfig()
+        let meteredManager = meteredConfig.createMeteredManager()
+        let headers = meteredConfig.addMeteredSessionHeader(to: endpointHeaders, meteredManager: meteredManager)
+        let envVarHeaders: [(String, String)]? = headers.map { ($0.key, $0.value) }
 
         // URL resolution (see expectations in PulseKit README):
         // Traces/Logs/Metrics: config present → use full path from config; else → baseUrl + /v1/{traces|logs|metrics}
@@ -354,6 +357,8 @@ public class Pulse {
             baseSpanProcessor: spanProcessor,
             baseLogProcessor: baseLogProcessor,
             config: config,
+            meteredConfig: meteredConfig,
+            meteredManager: meteredManager,
             loggerProviderCustomizer: loggerProviderCustomizer
         )
 
@@ -388,6 +393,8 @@ public class Pulse {
         baseSpanProcessor: SpanProcessor,
         baseLogProcessor: LogRecordProcessor,
         config: InstrumentationConfiguration,
+        meteredConfig: MeteredSessionConfig,
+        meteredManager: SessionManager,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         let pulseSignalProcessor = PulseSignalProcessor()
@@ -441,10 +448,17 @@ public class Pulse {
         let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
-        if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
-            spanProcessors.append(sessionsProcessors.spanProcessor)
-            logProcessors = [sessionsProcessors.logProcessor]
+        if let otelProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
+            spanProcessors.append(otelProcessors.otelSpanProcessor)
+            logProcessor = otelProcessors.otelLogProcessor
         }
+        
+        let meteredProcessors = meteredConfig.createProcessors(
+            baseLogProcessor: logProcessor,
+            meteredManager: meteredManager
+        )
+        spanProcessors.append(meteredProcessors.meteredSpanProcessor)
+        logProcessors = [meteredProcessors.meteredLogProcessor]
         
         if config.interaction.enabled,
            let interactionLogProcessor = config.interaction.createLogProcessor(baseLogProcessor: logProcessors.last ?? pulseLogProcessor) {

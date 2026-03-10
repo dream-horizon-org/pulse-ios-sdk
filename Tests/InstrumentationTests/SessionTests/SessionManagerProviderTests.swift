@@ -15,7 +15,7 @@ final class SessionManagerProviderTests: XCTestCase {
   }
   
   func testRegisterAndGetInstance() {
-    let customManager = SessionManager(configuration: SessionConfig(sessionTimeout: 3600))
+    let customManager = SessionManager(configuration: SessionConfig(maxLifetime: 3600))
     SessionManagerProvider.register(sessionManager: customManager)
     
     let retrievedManager = SessionManagerProvider.getInstance()

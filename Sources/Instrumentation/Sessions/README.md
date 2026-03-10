@@ -7,247 +7,107 @@ Automatic session tracking for OpenTelemetry Swift applications. Creates unique 
 - **Automatic Session Management** - Creates and manages session lifecycles with configurable timeouts
 - **Session Events** - Emits OpenTelemetry log records for session start/end events
 - **Span Attribution** - Automatically adds session IDs to all spans via span processor
-- **Persistence** - Sessions persist across app restarts using UserDefaults
+- **Log Attribution** - Automatically adds session IDs to all log records via log processor
+- **Configurable Persistence** - Sessions can be in-memory or persisted across app restarts
+- **Background Inactivity Timeout** - Sessions can expire when app goes to background
+- **Fixed Lifetime Expiration** - Sessions expire after a fixed duration from start time
 - **Thread Safety** - All components are thread-safe for concurrent access
 
 ## Setup
 
-**Basic Setup** (default 30-minute timeout):
+Session instrumentation is configured via PulseSDK initialization in your app's `AppDelegate.swift`:
 
 ```swift
-import Sessions
-import OpenTelemetrySdk
+import PulseSDK
 
-// Record session start and end events
-let sessionInstrumentation = SessionEventInstrumentation()
-
-// Add session attributes to spans
-let sessionSpanProcessor = SessionSpanProcessor()
-let tracerProvider = TracerProviderBuilder()
-    .add(spanProcessor: sessionSpanProcessor)
-    .build()
-
-// Add session atttributes to log records
-let sessionProcessor = SessionLogRecordProcessor(
-    nextProcessor: SimpleLogRecordProcessor(logRecordExporter: ConsoleLogRecordExporter())
+PulseSDK.initialize(
+    endpointBaseUrl: "https://your-endpoint.com",
+    projectId: "your-project-id",
+    instrumentations: { config in
+        config.sessions { sessionsConfig in
+            sessionsConfig.enabled(true) // true (default)
+            sessionsConfig.maxLifetime(4 * 60 * 60)  // 4 hours (default)
+            sessionsConfig.backgroundInactivityTimeout(15 * 60)  // 15 minutes (default)
+            sessionsConfig.shouldPersist(false)  // In-memory (default)
+        }
+    }
 )
-let builder = LoggerProviderBuilder()
-  .with(processors: [sessionProcessor])
-  .with(resource: resource)
-```
-
-**Custom Configuration**:
-
-```swift
-let sessionConfig = SessionConfigBuilder()
-    .with(sessionTimeout: 45 * 60) // 45 minutes
-    .build()
-let sessionManager = SessionManager(configuration: sessionConfig)
-SessionManagerProvider.register(sessionManager: sessionManager)
-```
-
-**Getting Session Information**:
-
-```swift
-// Get current session (extends session if active)
-let session = SessionManagerProvider.getInstance().getSession()
-print("Session ID: \(session.id)")
-
-// Peek at session without extending it
-if let session = SessionManagerProvider.getInstance().peekSession() {
-    print("Current session: \(session.id)")
-}
-```
-
-## Components
-
-### SessionManager
-
-Manages session lifecycle with automatic expiration and renewal.
-
-```swift
-let manager = SessionManager(configuration: SessionConfig(sessionTimeout: 1800))
-let session = manager.getSession() // Creates or extends session
-let session = manager.peekSession() // Peek without extending
-```
-
-### SessionManagerProvider
-
-Provides thread-safe singleton access to SessionManager.
-
-```swift
-// Register a custom session manager
-let manager = SessionManager(configuration: SessionConfig(sessionTimeout: 3600))
-SessionManagerProvider.register(sessionManager: manager)
-
-// Access from anywhere
-let session = SessionManagerProvider.getInstance().getSession()
-```
-
-### SessionSpanProcessor
-
-Automatically adds session IDs to all spans.
-
-```swift
-let processor = SessionSpanProcessor(sessionManager: sessionManager)
-// Adds session.id and session.previous_id attributes to spans
-```
-
-### SessionLogRecordProcessor
-
-Automatically adds session IDs to all log records.
-
-```swift
-let processor = SessionLogRecordProcessor(nextProcessor: yourProcessor)
-// Adds session.id and session.previous_id attributes to log records
-```
-
-### SessionEventInstrumentation
-
-Creates OpenTelemetry log records for session lifecycle events.
-
-```swift
-let instrumentation = SessionEventInstrumentation()
-// Emits session.start and session.end log records
-```
-
-### Session Model
-
-Represents a session with ID, timestamps, and expiration logic.
-
-```swift
-let session = Session(
-    id: "unique-session-id",
-    expireTime: Date(timeIntervalSinceNow: 1800),
-    previousId: "previous-session-id"
-)
-
-print("Expired: \(session.isExpired())")
-print("Duration: \(session.duration ?? 0)")
 ```
 
 ## Configuration
 
-### SessionConfig
+Session configuration options:
 
-| Field            | Type  | Description                                                        | Default         | Required |
-| ---------------- | ----- | ------------------------------------------------------------------ | --------------- | -------- |
-| `sessionTimeout` | `TimeInterval` | Duration in seconds after which a session expires if left inactive | `1800` (30 min) | No       |
-
-```swift
-let config = SessionConfigBuilder()
-    .with(sessionTimeout: 30 * 60)
-    .build()
-```
-
-### Session Timeout Behavior
-
-- Sessions automatically expire after the configured timeout period of inactivity
-- Accessing a session via `getSession()` extends the expiration time
-- Expired sessions trigger `session.end` events and create new sessions with `previous_id` links
+| Field                        | Type            | Description                                                          | Default              |
+| ---------------------------- | --------------- | -------------------------------------------------------------------- | -------------------- |
+| `maxLifetime`                | `TimeInterval?` | Fixed duration in seconds after which session expires from start time | `14400` (4 hours)   |
+| `backgroundInactivityTimeout` | `TimeInterval?` | Duration in seconds after which session expires when app is in background | `900` (15 min) |
+| `shouldPersist`              | `Bool`          | Whether session should persist across app restarts                    | `false` (in-memory)  |
 
 ## Session Events
 
-Emits OpenTelemetry log records following semantic conventions:
+Session lifecycle events are emitted as OpenTelemetry log records:
 
-### Session Start
+### Session Start Event
 
-A `session.start` log record is created when a new session begins.
+Emitted when a new session begins.
 
-**Example session.start Event**:
+| Attribute             | Type   | Description                                   |
+| --------------------- | ------ | --------------------------------------------- |
+| `session.id`          | string | Unique identifier for the current session     |
+| `session.start_time`  | double | Session start time in nanoseconds since epoch |
+| `session.previous_id` | string | Identifier of the previous session (if any)   |
 
-```json
-{
-  "body": "session.start",
-  "attributes": {
-    "session.id": "550e8400-e29b-41d4-a716-446655440000",
-    "session.start_time": 1692123456789000000,
-    "session.previous_id": "71260ACC-5286-455F-9955-5DA8C5109A07"
-  }
-}
-```
+### Session End Event
 
-**Session Start Attributes**:
+Emitted when a session expires.
 
-| Attribute             | Type   | Description                                   | Example                                  |
-| --------------------- | ------ | --------------------------------------------- | ---------------------------------------- |
-| `session.id`          | string | Unique identifier for the current session     | `"550e8400-e29b-41d4-a716-446655440000"` |
-| `session.start_time`  | double | Session start time in nanoseconds since epoch | `1692123456789000000`                    |
-| `session.previous_id` | string | Identifier of the previous session (if any)   | `"71260ACC-5286-455F-9955-5DA8C5109A07"`                  |
+| Attribute             | Type   | Description                                   |
+| --------------------- | ------ | --------------------------------------------- |
+| `session.id`          | string | Unique identifier for the ended session       |
+| `session.start_time`  | double | Session start time in nanoseconds since epoch |
+| `session.end_time`    | double | Session end time in nanoseconds since epoch   |
+| `session.duration`    | double | Session duration in nanoseconds               |
+| `session.previous_id` | string | Identifier of the previous session (if any)   |
 
-### Session End
-
-A `session.end` log record is created when a session expires.
-
-**Example session.end Event**:
-
-```json
-{
-  "body": "session.end",
-  "attributes": {
-    "session.id": "550e8400-e29b-41d4-a716-446655440000",
-    "session.start_time": 1692123456789000000,
-    "session.end_time": 1692125256789000000,
-    "session.duration": 1800000000000,
-    "session.previous_id": "71260ACC-5286-455F-9955-5DA8C5109A07"
-  }
-}
-```
-
-**Session End Attributes**:
-
-| Attribute             | Type   | Description                                   | Example                                  |
-| --------------------- | ------ | --------------------------------------------- | ---------------------------------------- |
-| `session.id`          | string | Unique identifier for the ended session       | `"550e8400-e29b-41d4-a716-446655440000"` |
-| `session.start_time`  | double | Session start time in nanoseconds since epoch | `1692123456789000000`                    |
-| `session.end_time`    | double | Session end time in nanoseconds since epoch   | `1692125256789000000`                    |
-| `session.duration`    | double | Session duration in nanoseconds               | `1800000000000` (30 minutes)             |
-| `session.previous_id` | string | Identifier of the previous session (if any)   | `"71260ACC-5286-455F-9955-5DA8C5109A07"`                  |
+**Timestamp Behavior**: 
+- For normal expiration: `session.end_time` is set to the session's expiration time (start time + maxLifetime)
+- For background expiration: `session.end_time` is set to the time when the app went to background.
 
 ## Span and Log Attribution
 
-`SessionSpanProcessor` and `SessionLogRecordProcessor` automatically add session attributes to all spans and log records:
+Session attributes are automatically added to all spans and log records:
 
-| Attribute             | Type   | Description                                  | Example                                  |
-| --------------------- | ------ | -------------------------------------------- | ---------------------------------------- |
-| `session.id`          | string | Current active session identifier            | `"550e8400-e29b-41d4-a716-446655440000"` |
-| `session.previous_id` | string | Previous session identifier (when available) | `"71260ACC-5286-455F-9955-5DA8C5109A07"`                  |
+| Attribute             | Type   | Description                                  |
+| --------------------- | ------ | -------------------------------------------- |
+| `session.id`          | string | Current active session identifier            |
+| `session.previous_id` | string | Previous session identifier (when available) |
 
-**Special Handling**: For `session.start` and `session.end` log records, the processors preserve the existing session attributes rather than overriding them with current session data, ensuring historical accuracy of session events.
+Session lifecycle events (`session.start` and `session.end`) already have their session attributes set and are not modified by the processors.
 
-## Best Practices
+## Session Behavior
 
-1. **Use SessionManagerProvider** - Register your session manager as a singleton for consistent access
-2. **Configure Appropriate Timeouts** - Set session timeouts based on your app's usage patterns
-3. **Add Span Processor Early** - Register the SessionSpanProcessor before creating spans
-4. **Handle Session Events** - Set up SessionEventInstrumentation to capture session lifecycle
+### Session Creation
 
-## Persistence
+Sessions are created when the first span or log is emitted after SDK initialization or when an existing session expires.
 
-Sessions are automatically persisted to UserDefaults and restored on app restart:
+### Expiration
 
-- Active sessions continue from their previous state
-- Expired sessions create new sessions with proper `previous_id` linking
-- Session data is saved periodically (every 30 seconds) to minimize disk I/O
+Sessions expire when either condition is met:
+- **Fixed Lifetime**: Current time exceeds the session's `expireTime` (start time + maxLifetime). The expiration time is fixed at session creation and does not extend with activity.
+- **Background Inactivity**: App is in background longer than `backgroundInactivityTimeout`. The session expires when the app returns to foreground after exceeding the timeout.
 
-## Thread Safety
+### App Kill Scenarios
 
-All components are designed for concurrent access:
+- **App Killed (shouldPersist: false)**: Session is lost. On next launch, a new session is created when the first span/log is emitted.
+- **App Killed (shouldPersist: true)**: 
+  - If the persisted session is **not expired**: Session is restored and continues with the same ID. No events are emitted.
+  - If the persisted session is **expired**: Session is not restored. A new session is created with `session.end` event for the old session (if expired by maxLifetime) and `session.start` for the new session.
 
-- `SessionManager` uses locks for thread-safe session access
-- `SessionManagerProvider` provides thread-safe singleton access
-- `SessionStore` handles concurrent persistence operations safely
+### Persistence
 
----
+When `shouldPersist: true`, sessions are stored in UserDefaults and restored on app launch. Expired sessions are never restored. The `previous_id` attribute links consecutive sessions when a session expires.
 
-## iOS Session Behavior
+### Session ID Format
 
-Short summary of how iOS sessions behave compared to common expectations:
-
-- **When do session events fire?** Session events are emitted only when `getSession()` is called (by the first span or log) and the SDK creates or replaces a session. They are **not** fired on every app launch.
-- **First launch:** No session in memory/disk → first activity triggers `getSession()` → new session → only **session.start** (no **session.end**).
-- **Expiry:** A session is expired when **current time ≥ session’s `expireTime`**. `expireTime` is set when the session is created (`now + sessionTimeout`, e.g. 30 min) and is **extended** (rolling) every time `getSession()` is called while the session is still valid.
-- **Kill + relaunch:** Session can be restored from disk. On first activity, `refreshSession()` checks if the restored session is expired. If **expired** → **session.end** (old) + **session.start** (new). If **not expired** → same session is extended; no events.
-- **Persistence:** Sessions are stored in UserDefaults and restored on launch, so a session can survive process kill and be ended explicitly (with **session.end** and duration) on the next launch if it has expired.
-- **Single timeout:** iOS uses one inactivity timeout (no separate “background” vs “foreground” or “max lifetime” cap). As long as the app calls `getSession()` within the timeout window, the session keeps extending.
-- **Pulse integration:** Session logs set **event name** and **pulse.type** (`session.start` / `session.end`).
+32-character hexadecimal string (TraceId format, no hyphens)
