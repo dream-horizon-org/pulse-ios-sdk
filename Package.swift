@@ -24,7 +24,6 @@ let package = Package(
     .library(name: "InMemoryExporter", targets: ["InMemoryExporter"]),
     .library(name: "OTelSwiftLog", targets: ["OTelSwiftLog"]),
     .library(name: "BaggagePropagationProcessor", targets: ["BaggagePropagationProcessor"]),
-    .library(name: "Sessions", targets: ["Sessions"]),
     .executable(name: "loggingTracer", targets: ["LoggingTracer"]),
     .executable(name: "StableMetricSample", targets: ["StableMetricSample"])
   ],
@@ -120,16 +119,6 @@ let package = Package(
       ],
       path: "Sources/Contrib/Processors/BaggagePropagationProcessor"
     ),
-    .target(
-      name: "Sessions",
-      dependencies: [
-        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-
-      ],
-      path: "Sources/Instrumentation/Sessions",
-      exclude: ["README.md"]
-    ),
     .testTarget(
       name: "OTelSwiftLogTests",
       dependencies: ["OTelSwiftLog"],
@@ -173,14 +162,6 @@ let package = Package(
         "BaggagePropagationProcessor",
         "InMemoryExporter"
       ]
-    ),
-    .testTarget(
-      name: "SessionTests",
-      dependencies: [
-        "Sessions",
-        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-      ],
-      path: "Tests/InstrumentationTests/SessionTests"
     ),
     .executableTarget(
       name: "LoggingTracer",
@@ -248,17 +229,9 @@ extension Package {
       products.append(contentsOf: [
         .library(name: "JaegerExporter", targets: ["JaegerExporter"]),
         .executable(name: "simpleExporter", targets: ["SimpleExporter"]),
-        .library(name: "NetworkStatus", targets: ["NetworkStatus"]),
-        .library(name: "URLSessionInstrumentation", targets: ["URLSessionInstrumentation"]),
-        .library(name: "InteractionInstrumentation", targets: ["InteractionInstrumentation"]),
-        .library(name: "Location", targets: ["Location"]),
-        .library(name: "Crashes", targets: ["Crashes"]),
-        .library(name: "AppLifecycle", targets: ["AppLifecycle"]),
         .library(name: "ZipkinExporter", targets: ["ZipkinExporter"]),
         .executable(name: "OTLPExporter", targets: ["OTLPExporter"]),
         .executable(name: "OTLPHTTPExporter", targets: ["OTLPHTTPExporter"]),
-        .library(name: "SignPostIntegration", targets: ["SignPostIntegration"]),
-        .library(name: "ResourceExtension", targets: ["ResourceExtension"]),
         .library(name: "MetricKitInstrumentation", targets: ["MetricKitInstrumentation"]),
         .library(name: "PulseKit", targets: ["PulseKit"])
       ])
@@ -286,83 +259,15 @@ extension Package {
             .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
             "JaegerExporter",
             "ZipkinExporter",
-            "ResourceExtension", "SignPostIntegration"
+            "PulseKit"
           ],
           path: "Examples/Simple Exporter",
           exclude: ["README.md"]
         ),
-        .target(
-          name: "NetworkStatus",
-          dependencies: [
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core")
-          ],
-          path: "Sources/Instrumentation/NetworkStatus",
-          linkerSettings: [.linkedFramework("CoreTelephony", .when(platforms: [.iOS]))]
-        ),
-        .testTarget(
-          name: "NetworkStatusTests",
-          dependencies: [
-            "NetworkStatus"
-          ],
-          path: "Tests/InstrumentationTests/NetworkStatusTests"
-        ),
-        .target(
-          name: "URLSessionInstrumentation",
-          dependencies: [
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            "NetworkStatus"],
-          path: "Sources/Instrumentation/URLSession",
-          exclude: ["README.md"]
-        ),
-        .testTarget(
-          name: "URLSessionInstrumentationTests",
-          dependencies: [
-            "URLSessionInstrumentation",
-            "SharedTestUtils",
-          ],
-          path: "Tests/InstrumentationTests/URLSessionTests"
-        ),
-        .target(
-          name: "InteractionInstrumentation",
-          dependencies: [
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-          ],
-          path: "Sources/Instrumentation/Interaction",
-          exclude: ["README.md"]
-        ),
-        .target(
-          name: "Location",
-          dependencies: [
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-          ],
-          path: "Sources/Instrumentation/Location",
-          exclude: ["README.md"]
-        ),
-        .target(
-          name: "Crashes",
-          dependencies: [
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            .product(name: "Recording", package: "KSCrash"),
-            .product(name: "Filters", package: "KSCrash"),
-            "Sessions"
-          ],
-          path: "Sources/Instrumentation/Crashes",
-          exclude: ["README.md"]
-        ),
-        .target(
-          name: "AppLifecycle",
-          dependencies: [
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core")
-          ],
-          path: "Sources/Instrumentation/AppLifecycle"
-        ),
         .executableTarget(
           name: "NetworkSample",
           dependencies: [
-            "URLSessionInstrumentation",
+            "PulseKit",
             .product(name: "StdoutExporter", package: "opentelemetry-swift-core")
           ],
           path: "Examples/Network Sample",
@@ -386,7 +291,7 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             "OpenTelemetryProtocolExporterGrpc",
             .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
-            "ZipkinExporter", "ResourceExtension", "SignPostIntegration"
+            "ZipkinExporter", "PulseKit"
           ],
           path: "Examples/OTLP Exporter",
           exclude: ["README.md", "prometheus.yaml", "collector-config.yaml", "docker-compose.yaml", "images"]
@@ -396,34 +301,10 @@ extension Package {
           dependencies: [
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
             "OpenTelemetryProtocolExporterHttp", .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
-            "ZipkinExporter", "ResourceExtension", "SignPostIntegration",
+            "ZipkinExporter", "PulseKit",
           ],
           path: "Examples/OTLP HTTP Exporter",
           exclude: ["README.md", "collector-config.yaml", "docker-compose.yaml", "prometheus.yaml", "images"]
-        ),
-        .target(
-          name: "SignPostIntegration",
-          dependencies: [
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-          ],
-          path: "Sources/Instrumentation/SignPostIntegration",
-          exclude: ["README.md"]
-        ),
-        .target(
-          name: "ResourceExtension",
-          dependencies: [
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-          ],
-          path: "Sources/Instrumentation/SDKResourceExtension",
-          exclude: ["README.md"]
-        ),
-        .testTarget(
-          name: "ResourceExtensionTests",
-          dependencies: [
-            "ResourceExtension",
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-          ],
-          path: "Tests/InstrumentationTests/SDKResourceExtensionTests"
         ),
         .target(
           name: "MetricKitInstrumentation",
@@ -442,10 +323,72 @@ extension Package {
           ],
           path: "Tests/InstrumentationTests/MetricKitTests"
         ),
+        .target(
+          name: "PulseKit",
+          dependencies: [
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
+            .product(name: "Recording", package: "KSCrash"),
+            .product(name: "Filters", package: "KSCrash"),
+            "OpenTelemetryProtocolExporterHttp",
+            "PersistenceExporter"
+          ],
+          path: "Sources",
+          exclude: [
+            "PulseKit/README.md",
+            "PulseKit/Sampling/README.md",
+            "Instrumentation/Sessions/README.md",
+            "Instrumentation/Crashes/README.md",
+            "Instrumentation/URLSession/README.md",
+            "Instrumentation/Interaction/README.md",
+            "Instrumentation/Interaction/Internal_Interaction.md",
+            "Instrumentation/SignPostIntegration/README.md",
+            "Instrumentation/SDKResourceExtension/README.md",
+            "Instrumentation/Location/README.md",
+            "Instrumentation/AppLifecycle/README.md"
+          ],
+          sources: [
+            "PulseKit",
+            "Instrumentation/Sessions",
+            "Instrumentation/Crashes",
+            "Instrumentation/URLSession",
+            "Instrumentation/Interaction",
+            "Instrumentation/NetworkStatus",
+            "Instrumentation/SignPostIntegration",
+            "Instrumentation/SDKResourceExtension",
+            "Instrumentation/Location",
+            "Instrumentation/AppLifecycle"
+          ],
+          linkerSettings: [.linkedFramework("CoreTelephony", .when(platforms: [.iOS]))]
+        ),
+        .testTarget(
+          name: "SessionTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/SessionTests"
+        ),
+        .testTarget(
+          name: "NetworkStatusTests",
+          dependencies: [
+            "PulseKit"
+          ],
+          path: "Tests/InstrumentationTests/NetworkStatusTests"
+        ),
+        .testTarget(
+          name: "URLSessionInstrumentationTests",
+          dependencies: [
+            "PulseKit",
+            "SharedTestUtils",
+          ],
+          path: "Tests/InstrumentationTests/URLSessionTests"
+        ),
         .testTarget(
           name: "InteractionInstrumentationTests",
           dependencies: [
-            "InteractionInstrumentation",
+            "PulseKit",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/InteractionTests"
@@ -453,7 +396,7 @@ extension Package {
         .testTarget(
           name: "LocationTests",
           dependencies: [
-            "Location",
+            "PulseKit",
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
@@ -462,8 +405,7 @@ extension Package {
         .testTarget(
           name: "CrashInstrumentationTests",
           dependencies: [
-            "Crashes",
-            "Sessions",
+            "PulseKit",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/CrashTests"
@@ -471,10 +413,26 @@ extension Package {
         .testTarget(
           name: "AppLifecycleTests",
           dependencies: [
-            "AppLifecycle",
+            "PulseKit",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/AppLifecycleTests"
+        ),
+        .testTarget(
+          name: "ResourceExtensionTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/SDKResourceExtensionTests"
+        ),
+        .testTarget(
+          name: "PulseKitTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/PulseKitTests"
         ),
         .executableTarget(
           name: "PrometheusSample",
@@ -483,35 +441,6 @@ extension Package {
             "PrometheusExporter"],
           path: "Examples/Prometheus Sample",
           exclude: ["README.md"]
-        ),
-        .target(
-          name: "PulseKit",
-          dependencies: [
-            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
-            "OpenTelemetryProtocolExporterHttp",
-            "PersistenceExporter",
-            "ResourceExtension",
-            "Sessions",
-            "URLSessionInstrumentation",
-            "NetworkStatus",
-            "SignPostIntegration",
-            "InteractionInstrumentation",
-            "Crashes",
-            "AppLifecycle",
-            "Location"
-          ],
-          path: "Sources/PulseKit"
-        ),
-        .testTarget(
-          name: "PulseKitTests",
-          dependencies: [
-            "PulseKit",
-            "Location",
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
-          ],
-          path: "Tests/PulseKitTests"
         )
       ])
     #endif

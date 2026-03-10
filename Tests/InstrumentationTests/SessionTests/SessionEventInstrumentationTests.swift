@@ -1,5 +1,5 @@
 import XCTest
-@testable import Sessions
+@testable import PulseKit
 @testable import OpenTelemetryApi
 @testable import OpenTelemetrySdk
 
@@ -72,7 +72,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
   }
 
   func testHandleNewSessionAddsToQueue() {
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
 
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 1)
     XCTAssertEqual(SessionEventInstrumentation.queue[0].session.id, sessionId1)
@@ -80,9 +80,9 @@ final class SessionEventInstrumentationTests: XCTestCase {
   }
 
   func testInstrumentationEmptiesQueue() {
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 1)
-    SessionEventInstrumentation.addSession(session: session2, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session2, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 2)
     XCTAssertFalse(SessionEventInstrumentation.isApplied)
 
@@ -96,7 +96,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
     // XCTAssertFalse(SessionEventInstrumentation.isApplied)
     _ = SessionEventInstrumentation()
 
-    SessionEventInstrumentation.addSession(session: session2, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session2, eventType: .start, eventName: SessionConstants.sessionStartEvent)
 
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 0)
   }
@@ -116,9 +116,9 @@ final class SessionEventInstrumentationTests: XCTestCase {
 
     _ = SessionEventInstrumentation()
 
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
 
-    wait(for: [expectation], timeout: 0)
+    wait(for: [expectation], timeout: 0.5)
 
     XCTAssertNotNil(receivedSessionEvent)
     XCTAssertEqual(receivedSessionEvent?.session.id, sessionId1)
@@ -127,8 +127,8 @@ final class SessionEventInstrumentationTests: XCTestCase {
   }
 
   func testMultipleInitializationDoesNotProcessQueueTwice() {
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
-    SessionEventInstrumentation.addSession(session: session2, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
+    SessionEventInstrumentation.addSession(session: session2, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 2)
     
     _ = SessionEventInstrumentation()
@@ -136,7 +136,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 0)
     
     // Second initialization should not process queue again
-    SessionEventInstrumentation.queue = [SessionEvent(session: sessionExpired, eventType: .end)]
+    SessionEventInstrumentation.queue = [SessionEvent(session: sessionExpired, eventType: .end, eventName: SessionConstants.sessionEndEvent)]
     _ = SessionEventInstrumentation()
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 1) // Queue unchanged
   }
@@ -144,16 +144,24 @@ final class SessionEventInstrumentationTests: XCTestCase {
   func testMultipleInitializationDoesNotAddDuplicateObservers() {
     _ = SessionEventInstrumentation()
     _ = SessionEventInstrumentation()
+
+    let expectation = XCTestExpectation(description: "Session event processed")
     
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
+  
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    
+    wait(for: [expectation], timeout: 0.5)
     
     let logRecords = logExporter.getFinishedLogRecords()
-    XCTAssertEqual(logRecords.count, 1)
+    XCTAssertEqual(logRecords.count, 1, "Should have exactly 1 log record, not 2 (duplicate observers would create 2)")
     XCTAssertEqual(logRecords[0].body, AttributeValue.string("session.start"))
   }
 
   func testSessionStartLogRecord() {
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     _ = SessionEventInstrumentation()
     
     let logRecords = logExporter.getFinishedLogRecords()
@@ -167,7 +175,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
   }
 
   func testSessionStartLogRecordWithPreviousId() {
-    SessionEventInstrumentation.addSession(session: session2, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session2, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     _ = SessionEventInstrumentation()
     
     let logRecords = logExporter.getFinishedLogRecords()
@@ -181,7 +189,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
   }
 
   func testSessionEndLogRecord() {
-    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end)
+    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end, eventName: SessionConstants.sessionEndEvent)
     _ = SessionEventInstrumentation()
     
     let logRecords = logExporter.getFinishedLogRecords()
@@ -197,7 +205,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
   }
   
   func testInstrumentationScopeName() {
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     _ = SessionEventInstrumentation()
     
     let logRecords = logExporter.getFinishedLogRecords()
@@ -208,14 +216,14 @@ final class SessionEventInstrumentationTests: XCTestCase {
     // Fill queue to max capacity
     for i in 0..<Int(SessionEventInstrumentation.maxQueueSize) {
       let session = Session(id: "session-\(i)", expireTime: Date().addingTimeInterval(3600))
-      SessionEventInstrumentation.addSession(session: session, eventType: .start)
+      SessionEventInstrumentation.addSession(session: session, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     }
     
     XCTAssertEqual(SessionEventInstrumentation.queue.count, Int(SessionEventInstrumentation.maxQueueSize))
     
     // Try to add one more - should be dropped
     let extraSession = Session(id: "extra-session", expireTime: Date().addingTimeInterval(3600))
-    SessionEventInstrumentation.addSession(session: extraSession, eventType: .start)
+    SessionEventInstrumentation.addSession(session: extraSession, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     
     // Queue should still be at max size, extra session dropped
     XCTAssertEqual(SessionEventInstrumentation.queue.count, Int(SessionEventInstrumentation.maxQueueSize))
@@ -237,7 +245,7 @@ final class SessionEventInstrumentationTests: XCTestCase {
       expectation.fulfill()
     }
 
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
 
     wait(for: [expectation], timeout: 0.1)
 
@@ -246,9 +254,16 @@ final class SessionEventInstrumentationTests: XCTestCase {
   
   func testSessionEventProcessingOrder() {
     // Test both before and after instrumentation application
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     _ = SessionEventInstrumentation()
-    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end)
+    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end, eventName: SessionConstants.sessionEndEvent)
+
+    // Wait for async notification processing
+    let expectation = XCTestExpectation(description: "Session events processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
 
     let logRecords = logExporter.getFinishedLogRecords()
     XCTAssertEqual(logRecords.count, 2)
@@ -270,9 +285,9 @@ final class SessionEventInstrumentationTests: XCTestCase {
   }
   
   func testMultipleSessionsProcessedInOrderAfterInstrumentation() {
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
-    SessionEventInstrumentation.addSession(session: session2, eventType: .start)
-    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
+    SessionEventInstrumentation.addSession(session: session2, eventType: .start, eventName: SessionConstants.sessionStartEvent)
+    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end, eventName: SessionConstants.sessionEndEvent)
 
     _ = SessionEventInstrumentation()
 
@@ -294,9 +309,15 @@ final class SessionEventInstrumentationTests: XCTestCase {
   func testMultipleSessionsProcessedInOrderBefore() {
     _ = SessionEventInstrumentation()
 
-    SessionEventInstrumentation.addSession(session: session1, eventType: .start)
-    SessionEventInstrumentation.addSession(session: session2, eventType: .start)
-    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end)
+    SessionEventInstrumentation.addSession(session: session1, eventType: .start, eventName: SessionConstants.sessionStartEvent)
+    SessionEventInstrumentation.addSession(session: session2, eventType: .start, eventName: SessionConstants.sessionStartEvent)
+    SessionEventInstrumentation.addSession(session: sessionExpired, eventType: .end, eventName: SessionConstants.sessionEndEvent)
+
+    let expectation = XCTestExpectation(description: "All session events processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
 
     let logRecords = logExporter.getFinishedLogRecords()
     XCTAssertEqual(logRecords.count, 3)
@@ -323,8 +344,9 @@ final class SessionEventInstrumentationTests: XCTestCase {
     // Test queue drops events when exceeding max size with mixed event types
     for i in 1...40 {
       let eventType: SessionEventType = (i % 3 == 0) ? .end : .start
+      let eventName = (eventType == .start) ? SessionConstants.sessionStartEvent : SessionConstants.sessionEndEvent
       let session = Session(id: "session-\(i)", expireTime: Date().addingTimeInterval(3600))
-      SessionEventInstrumentation.addSession(session: session, eventType: eventType)
+      SessionEventInstrumentation.addSession(session: session, eventType: eventType, eventName: eventName)
     }
 
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 32)
@@ -342,11 +364,17 @@ final class SessionEventInstrumentationTests: XCTestCase {
         id: "session-\(i)",
         expireTime: Date().addingTimeInterval(3600)
       )
-      SessionEventInstrumentation.addSession(session: session, eventType: .start)
+      SessionEventInstrumentation.addSession(session: session, eventType: .start, eventName: SessionConstants.sessionStartEvent)
     }
 
     // Queue should remain empty as sessions are processed via notifications
     XCTAssertEqual(SessionEventInstrumentation.queue.count, 0)
+
+    let expectation = XCTestExpectation(description: "All session events processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
 
     // All sessions should be processed
     let logRecords = logExporter.getFinishedLogRecords()
@@ -358,7 +386,13 @@ final class SessionEventInstrumentationTests: XCTestCase {
     let activeSession = Session(id: "active-session", expireTime: Date().addingTimeInterval(3600))
     
     _ = SessionEventInstrumentation()
-    SessionEventInstrumentation.addSession(session: activeSession, eventType: .end)
+    SessionEventInstrumentation.addSession(session: activeSession, eventType: .end, eventName: SessionConstants.sessionEndEvent)
+    
+    let expectation = XCTestExpectation(description: "Session event processed")
+    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.1) {
+      expectation.fulfill()
+    }
+    wait(for: [expectation], timeout: 0.5)
     
     // Should not create log record for active session end event
     let logRecords = logExporter.getFinishedLogRecords()

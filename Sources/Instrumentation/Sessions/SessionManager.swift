@@ -4,24 +4,96 @@
  */
 
 import Foundation
+import OpenTelemetryApi
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Manages OpenTelemetry sessions with automatic expiration and persistence.
 /// Provides thread-safe access to session information and handles session lifecycle.
 /// Sessions are automatically extended on access and persisted to UserDefaults.
+/// Supports background inactivity timeout for OTEL sessions (not metered sessions).
 public class SessionManager {
   private var configuration: SessionConfig
   private var session: Session?
   private var lock = NSLock()
-
-  /// Initializes the session manager and restores any previous session from disk
-  /// - Parameter configuration: Session configuration settings
+  private var sessionStorage: SessionStorage
+  private var defaultMaxlifetime: TimeInterval = 4 * 60 * 60
+  private var backgroundStartTime: Date?
+  private var sessionExpiredInBackground: Bool = false
+  private var backgroundObserver: NSObjectProtocol?
+  private var foregroundObserver: NSObjectProtocol?
+  
   public init(configuration: SessionConfig = .default) {
     self.configuration = configuration
+    self.sessionStorage = configuration.shouldPersist ? PersistentSessionStorage() : InMemorySessionStorage()
     restoreSessionFromDisk()
+    
+    if configuration.backgroundInactivityTimeout != nil {
+      setupAppLifecycleObservers()
+    }
+  }
+  
+  /// Cleans up notification observers when SessionManager is deallocated
+  /// This prevents memory leaks by removing observers registered with NotificationCenter
+  deinit {
+    [backgroundObserver, foregroundObserver].compactMap { $0 }.forEach {
+      NotificationCenter.default.removeObserver($0)
+    }
+  }
+  
+  /// Sets up iOS notification observers for app background/foreground transitions
+  /// Uses UIApplication.didEnterBackgroundNotification and willEnterForegroundNotification
+  private func setupAppLifecycleObservers() {
+    #if canImport(UIKit)
+    backgroundObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.didEnterBackgroundNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.lock.withLock { self?.backgroundStartTime = Date() }
+    }
+    
+    foregroundObserver = NotificationCenter.default.addObserver(
+      forName: UIApplication.willEnterForegroundNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      guard let self = self,
+            let backgroundStart = self.backgroundStartTime,
+            let timeout = self.configuration.backgroundInactivityTimeout,
+            let currentSession = self.session,
+            Date().timeIntervalSince(backgroundStart) >= timeout || currentSession.isExpired() else {
+        self?.lock.withLock { self?.backgroundStartTime = nil }
+        return
+      }
+      
+      // Session expired in background - emit session.end with background start timestamp
+      self.lock.withLock {
+        if let endEventName = self.configuration.endEventName {
+          let expiredSession = Session(
+            id: currentSession.id,
+            expireTime: backgroundStart,
+            previousId: currentSession.previousId,
+            startTime: currentSession.startTime,
+            sessionTimeout: currentSession.sessionTimeout
+          )
+          SessionEventInstrumentation.addSession(
+            session: expiredSession,
+            eventType: .end,
+            eventName: endEventName,
+            endTimestamp: backgroundStart
+          )
+        }
+        // Mark session as expired but keep it so we can use its ID as previousId for next session
+        self.sessionExpiredInBackground = true
+        self.backgroundStartTime = nil
+      }
+    }
+    #endif
   }
 
-  /// Gets the current session, creating or extending it as needed
-  /// This method is thread-safe and will extend the session expireTime time
+  /// This method is thread-safe 
   /// - Returns: The current active session
   @discardableResult
   public func getSession() -> Session {
@@ -38,42 +110,50 @@ public class SessionManager {
     return session
   }
 
-  /// Creates a new session with a unique identifier
   private func startSession() {
     let now = Date()
     let previousId = session?.id
-    let newId = UUID().uuidString
+    let newId = TraceId.random().hexString
 
-    /// Queue the previous session for a `session.end` event
-    if session != nil {
-      SessionEventInstrumentation.addSession(session: session!, eventType: .end)
+    /// Queue the previous session for a session.end event
+    if session != nil, let endEventName = configuration.endEventName, !sessionExpiredInBackground {
+        SessionEventInstrumentation.addSession(session: session!, eventType: .end, eventName: endEventName, endTimestamp: session?.expireTime)
     }
 
     session = Session(
       id: newId,
-      expireTime: now.addingTimeInterval(Double(configuration.sessionTimeout)),
+      expireTime: now.addingTimeInterval(
+        Double(
+            configuration.maxLifetime ?? defaultMaxlifetime
+        )
+      ),
       previousId: previousId,
       startTime: now,
-      sessionTimeout: configuration.sessionTimeout
+      sessionTimeout: configuration.maxLifetime ?? defaultMaxlifetime
     )
 
-    // Queue the new session for a `session.start`` event
-    SessionEventInstrumentation.addSession(session: session!, eventType: .start)
+    // Queue the new session for a session.start event
+    if let startEventName = configuration.startEventName {
+      SessionEventInstrumentation.addSession(session: session!, eventType: .start, eventName: startEventName)
+    }
   }
 
-  /// Refreshes the current session, creating new one if expired or extending existing one
+  /// Refreshes the current session, creating new one if expired
+  /// Checks both maxLifetime expiration and background inactivity timeout
   private func refreshSession() {
-    if session == nil || session!.isExpired() {
-      // Start new session if none exists or expired
+    let expiredByMaxLifetime = session == nil || session!.isExpired()
+    let expiredByBackground = sessionExpiredInBackground
+    
+    if expiredByMaxLifetime || expiredByBackground {
       startSession()
+      sessionExpiredInBackground = false
     } else {
-      // Otherwise, extend the existing session but preserve the startTime
       session = Session(
         id: session!.id,
-        expireTime: Date(timeIntervalSinceNow: Double(configuration.sessionTimeout)),
+        expireTime: session!.expireTime,
         previousId: session!.previousId,
         startTime: session!.startTime,
-        sessionTimeout: TimeInterval(configuration.sessionTimeout)
+        sessionTimeout: TimeInterval(configuration.maxLifetime ?? defaultMaxlifetime)
       )
     }
     saveSessionToDisk()
@@ -81,13 +161,13 @@ public class SessionManager {
 
   /// Schedules the current session to be persisted to UserDefaults
   private func saveSessionToDisk() {
-    if session != nil {
-      SessionStore.scheduleSave(session: session!)
+    if let currentSession = session {
+      sessionStorage.save(currentSession)
     }
   }
 
   /// Restores a previously saved session from UserDefaults
   private func restoreSessionFromDisk() {
-    session = SessionStore.load()
+      session = sessionStorage.get()
   }
 }

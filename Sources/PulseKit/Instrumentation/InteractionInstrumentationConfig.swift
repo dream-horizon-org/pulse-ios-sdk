@@ -4,7 +4,6 @@
  */
 
 import Foundation
-import InteractionInstrumentation
 import OpenTelemetrySdk
 
 /// Configuration for Interaction Instrumentation in PulseKit DSL

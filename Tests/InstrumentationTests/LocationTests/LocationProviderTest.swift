@@ -1,6 +1,6 @@
 import XCTest
 import CoreLocation
-@testable import Location
+@testable import PulseKit
 
 final class LocationProviderTest: XCTestCase {
     private var userDefaults: UserDefaults!

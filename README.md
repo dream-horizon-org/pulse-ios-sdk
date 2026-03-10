@@ -38,8 +38,11 @@ Then add PulseKit to your target:
 ```swift
 import PulseKit
 
-// Initialize PulseKit in your AppDelegate or App struct
-PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com/otlp", projectId: "your-project-id")
+// Initialize Pulse in your AppDelegate
+Pulse.shared.initialize(
+    endpointBaseUrl: "https://your-backend.com/otlp",
+    projectId: "your-project-id"
+)
 ```
 
 That's it! PulseKit automatically instruments your network requests, tracks sessions, and sends telemetry data to your backend.

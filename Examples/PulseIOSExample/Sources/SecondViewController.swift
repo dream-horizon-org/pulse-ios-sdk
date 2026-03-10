@@ -1,4 +1,6 @@
 import UIKit
+import PulseKit
+import OpenTelemetryApi
 
 class SecondViewController: UIViewController {
 
@@ -29,24 +31,53 @@ class SecondViewController: UIViewController {
         stackView.addArrangedSubview(label)
 
         let hint = UILabel()
-        hint.text = "screen.name is now \"SecondViewController\"\nlast.screen.name is \"MainViewController\""
+        hint.text = "screen.name should be \"SecondViewController\"\nlast.screen.name should be \"MainViewController\""
         hint.font = .systemFont(ofSize: 14)
         hint.textColor = .white.withAlphaComponent(0.8)
         hint.textAlignment = .center
         hint.numberOfLines = 0
         stackView.addArrangedSubview(hint)
 
-        let pushButton = UIButton(type: .system)
-        pushButton.setTitle("Push Third Screen →", for: .normal)
-        pushButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        pushButton.backgroundColor = .white
-        pushButton.setTitleColor(.systemIndigo, for: .normal)
-        pushButton.layer.cornerRadius = 8
-        pushButton.addTarget(self, action: #selector(pushThirdScreen), for: .touchUpInside)
-        stackView.addArrangedSubview(pushButton)
+        addButton(to: stackView, title: "Track Event", color: .systemOrange, action: #selector(trackEventTapped))
+        addButton(to: stackView, title: "Track Span", color: .systemGreen, action: #selector(trackSpanTapped))
+        addButton(to: stackView, title: "Push Third Screen →", color: .white, titleColor: .systemIndigo, action: #selector(pushThirdScreen))
+    }
 
-        pushButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        pushButton.widthAnchor.constraint(equalTo: stackView.widthAnchor).isActive = true
+    private func addButton(to stack: UIStackView, title: String, color: UIColor, titleColor: UIColor = .white, action: Selector) {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        button.backgroundColor = color
+        button.setTitleColor(titleColor, for: .normal)
+        button.layer.cornerRadius = 8
+        button.addTarget(self, action: action, for: .touchUpInside)
+        stack.addArrangedSubview(button)
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    }
+
+    @objc private func trackEventTapped() {
+        let timestamp = Date().timeIntervalSince1970 * 1000
+        Pulse.shared.trackEvent(
+            name: "second_screen_event",
+            observedTimeStampInMs: timestamp,
+            params: [
+                "source": AttributeValue.string("SecondViewController"),
+                "action": AttributeValue.string("button_tap")
+            ]
+        )
+        print("━━━ SecondViewController: trackEvent ━━━")
+        print("  Check screen.name attribute on this event")
+    }
+
+    @objc private func trackSpanTapped() {
+        Pulse.shared.trackSpan(name: "second_screen_span", params: [
+            "source": AttributeValue.string("SecondViewController")
+        ]) {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        print("━━━ SecondViewController: trackSpan ━━━")
+        print("  Check screen.name attribute on this span")
     }
 
     @objc private func pushThirdScreen() {

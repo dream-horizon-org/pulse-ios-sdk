@@ -6,9 +6,6 @@
 import Foundation
 import OpenTelemetrySdk
 import OpenTelemetryApi
-#if os(iOS) && !targetEnvironment(macCatalyst)
-import NetworkStatus
-#endif
 
 internal class NetworkAttributesSpanProcessor: SpanProcessor {
     var isStartRequired: Bool = true

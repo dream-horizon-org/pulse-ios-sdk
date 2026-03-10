@@ -5,7 +5,6 @@
 
 import Foundation
 import OpenTelemetrySdk
-import AppLifecycle
 
 /// Configuration for app lifecycle instrumentation.
 /// When enabled, emits `device.app.lifecycle` log events on app state transitions.

@@ -4,7 +4,7 @@
  */
 
 import Foundation
-@testable import InteractionInstrumentation
+@testable import PulseKit
 
 /// Test utilities for creating fake interaction configs and events
 enum InteractionTestUtils {

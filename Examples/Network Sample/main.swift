@@ -7,7 +7,7 @@ import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
 import StdoutExporter
-import URLSessionInstrumentation
+import PulseKit
 
 func simpleNetworkCall() {
   let url = URL(string: "http://httpbin.org/get")!

@@ -9,8 +9,7 @@
   import JaegerExporter
   import OpenTelemetryApi
   import OpenTelemetrySdk
-  import ResourceExtension
-  import SignPostIntegration
+  import PulseKit
   import StdoutExporter
   import ZipkinExporter
 

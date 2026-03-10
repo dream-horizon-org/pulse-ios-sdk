@@ -1,15 +1,8 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import Crashes
-import AppLifecycle
-import InteractionInstrumentation
+#if canImport(OpenTelemetryProtocolExporterHttp)
 import OpenTelemetryProtocolExporterHttp
-import ResourceExtension
-import Sessions
-import URLSessionInstrumentation
-#if canImport(Location)
-import Location
 #endif
 
 // MARK: - SDK Constants
@@ -18,8 +11,8 @@ internal enum PulseKitConstants {
     static let instrumentationVersion = "1.0.0"
 }
 
-public class PulseKit {
-    public static let shared = PulseKit()
+public class Pulse {
+    public static let shared = Pulse()
 
     // Thread-safe initialization
     private let initializationQueue = DispatchQueue(label: "com.pulse.ios.sdk.initialization")
@@ -89,14 +82,14 @@ public class PulseKit {
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+            fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
         }
         return otel.loggerProvider.get(instrumentationScopeName: PulseKitConstants.instrumentationScopeName)
     }()
 
     private lazy var tracer: Tracer = {
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+            fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
         }
         return otel.tracerProvider.get(instrumentationName: PulseKitConstants.instrumentationScopeName, instrumentationVersion: PulseKitConstants.instrumentationVersion)
     }()
@@ -264,6 +257,12 @@ public class PulseKit {
         let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
         return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
+    internal static func extractProjectID(from projectId: String) -> String {
+        if let lastUnderscoreIndex = projectId.lastIndex(of: "_"), lastUnderscoreIndex > projectId.startIndex {
+            return String(projectId[..<lastUnderscoreIndex])
+        }
+        return projectId
+    }
 
     /// Set default telemetry.sdk.name first, then resource callback (overrides if it sets the key)
     private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
@@ -272,7 +271,7 @@ public class PulseKit {
 
         // 1. Set default (native iOS = pulse_ios_swift)
         attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
-        attributes[PulseAttributes.projectId] = AttributeValue.string(projectId)
+        attributes[PulseAttributes.projectId] = AttributeValue.string(Self.extractProjectID(from: projectId))
 
         // 2. Resource callback can override (e.g. RN bridge sets pulse_ios_rn)
         if let resourceCustomizer = resource {
@@ -293,7 +292,10 @@ public class PulseKit {
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
-        let envVarHeaders: [(String, String)]? = endpointHeaders?.map { ($0.key, $0.value) }
+        var meteredConfig = MeteredSessionConfig()
+        let meteredManager = meteredConfig.createMeteredManager()
+        let headers = meteredConfig.addMeteredSessionHeader(to: endpointHeaders, meteredManager: meteredManager)
+        let envVarHeaders: [(String, String)]? = headers.map { ($0.key, $0.value) }
 
         // URL resolution (see expectations in PulseKit README):
         // Traces/Logs/Metrics: config present → use full path from config; else → baseUrl + /v1/{traces|logs|metrics}
@@ -356,6 +358,8 @@ public class PulseKit {
             baseSpanProcessor: spanProcessor,
             baseLogProcessor: baseLogProcessor,
             config: config,
+            meteredConfig: meteredConfig,
+            meteredManager: meteredManager,
             loggerProviderCustomizer: loggerProviderCustomizer
         )
 
@@ -390,6 +394,8 @@ public class PulseKit {
         baseSpanProcessor: SpanProcessor,
         baseLogProcessor: LogRecordProcessor,
         config: InstrumentationConfiguration,
+        meteredConfig: MeteredSessionConfig,
+        meteredManager: SessionManager,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (spanProcessors: [SpanProcessor], logProcessors: [LogRecordProcessor]) {
         let pulseSignalProcessor = PulseSignalProcessor()
@@ -408,9 +414,9 @@ public class PulseKit {
 
         // Build SDK processor chain
         if _configuration.includeGlobalAttributes {
-            let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulseKit: self)
+            let globalAttributesSpanProcessor = GlobalAttributesSpanProcessor(pulse: self)
             let globalAttributesLogProcessor = GlobalAttributesLogRecordProcessor(
-                pulseKit: self,
+                pulse: self,
                 nextProcessor: logProcessor
             )
             spanProcessors.append(globalAttributesSpanProcessor)
@@ -431,14 +437,12 @@ public class PulseKit {
             logProcessor = networkAttributesLogProcessor
         }
 
-        #if canImport(Location)
         if config.location.enabled {
             let locationAttributesSpanProcessor = LocationAttributesSpanAppender()
             let locationAttributesLogProcessor = LocationAttributesLogRecordProcessor(nextProcessor: logProcessor)
             spanProcessors.append(locationAttributesSpanProcessor)
             logProcessor = locationAttributesLogProcessor
         }
-        #endif
 
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
         spanProcessors.append(pulseSpanProcessor)
@@ -448,10 +452,17 @@ public class PulseKit {
         let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
 
-        if let sessionsProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
-            spanProcessors.append(sessionsProcessors.spanProcessor)
-            logProcessors = [sessionsProcessors.logProcessor]
+        if let otelProcessors = config.sessions.createProcessors(baseLogProcessor: pulseLogProcessor) {
+            spanProcessors.append(otelProcessors.otelSpanProcessor)
+            logProcessor = otelProcessors.otelLogProcessor
         }
+        
+        let meteredProcessors = meteredConfig.createProcessors(
+            baseLogProcessor: logProcessor,
+            meteredManager: meteredManager
+        )
+        spanProcessors.append(meteredProcessors.meteredSpanProcessor)
+        logProcessors = [meteredProcessors.meteredLogProcessor]
         
         if config.interaction.enabled,
            let interactionLogProcessor = config.interaction.createLogProcessor(baseLogProcessor: logProcessors.last ?? pulseLogProcessor) {
@@ -613,7 +624,7 @@ public class PulseKit {
             fatalError("Pulse SDK has been shut down. No further API calls are allowed.")
         }
         guard let otel = openTelemetry else {
-            fatalError("Pulse SDK is not initialized. Please call PulseKit.initialize")
+            fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
         }
         return otel
     }

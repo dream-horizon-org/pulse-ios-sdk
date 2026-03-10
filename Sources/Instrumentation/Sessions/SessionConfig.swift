@@ -5,71 +5,70 @@
 
 import Foundation
 
-/// Configuration object for session management settings.
-///
-/// Controls session behavior including timeout duration and expiration handling.
-/// Sessions automatically expire after the specified timeout period of inactivity.
-///
-/// Example:
-/// ```swift
-/// // Direct initialization
-/// let config = SessionConfig(sessionTimeout: 45 * 60) // 45 minutes
-/// 
-/// // Using builder pattern
-/// let config = SessionConfig.builder()
-///   .with(sessionTimeout: 45 * 60)
-///   .build()
-/// 
-/// let manager = SessionManager(configuration: config)
-/// ```
+/// Centralized default values for session configuration
+public struct SessionConfigDefaults {
+  public static let backgroundInactivityTimeout: TimeInterval = 15 * 60
+  public static let maxLifetime: TimeInterval = 4 * 60 * 60
+  public static let shouldPersist: Bool = false
+}
+
 public struct SessionConfig {
-  /// Duration in seconds after which a session expires if left inactive
-  public let sessionTimeout: TimeInterval
+  public let backgroundInactivityTimeout: TimeInterval?
+  public let maxLifetime: TimeInterval?
+  public let shouldPersist: Bool
+  public let startEventName: String?
+  public let endEventName: String?
   
-  /// Creates a new session configuration
-  /// - Parameter sessionTimeout: Duration in seconds after which a session expires if left inactive (default 30 minutes)
-  public init(sessionTimeout: TimeInterval = 30 * 60) {
-    self.sessionTimeout = sessionTimeout
+  public init(
+    backgroundInactivityTimeout: TimeInterval? = SessionConfigDefaults.backgroundInactivityTimeout,
+    maxLifetime: TimeInterval? = SessionConfigDefaults.maxLifetime,
+    shouldPersist: Bool = SessionConfigDefaults.shouldPersist,
+    startEventName: String? = SessionConstants.sessionStartEvent,
+    endEventName: String? = SessionConstants.sessionEndEvent
+  ) {
+    self.backgroundInactivityTimeout = backgroundInactivityTimeout
+    self.maxLifetime = maxLifetime
+    self.shouldPersist = shouldPersist
+    self.startEventName = startEventName
+    self.endEventName = endEventName
   }
   
-  /// Default configuration with 30-minute session timeout
   public static let `default` = SessionConfig()
 }
 
-/// Builder for creating SessionConfig instances with a fluent API.
-///
-/// Provides a convenient way to configure session settings using method chaining.
-///
-/// Example:
-/// ```swift
-/// let config = SessionConfig.builder()
-///   .with(sessionTimeout: 45 * 60)
-///   .build()
-/// ```
+/// Builder for SessionConfig with fluent API
 public class SessionConfigBuilder {
-  public private(set) var sessionTimeout: TimeInterval = 30 * 60
+  public private(set) var backgroundInactivityTimeout: TimeInterval? = SessionConfigDefaults.backgroundInactivityTimeout
+  public private(set) var maxLifetime: TimeInterval? = SessionConfigDefaults.maxLifetime
+  public private(set) var shouldPersist: Bool = SessionConfigDefaults.shouldPersist
   
   public init() {}
   
-  /// Sets the session timeout duration
-  /// - Parameter sessionTimeout: Duration in seconds after which a session expires if left inactive
-  /// - Returns: The builder instance for method chaining
-  public func with(sessionTimeout: TimeInterval) -> Self {
-    self.sessionTimeout = sessionTimeout
+  public func with(backgroundInactivityTimeout: TimeInterval?) -> Self {
+    self.backgroundInactivityTimeout = backgroundInactivityTimeout
     return self
   }
   
-  /// Builds the SessionConfig with the configured settings
-  /// - Returns: A new SessionConfig instance
+  public func with(maxLifetime: TimeInterval?) -> Self {
+    self.maxLifetime = maxLifetime
+    return self
+  }
+  
+  public func with(shouldPersist: Bool) -> Self {
+    self.shouldPersist = shouldPersist
+    return self
+  }
+  
   public func build() -> SessionConfig {
-    return SessionConfig(sessionTimeout: sessionTimeout)
+    return SessionConfig(
+      backgroundInactivityTimeout: backgroundInactivityTimeout,
+      maxLifetime: maxLifetime,
+      shouldPersist: shouldPersist
+    )
   }
 }
 
-/// Extension to SessionConfig for builder pattern support
 extension SessionConfig {
-  /// Creates a new SessionConfigBuilder instance
-  /// - Returns: A new builder for creating SessionConfig
   public static func builder() -> SessionConfigBuilder {
     return SessionConfigBuilder()
   }

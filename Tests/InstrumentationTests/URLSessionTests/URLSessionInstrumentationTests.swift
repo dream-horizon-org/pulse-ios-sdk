@@ -5,7 +5,7 @@
 
 @testable import OpenTelemetryApi
 @testable import OpenTelemetrySdk
-@testable import URLSessionInstrumentation
+@testable import PulseKit
 import XCTest
 import SharedTestUtils
 

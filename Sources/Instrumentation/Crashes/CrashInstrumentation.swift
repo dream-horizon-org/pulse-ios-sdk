@@ -6,16 +6,15 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
-import Sessions
 
 #if canImport(KSCrashRecording)
-  import KSCrashRecording
+  @_implementationOnly import KSCrashRecording
 #elseif canImport(KSCrash)
-  import KSCrash
+  @_implementationOnly import KSCrash
 #endif
 
 #if canImport(KSCrashFilters)
-  import KSCrashFilters
+  @_implementationOnly import KSCrashFilters
 #endif
 
 public enum CrashEventName {

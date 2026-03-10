@@ -6,7 +6,7 @@
 import XCTest
 import OpenTelemetryApi
 @testable import OpenTelemetrySdk
-@testable import AppLifecycle
+@testable import PulseKit
 
 final class AppLifecycleInstrumentationTests: XCTestCase {
 

@@ -1,4 +1,6 @@
 import UIKit
+import PulseKit
+import OpenTelemetryApi
 
 class ThirdViewController: UIViewController {
 
@@ -29,12 +31,15 @@ class ThirdViewController: UIViewController {
         stackView.addArrangedSubview(label)
 
         let hint = UILabel()
-        hint.text = "screen.name is now \"ThirdViewController\"\nlast.screen.name is \"SecondViewController\""
+        hint.text = "screen.name should be \"ThirdViewController\"\nlast.screen.name should be \"SecondViewController\""
         hint.font = .systemFont(ofSize: 14)
         hint.textColor = .white.withAlphaComponent(0.8)
         hint.textAlignment = .center
         hint.numberOfLines = 0
         stackView.addArrangedSubview(hint)
+
+        addButton(to: stackView, title: "Track Event", color: .systemOrange, action: #selector(trackEventTapped))
+        addButton(to: stackView, title: "Track Span", color: .systemGreen, action: #selector(trackSpanTapped))
 
         let info = UILabel()
         info.text = "Pop back to test screen transitions.\nEach transition updates screen.name\nand last.screen.name on all future signals."
@@ -43,5 +48,42 @@ class ThirdViewController: UIViewController {
         info.textAlignment = .center
         info.numberOfLines = 0
         stackView.addArrangedSubview(info)
+    }
+
+    private func addButton(to stack: UIStackView, title: String, color: UIColor, action: Selector) {
+        let button = UIButton(type: .system)
+        button.setTitle(title, for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
+        button.backgroundColor = color
+        button.setTitleColor(.white, for: .normal)
+        button.layer.cornerRadius = 8
+        button.addTarget(self, action: action, for: .touchUpInside)
+        stack.addArrangedSubview(button)
+        button.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        button.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    }
+
+    @objc private func trackEventTapped() {
+        let timestamp = Date().timeIntervalSince1970 * 1000
+        Pulse.shared.trackEvent(
+            name: "third_screen_event",
+            observedTimeStampInMs: timestamp,
+            params: [
+                "source": AttributeValue.string("ThirdViewController"),
+                "action": AttributeValue.string("button_tap")
+            ]
+        )
+        print("━━━ ThirdViewController: trackEvent ━━━")
+        print("  Check screen.name attribute on this event")
+    }
+
+    @objc private func trackSpanTapped() {
+        Pulse.shared.trackSpan(name: "third_screen_span", params: [
+            "source": AttributeValue.string("ThirdViewController")
+        ]) {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        print("━━━ ThirdViewController: trackSpan ━━━")
+        print("  Check screen.name attribute on this span")
     }
 }
