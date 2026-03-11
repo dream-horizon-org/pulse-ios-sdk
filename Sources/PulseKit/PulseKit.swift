@@ -190,16 +190,13 @@ public class Pulse {
             installInstrumentations(config: config, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
-            AppStateWatcher.shared.start()
-
             if _configuration.includeScreenAttributes {
                 let screenTracer = tracerProvider.get(
                     instrumentationName: PulseKitConstants.instrumentationScopeName,
                     instrumentationVersion: PulseKitConstants.instrumentationVersion
                 )
-                AppStartupTimer.shared.start(tracer: screenTracer)
                 VisibleScreenTracker.shared.start(tracer: screenTracer)
-                UIViewControllerSwizzler.swizzle()
+                UIViewControllerSwizzler.swizzle(includeLifecycleMethods: false)
             }
             #endif
 
@@ -233,7 +230,7 @@ public class Pulse {
             case .network_instrumentation:
                 config.urlSession { $0.enabled(false) }
             case .screen_session:
-                _configuration.disableScreenAttributes()
+                config.screenLifecycle { $0.enabled(false) }
             case .custom_events:
                 _customEventsEnabled = false
             case .rn_screen_load: break

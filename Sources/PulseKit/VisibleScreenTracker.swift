@@ -15,9 +15,19 @@ internal class VisibleScreenTracker {
     private var currentViewController: String?
     private var _previouslyVisibleScreen: String?
     private var isFirstScreen: Bool = true
+    /// Tracks VC appearance order so we can restore `currentViewController`
+    /// when a pageSheet modal is dismissed (underlying VC won't get viewDidAppear).
+    private var screenStack: [String] = []
     private let queue = DispatchQueue(label: "com.pulse.ios.sdk.visiblescreen")
 
     private var tracer: Tracer?
+
+    /// When true, emits Created/Restarted/Stopped/ViewControllerSession spans.
+    /// Controlled by `ScreenLifecycleInstrumentationConfig.enabled`.
+    private var _emitLifecycleSpans: Bool = false
+    /// When true, calls `AppStartupTimer.shared.end()` on first screen appearance.
+    /// Controlled by `AppStartupInstrumentationConfig.enabled`.
+    private var _emitAppStartup: Bool = false
 
     /// Opened at viewDidLoad (first load) or viewWillAppear (subsequent appearances).
     /// Closed at viewDidAppear. Span name: "Created".
@@ -37,9 +47,23 @@ internal class VisibleScreenTracker {
 
     private init() {}
 
-    /// Must be called once during SDK init to enable screen load / session spans.
+    /// Stores the tracer. Idempotent — safe to call multiple times.
     func start(tracer: Tracer) {
-        queue.sync { self.tracer = tracer }
+        queue.sync {
+            if self.tracer == nil {
+                self.tracer = tracer
+            }
+        }
+    }
+
+    /// Enable lifecycle span emission (Created/Restarted/Stopped/ViewControllerSession).
+    func enableLifecycleSpans() {
+        queue.sync { _emitLifecycleSpans = true }
+    }
+
+    /// Enable AppStartupTimer.end() call on first screen appearance.
+    func enableAppStartup() {
+        queue.sync { _emitAppStartup = true }
     }
 
     var currentlyVisibleScreen: String {
@@ -55,40 +79,36 @@ internal class VisibleScreenTracker {
     // MARK: - Swizzle Callbacks
 
     func viewControllerDidLoad(_ viewController: UIViewController) {
+        guard queue.sync(execute: { _emitLifecycleSpans }) else { return }
         let screenName = String(describing: type(of: viewController))
         let capturedTracer: Tracer? = queue.sync { tracer }
 
-        // viewDidLoad fires only on first load, before viewWillAppear.
-        // Start the appearing span here so ViewDidLoad is the first event.
-        // Force-close any stale span without adding a closing event.
         forceEndStaleAppearingSpan()
         startAppearingSpan(spanName: "Created", screenName: screenName, tracer: capturedTracer, firstEvent: "ViewDidLoad")
     }
 
     func viewControllerWillAppear(_ viewController: UIViewController) {
+        guard queue.sync(execute: { _emitLifecycleSpans }) else { return }
         let screenName = String(describing: type(of: viewController))
 
-        // Read tracer and check span existence atomically in one queue.sync
-        // to avoid a race between the check and the addEvent.
         var capturedTracer: Tracer? = nil
         var spanAlreadyExists = false
         queue.sync {
             capturedTracer = self.tracer
             if self.appearingSpan != nil && self.appearingScreenName == screenName {
-                // Span was started in viewDidLoad — just add the event
                 self.appearingSpan?.addEvent(name: "ViewWillAppear")
                 spanAlreadyExists = true
             }
         }
 
         if !spanAlreadyExists {
-            // Re-appearance — viewDidLoad didn't fire (VC still in memory), use "Restarted"
             forceEndStaleAppearingSpan()
             startAppearingSpan(spanName: "Restarted", screenName: screenName, tracer: capturedTracer, firstEvent: "ViewWillAppear")
         }
     }
 
     func viewControllerIsAppearing(_ viewController: UIViewController) {
+        guard queue.sync(execute: { _emitLifecycleSpans }) else { return }
         let screenName = String(describing: type(of: viewController))
         queue.sync {
             guard let span = appearingSpan, appearingScreenName == screenName else { return }
@@ -96,10 +116,18 @@ internal class VisibleScreenTracker {
         }
     }
 
+    /// Ends AppStart span if enabled. Safe to call for any VC (including non-tracked ones
+    /// like RCTRootViewController in React Native). Idempotent — only fires once.
+    func endAppStartIfNeeded() {
+        guard queue.sync(execute: { _emitAppStartup }) else { return }
+        AppStartupTimer.shared.end()
+    }
+
     func viewControllerDidAppear(_ viewController: UIViewController) {
         let screenName = String(describing: type(of: viewController))
 
         var capturedTracer: Tracer? = nil
+        var emitLifecycle = false
         queue.sync { [weak self] in
             guard let self = self else { return }
             if let current = self.currentViewController, current != screenName {
@@ -109,44 +137,49 @@ internal class VisibleScreenTracker {
             if self.isFirstScreen {
                 self.isFirstScreen = false
             }
+            self.screenStack.removeAll { $0 == screenName }
+            self.screenStack.append(screenName)
             capturedTracer = self.tracer
+            emitLifecycle = self._emitLifecycleSpans
         }
 
-        // Normal close — adds ViewDidAppear event and ends the span
-        normalEndAppearingSpan(screenName: screenName)
-
-        // End any previous session (e.g. tab switch where willDisappear never fired cleanly)
-        endSessionSpan()
-
-        // Start session — measures how long user stays on this screen
-        startSessionSpan(screenName: screenName, tracer: capturedTracer)
-
-        AppStartupTimer.shared.end()
+        if emitLifecycle {
+            normalEndAppearingSpan(screenName: screenName)
+            endSessionSpan()
+            startSessionSpan(screenName: screenName, tracer: capturedTracer)
+        }
     }
 
     func viewControllerWillDisappear(_ viewController: UIViewController) {
+        guard queue.sync(execute: { _emitLifecycleSpans }) else { return }
         let screenName = String(describing: type(of: viewController))
         let capturedTracer: Tracer? = queue.sync { tracer }
 
-        // End the session span — user is leaving the screen
         let current = currentlyVisibleScreen
         if screenName == current {
             endSessionSpan()
         }
 
-        // Force-close any stale disappearing span without adding a closing event,
-        // so it doesn't produce a duplicate complete-looking span in the backend.
         forceEndStaleDisappearingSpan()
-
-        // Start the disappearing span — will be closed normally in viewDidDisappear
         startDisappearingSpan(screenName: screenName, tracer: capturedTracer)
     }
 
     func viewControllerDidDisappear(_ viewController: UIViewController) {
         let screenName = String(describing: type(of: viewController))
 
-        // Normal close — adds ViewDidDisappear event and ends the span
-        normalEndDisappearingSpan(screenName: screenName)
+        if queue.sync(execute: { _emitLifecycleSpans }) {
+            normalEndDisappearingSpan(screenName: screenName)
+        }
+
+        // Always maintain the screen stack regardless of lifecycle span config.
+        // Needed for accurate screen.name tracking after pageSheet modal dismiss.
+        queue.sync {
+            screenStack.removeAll { $0 == screenName }
+            if currentViewController == screenName {
+                _previouslyVisibleScreen = currentViewController
+                currentViewController = screenStack.last
+            }
+        }
     }
 
     #endif
@@ -155,11 +188,15 @@ internal class VisibleScreenTracker {
 
     private func startAppearingSpan(spanName: String, screenName: String, tracer: Tracer?, firstEvent: String) {
         guard let tracer = tracer else { return }
+        let previousScreen: String? = queue.sync { currentViewController }
         let span = tracer.spanBuilder(spanName: spanName)
             .setAttribute(key: PulseAttributes.viewControllerName, value: screenName)
             .setAttribute(key: PulseAttributes.screenName, value: screenName)
             .setNoParent()
             .startSpan()
+        if let previousScreen = previousScreen {
+            span.setAttribute(key: PulseAttributes.lastScreenName, value: AttributeValue.string(previousScreen))
+        }
         span.addEvent(name: firstEvent)
         queue.sync {
             appearingSpan = span
@@ -196,11 +233,15 @@ internal class VisibleScreenTracker {
 
     private func startDisappearingSpan(screenName: String, tracer: Tracer?) {
         guard let tracer = tracer else { return }
+        let previousScreen: String? = queue.sync { _previouslyVisibleScreen }
         let span = tracer.spanBuilder(spanName: "Stopped")
             .setAttribute(key: PulseAttributes.viewControllerName, value: screenName)
             .setAttribute(key: PulseAttributes.screenName, value: screenName)
             .setNoParent()
             .startSpan()
+        if let previousScreen = previousScreen {
+            span.setAttribute(key: PulseAttributes.lastScreenName, value: AttributeValue.string(previousScreen))
+        }
         span.addEvent(name: "ViewWillDisappear")
         queue.sync {
             disappearingSpan = span
@@ -237,11 +278,15 @@ internal class VisibleScreenTracker {
 
     private func startSessionSpan(screenName: String, tracer: Tracer?) {
         guard let tracer = tracer else { return }
+        let previousScreen: String? = queue.sync { _previouslyVisibleScreen }
         let span = tracer.spanBuilder(spanName: "ViewControllerSession")
             .setAttribute(key: PulseAttributes.viewControllerName, value: screenName)
             .setAttribute(key: PulseAttributes.screenName, value: screenName)
             .setNoParent()
             .startSpan()
+        if let previousScreen = previousScreen {
+            span.setAttribute(key: PulseAttributes.lastScreenName, value: AttributeValue.string(previousScreen))
+        }
         queue.sync { sessionSpan = span }
     }
 

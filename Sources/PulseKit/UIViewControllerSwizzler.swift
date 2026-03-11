@@ -10,25 +10,33 @@ import ObjectiveC
 #endif
 
 internal class UIViewControllerSwizzler {
-    private static var swizzled = false
+    private static var trackingSwizzled = false
+    private static var lifecycleSwizzled = false
     private static let swizzleLock = NSLock()
-    
-    static func swizzle() {
+
+    /// Swizzle UIViewController methods selectively.
+    /// - `viewDidAppear` and `viewDidDisappear` are always swizzled (screen tracking + app startup).
+    /// - `viewDidLoad`, `viewWillAppear`, `viewIsAppearing`, `viewWillDisappear` are only
+    ///   swizzled when `includeLifecycleMethods` is true (needed for Created/Restarted/Stopped spans).
+    static func swizzle(includeLifecycleMethods: Bool) {
         swizzleLock.lock()
         defer { swizzleLock.unlock() }
-        
-        guard !swizzled else { return }
-        
+
         #if os(iOS) || os(tvOS)
-        swizzleViewDidLoad()
-        swizzleViewWillAppear()
-        swizzleViewIsAppearing()
-        swizzleViewDidAppear()
-        swizzleViewWillDisappear()
-        swizzleViewDidDisappear()
+        if !trackingSwizzled {
+            swizzleViewDidAppear()
+            swizzleViewDidDisappear()
+            trackingSwizzled = true
+        }
+
+        if includeLifecycleMethods && !lifecycleSwizzled {
+            swizzleViewDidLoad()
+            swizzleViewWillAppear()
+            swizzleViewIsAppearing()
+            swizzleViewWillDisappear()
+            lifecycleSwizzled = true
+        }
         #endif
-        
-        swizzled = true
     }
 
     #if os(iOS) || os(tvOS)
@@ -126,6 +134,9 @@ internal class UIViewControllerSwizzler {
         var originalIMP: IMP?
         
         let block: @convention(block) (UIViewController, Bool) -> Void = { viewController, animated in
+            // End AppStart for any VC — not gated by shouldTrack so it works
+            // in React Native where the host VC isn't in Bundle.main.
+            VisibleScreenTracker.shared.endAppStartIfNeeded()
             if shouldTrack(viewController) {
                 VisibleScreenTracker.shared.viewControllerDidAppear(viewController)
             }

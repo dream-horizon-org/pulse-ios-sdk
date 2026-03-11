@@ -27,6 +27,7 @@ extension AppLifecycleInstrumentationConfig: InstrumentationLifecycle {
         let logger = ctx.loggerProvider.get(
             instrumentationScopeName: PulseKitConstants.instrumentationScopeName
         )
+        AppStateWatcher.shared.start()
         let instrumentation = AppLifecycleInstrumentation(logger: logger)
         AppStateWatcher.shared.registerListener(instrumentation)
         AppLifecycleInstrumentationConfig._activeInstrumentation = instrumentation

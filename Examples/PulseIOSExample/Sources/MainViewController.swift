@@ -203,8 +203,18 @@ class MainViewController: UIViewController {
             color: .systemIndigo
         ))
         stackView.addArrangedSubview(createButton(
-            title: "Present Modal Screen",
+            title: "Present Modal (pageSheet)",
             action: #selector(presentModalScreenTapped),
+            color: .systemIndigo
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Present Modal (fullScreen)",
+            action: #selector(presentFullScreenModalTapped),
+            color: .systemIndigo
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Open TabBar (2 tabs)",
+            action: #selector(openTabBarTapped),
             color: .systemIndigo
         ))
         stackView.addArrangedSubview(createButton(
@@ -678,6 +688,31 @@ class MainViewController: UIViewController {
         dismiss(animated: true)
     }
     
+    @objc private func presentFullScreenModalTapped() {
+        print("━━━ presentFullScreenModalTapped ━━━")
+        let modal = ThirdViewController()
+        modal.title = "Full Screen Modal"
+        let nav = UINavigationController(rootViewController: modal)
+        nav.modalPresentationStyle = .fullScreen
+        modal.navigationItem.rightBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .done,
+            target: self,
+            action: #selector(dismissModal)
+        )
+        print("  fullScreen modal — MainVC WILL get viewWillDisappear")
+        print("  Unlike pageSheet where MainVC stays partially visible")
+        present(nav, animated: true)
+    }
+
+    @objc private func openTabBarTapped() {
+        print("━━━ openTabBarTapped ━━━")
+        print("  UITabBarController is filtered by shouldTrack")
+        print("  But child VCs (TabAViewController, TabBViewController) are tracked")
+        print("  Switching tabs fires viewWillDisappear/viewDidAppear = Restarted span")
+        let tabBarVC = TabBarExampleViewController()
+        present(tabBarVC, animated: true)
+    }
+
     @objc private func showLifecycleStateTapped() {
         print("━━━ showLifecycleStateTapped ━━━")
         let state = AppStateWatcher.shared.currentState
