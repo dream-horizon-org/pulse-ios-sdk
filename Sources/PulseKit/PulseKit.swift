@@ -191,14 +191,12 @@ public class Pulse {
 
             #if os(iOS) || os(tvOS)
             if _configuration.includeScreenAttributes {
-                AppStartupTimer.shared.start(
-                    tracer: tracerProvider.get(
-                        instrumentationName: PulseKitConstants.instrumentationScopeName,
-                        instrumentationVersion: PulseKitConstants.instrumentationVersion
-                    )
+                let screenTracer = tracerProvider.get(
+                    instrumentationName: PulseKitConstants.instrumentationScopeName,
+                    instrumentationVersion: PulseKitConstants.instrumentationVersion
                 )
-                
-                UIViewControllerSwizzler.swizzle()
+                VisibleScreenTracker.shared.start(tracer: screenTracer)
+                UIViewControllerSwizzler.swizzle(includeLifecycleMethods: false)
             }
             #endif
 
@@ -232,7 +230,7 @@ public class Pulse {
             case .network_instrumentation:
                 config.urlSession { $0.enabled(false) }
             case .screen_session:
-                _configuration.disableScreenAttributes()
+                config.screenLifecycle { $0.enabled(false) }
             case .custom_events:
                 _customEventsEnabled = false
             case .rn_screen_load: break
@@ -401,6 +399,7 @@ public class Pulse {
         var spanProcessors: [SpanProcessor] = []
         var logProcessor = baseLogProcessor
 
+
         // Apply customizer first, right after baseLogProcessor
         if let customizer = loggerProviderCustomizer {
             let modified = customizer([logProcessor])
@@ -408,6 +407,7 @@ public class Pulse {
                 logProcessor = firstModified
             }
         }
+
 
         // Build SDK processor chain
         if _configuration.includeGlobalAttributes {
@@ -444,6 +444,7 @@ public class Pulse {
         let pulseSpanProcessor = pulseSignalProcessor.createSpanProcessor()
         spanProcessors.append(pulseSpanProcessor)
         spanProcessors.append(baseSpanProcessor)
+
 
         let pulseLogProcessor = pulseSignalProcessor.createLogProcessor(nextProcessor: logProcessor)
         var logProcessors: [LogRecordProcessor] = [pulseLogProcessor]
@@ -620,7 +621,6 @@ public class Pulse {
             fatalError("Pulse SDK has been shut down. No further API calls are allowed.")
         }
         guard let otel = openTelemetry else {
-            
             fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
         }
         return otel
@@ -661,4 +661,5 @@ internal enum BatchProcessorDefaults {
     static let maxExportBatchSize: Int = 512
     static let exportTimeout: TimeInterval = 30
 }
+
 

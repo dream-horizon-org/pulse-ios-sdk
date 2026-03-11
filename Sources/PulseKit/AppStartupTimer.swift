@@ -61,4 +61,3 @@ internal class AppStartupTimer {
         return appStartSpan != nil && !hasEnded
     }
 }
-

@@ -30,7 +30,8 @@ Pod::Spec.new do |spec|
     "Sources/Exporters/OpenTelemetryProtocolCommon/**/*.swift",
     "Sources/Exporters/OpenTelemetryProtocolHttp/**/*.swift",
     "Sources/Exporters/Persistence/**/*.swift",
-    "Sources/Instrumentation/Location/*.swift"
+    "Sources/Instrumentation/Location/*.swift",
+    "Sources/Instrumentation/AppLifecycle/*.swift"
   ]
 
   spec.exclude_files = [
@@ -42,7 +43,8 @@ Pod::Spec.new do |spec|
     "Sources/Instrumentation/Interaction/README.md",
     "Sources/Instrumentation/Interaction/Internal_Interaction.md",
     "Sources/Instrumentation/SignPostIntegration/README.md",
-    "Sources/Exporters/Persistence/README.md"
+    "Sources/Exporters/Persistence/README.md",
+    "Sources/Instrumentation/AppLifecycle/README.md"
   ]
   
   spec.swift_version = "5.10"

@@ -6,6 +6,7 @@ public enum PulseAttributes {
     public static let pulseName = "pulse.name"
     public static let pulseSpanId = "pulse.span.id"
     public static let screenName = "screen.name"
+    public static let lastScreenName = "last.screen.name"
     public static let userId = "user.id"
     public static let appInstallationId = "app.installation.id"
     public static let pulseUserPrefix = "pulse.user"
@@ -13,6 +14,7 @@ public enum PulseAttributes {
     public static let pulseUserSessionStartEventName = "pulse.user.session.start"
     public static let pulseUserSessionEndEventName = "pulse.user.session.end"
     public static let startType = "start.type"
+    public static let viewControllerName = "view_controller.name"
     
     public static let exceptionMessage = "exception.message"
     public static let exceptionType = "exception.type"

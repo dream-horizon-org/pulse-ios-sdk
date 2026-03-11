@@ -16,11 +16,9 @@ internal class PulseSignalProcessor {
         var isStartRequired: Bool = true
         var isEndRequired: Bool = false
         
-        // TODO: iOS-specific - may need to change when iOS app start instrumentation is implemented
         private static let appStartSpanName = "AppStart"
         
         func onStart(parentContext: SpanContext?, span: ReadableSpan) {
-            // Only add if pulse.type is not already set
             let spanData = span.toSpanData()
             guard spanData.attributes[PulseAttributes.pulseType] == nil else {
                 return
@@ -45,13 +43,13 @@ internal class PulseSignalProcessor {
                     let startTypeAttr = spanData.attributes[PulseAttributes.startType],
                     case .string(let startType) = startTypeAttr,
                     startType == "cold" {
+                // Fallback: AppStartupTimer sets pulse.type at span creation,
+                // but if it arrives here without one, tag cold starts.
                 pulseType = PulseAttributes.PulseTypeValues.appStart
             }
-            // TODO: iOS-specific - ActivitySession/FragmentSession are Android-specific. Update when iOS screen session instrumentation is implemented
-            else if span.name == "ActivitySession" || span.name == "FragmentSession" {
+            else if span.name == "ViewControllerSession" {
                 pulseType = PulseAttributes.PulseTypeValues.screenSession
             }
-            // TODO: iOS-specific - "Created" is Android-specific span name. Update when iOS screen load instrumentation is implemented
             else if span.name == "Created" {
                 pulseType = PulseAttributes.PulseTypeValues.screenLoad
             }
@@ -162,7 +160,7 @@ internal class PulseSignalProcessor {
                     pulseType = PulseAttributes.PulseTypeValues.appSessionEnd
                     
                 default:
-                    pulseType = nil
+                    pulseType = eventName
                 }
             } else {
                 pulseType = nil
@@ -196,4 +194,3 @@ internal class PulseSignalProcessor {
         return PulseLogTypeAttributesAppender(parent: self, nextProcessor: nextProcessor)
     }
 }
-

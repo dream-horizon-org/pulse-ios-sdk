@@ -12,6 +12,9 @@ public struct InstrumentationConfiguration {
     private var _interaction: InteractionInstrumentationConfig = InteractionInstrumentationConfig()
     private var _location: LocationInstrumentationConfig = LocationInstrumentationConfig()
     private var _crash: CrashInstrumentationConfig = CrashInstrumentationConfig()
+    private var _appLifecycle: AppLifecycleInstrumentationConfig = AppLifecycleInstrumentationConfig()
+    private var _screenLifecycle: ScreenLifecycleInstrumentationConfig = ScreenLifecycleInstrumentationConfig()
+    private var _appStartup: AppStartupInstrumentationConfig = AppStartupInstrumentationConfig()
 
     public init() {}
 
@@ -39,12 +42,27 @@ public struct InstrumentationConfiguration {
         configure(&_crash)
     }
 
+    public mutating func appLifecycle(_ configure: (inout AppLifecycleInstrumentationConfig) -> Void) {
+        configure(&_appLifecycle)
+    }
+
+    public mutating func screenLifecycle(_ configure: (inout ScreenLifecycleInstrumentationConfig) -> Void) {
+        configure(&_screenLifecycle)
+    }
+
+    public mutating func appStartup(_ configure: (inout AppStartupInstrumentationConfig) -> Void) {
+        configure(&_appStartup)
+    }
+
     internal var urlSession: URLSessionInstrumentationConfig { _urlSession }
     internal var sessions: SessionsInstrumentationConfig { _sessions }
     internal var signPost: SignPostInstrumentationConfig { _signPost }
     internal var interaction: InteractionInstrumentationConfig { _interaction }
     internal var location: LocationInstrumentationConfig { _location }
     internal var crash: CrashInstrumentationConfig { _crash }
+    internal var appLifecycle: AppLifecycleInstrumentationConfig { _appLifecycle }
+    internal var screenLifecycle: ScreenLifecycleInstrumentationConfig { _screenLifecycle }
+    internal var appStartup: AppStartupInstrumentationConfig { _appStartup }
 
     internal var instrumentations: [InstrumentationLifecycle] {
         [
@@ -53,7 +71,10 @@ public struct InstrumentationConfiguration {
             _signPost,
             _interaction,
             _location,
-            _crash
+            _crash,
+            _appLifecycle,
+            _screenLifecycle,
+            _appStartup
         ]
     }
 }

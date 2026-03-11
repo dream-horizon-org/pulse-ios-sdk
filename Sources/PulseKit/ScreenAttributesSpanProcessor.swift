@@ -18,8 +18,14 @@ internal class ScreenAttributesSpanProcessor: SpanProcessor {
     }
     
     func onStart(parentContext: SpanContext?, span: ReadableSpan) {
-        let screenName = visibleScreenTracker.currentlyVisibleScreen
-        span.setAttribute(key: PulseAttributes.screenName, value: AttributeValue.string(screenName))
+        if span.toSpanData().attributes[PulseAttributes.screenName] == nil {
+            let screenName = visibleScreenTracker.currentlyVisibleScreen
+            span.setAttribute(key: PulseAttributes.screenName, value: AttributeValue.string(screenName))
+        }
+        if span.toSpanData().attributes[PulseAttributes.lastScreenName] == nil,
+           let previousScreen = visibleScreenTracker.previouslyVisibleScreen {
+            span.setAttribute(key: PulseAttributes.lastScreenName, value: AttributeValue.string(previousScreen))
+        }
     }
     
     func onEnd(span: any OpenTelemetrySdk.ReadableSpan) {

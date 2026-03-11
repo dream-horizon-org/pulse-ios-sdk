@@ -345,7 +345,8 @@ extension Package {
             "Instrumentation/Interaction/Internal_Interaction.md",
             "Instrumentation/SignPostIntegration/README.md",
             "Instrumentation/SDKResourceExtension/README.md",
-            "Instrumentation/Location/README.md"
+            "Instrumentation/Location/README.md",
+            "Instrumentation/AppLifecycle/README.md"
           ],
           sources: [
             "PulseKit",
@@ -356,7 +357,8 @@ extension Package {
             "Instrumentation/NetworkStatus",
             "Instrumentation/SignPostIntegration",
             "Instrumentation/SDKResourceExtension",
-            "Instrumentation/Location"
+            "Instrumentation/Location",
+            "Instrumentation/AppLifecycle"
           ],
           linkerSettings: [.linkedFramework("CoreTelephony", .when(platforms: [.iOS]))]
         ),
@@ -407,6 +409,14 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/CrashTests"
+        ),
+        .testTarget(
+          name: "AppLifecycleTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/AppLifecycleTests"
         ),
         .testTarget(
           name: "ResourceExtensionTests",
