@@ -184,6 +184,10 @@ public class Pulse {
                 endpointHeaders: endpointHeadersWithProject,
                 flushLogProcessor: { [weak self] in
                     self?.batchLogProcessor?.forceFlush()
+                },
+                projectId: projectId,
+                userIdProvider: { [weak self] in
+                    self?.userSessionEmitter.userId
                 }
             )
             self.instrumentationConfig = config
@@ -237,6 +241,8 @@ public class Pulse {
             case .rn_screen_interactive: break
             case .ios_crash:
                 config.crash { $0.enabled(false) }
+            case .session_replay:
+                config.sessionReplay { $0.enabled(false) }
             case .unknown: break
             }
         }

@@ -1,6 +1,9 @@
 import UIKit
 import PulseKit
 import OpenTelemetryApi
+#if canImport(SessionReplay)
+import SessionReplay
+#endif
 
 class MainViewController: UIViewController {
     
@@ -53,6 +56,11 @@ class MainViewController: UIViewController {
         headerLabel.font = .systemFont(ofSize: 24, weight: .bold)
         headerLabel.textAlignment = .center
         stackView.addArrangedSubview(headerLabel)
+        
+        // Add test UI elements for PII masking verification
+        #if canImport(SessionReplay)
+        addTestMaskingElements(to: stackView)
+        #endif
         
         stackView.addArrangedSubview(createSeparator())
         
@@ -225,6 +233,22 @@ class MainViewController: UIViewController {
         
         stackView.addArrangedSubview(createSeparator())
         
+        // ── Session Replay Testing ──
+        stackView.addArrangedSubview(createSectionHeader("Session Replay Testing"))
+        
+        stackView.addArrangedSubview(createButton(
+            title: "Start / Stop Recording",
+            action: #selector(toggleRecordingTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "WebP vs JPEG Comparison",
+            action: #selector(compressionComparisonTapped),
+            color: .systemPurple
+        ))
+        
+        stackView.addArrangedSubview(createSeparator())
+        
         // Status Label
         let statusLabel = UILabel()
         statusLabel.text = "SDK Status: Initialized"
@@ -235,6 +259,66 @@ class MainViewController: UIViewController {
     }
     
     // MARK: - UI Helpers
+    
+    #if canImport(SessionReplay)
+    private func addTestMaskingElements(to stackView: UIStackView) {
+        // Add some test UI elements that should be masked
+        let testSectionLabel = UILabel()
+        testSectionLabel.text = "PII Masking Test Elements"
+        testSectionLabel.font = .systemFont(ofSize: 16, weight: .semibold)
+        testSectionLabel.textColor = .systemOrange
+        testSectionLabel.textAlignment = .center
+        stackView.addArrangedSubview(testSectionLabel)
+        
+        // Test text field (should be masked by default)
+        let testTextField = UITextField()
+        testTextField.placeholder = "Enter sensitive data here"
+        testTextField.borderStyle = .roundedRect
+        testTextField.text = "This should be masked"
+        testTextField.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        stackView.addArrangedSubview(testTextField)
+        
+        // Test password field (should always be masked)
+        let passwordField = UITextField()
+        passwordField.placeholder = "Password"
+        passwordField.isSecureTextEntry = true
+        passwordField.borderStyle = .roundedRect
+        passwordField.text = "password123"
+        passwordField.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        stackView.addArrangedSubview(passwordField)
+        
+        // Test label (should be masked if textAndInputPrivacy == .maskAll)
+        let testLabel = UILabel()
+        testLabel.text = "This label text should be masked if maskAll is enabled"
+        testLabel.numberOfLines = 0
+        testLabel.font = .systemFont(ofSize: 14)
+        testLabel.textColor = .label
+        stackView.addArrangedSubview(testLabel)
+        
+        // Test image view (should be masked if imagePrivacy == .maskAll)
+        let testImageView = UIImageView()
+        testImageView.backgroundColor = .systemBlue
+        testImageView.contentMode = .scaleAspectFill
+        testImageView.clipsToBounds = true
+        testImageView.heightAnchor.constraint(equalToConstant: 100).isActive = true
+        testImageView.layer.cornerRadius = 8
+        // Create a simple colored image
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 200, height: 100))
+        testImageView.image = renderer.image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(origin: .zero, size: CGSize(width: 200, height: 100)))
+        }
+        stackView.addArrangedSubview(testImageView)
+        
+        let infoLabel = UILabel()
+        infoLabel.text = "These elements above should be masked in screenshots."
+        infoLabel.font = .systemFont(ofSize: 12)
+        infoLabel.textColor = .secondaryLabel
+        infoLabel.textAlignment = .center
+        infoLabel.numberOfLines = 0
+        stackView.addArrangedSubview(infoLabel)
+    }
+    #endif
     
     private func createButton(title: String, action: Selector, color: UIColor = .systemBlue) -> UIButton {
         let button = UIButton(type: .system)
@@ -721,6 +805,107 @@ class MainViewController: UIViewController {
         showAlert(title: "Lifecycle State: \(state.rawValue)", message: message)
     }
     
+    // MARK: - Session Replay Testing
+    
+    @objc private func toggleRecordingTapped() {
+        print("━━━ toggleRecordingTapped ━━━")
+        #if canImport(SessionReplay)
+        if let recorder = SessionReplayInstrumentation.getInstance()?.recorderInstance {
+            if recorder.isRecording {
+                recorder.stop()
+                print("  Recording stopped")
+                showAlert(title: "Recording Stopped", message: "Session replay recording has been stopped")
+            } else {
+                recorder.start()
+                print("  Recording started")
+                showAlert(title: "Recording Started", message: "Session replay recording has been started")
+            }
+        } else {
+            print("  ERROR: SessionReplayInstrumentation not initialized")
+            showAlert(title: "Not Initialized", message: "Session replay recorder is not available. Make sure session replay is enabled in SDK configuration.")
+        }
+        #else
+        showAlert(title: "Not Available", message: "SessionReplay module is not available")
+        #endif
+    }
+    
+    // MARK: - Debug Masking
+    
+    
+    // MARK: - Compression Comparison
+    
+    @objc private func compressionComparisonTapped() {
+        print("━━━ compressionComparisonTapped ━━━")
+        #if canImport(SessionReplay)
+        // Capture a screenshot of the current window and compare WebP vs JPEG at multiple quality levels
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self = self else { return }
+            guard let window = self.view.window else {
+                self.showAlert(title: "Error", message: "No window available for capture")
+                return
+            }
+            
+            // Capture full-resolution screenshot
+            let bounds = window.bounds
+            guard bounds.width > 0 && bounds.height > 0 else {
+                self.showAlert(title: "Error", message: "Invalid window bounds")
+                return
+            }
+            
+            let renderer = UIGraphicsImageRenderer(bounds: bounds)
+            let fullImage = renderer.image { _ in
+                window.drawHierarchy(in: bounds, afterScreenUpdates: false)
+            }
+            
+            // Also capture at 0.5x scale (what Session Replay actually uses)
+            let halfSize = CGSize(width: fullImage.size.width * 0.5, height: fullImage.size.height * 0.5)
+            let halfRenderer = UIGraphicsImageRenderer(size: halfSize)
+            let halfImage = halfRenderer.image { _ in
+                fullImage.draw(in: CGRect(origin: .zero, size: halfSize))
+            }
+            
+            let qualities: [CGFloat] = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
+            var report = "📊 Compression Report\n"
+            report += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            report += "Image: \(Int(halfImage.size.width))×\(Int(halfImage.size.height)) (0.5x scale)\n"
+            report += "Original: \(Int(fullImage.size.width))×\(Int(fullImage.size.height))\n\n"
+            
+            var alertMessage = ""
+            
+            for quality in qualities {
+                guard let result = SessionReplayCompressor.compress(
+                    image: halfImage,
+                    quality: quality
+                ) else {
+                    report += "Quality \(Int(quality * 100))%: FAILED\n"
+                    continue
+                }
+                
+                let qualityPct = Int(quality * 100)
+                let sizeKB = String(format: "%.1f", Double(result.data.count) / 1024.0)
+                report += "Quality \(qualityPct)%: \(result.format.rawValue.uppercased()) — \(result.data.count) bytes (\(sizeKB) KB)\n"
+                
+                if quality == 0.3 {
+                    alertMessage = "At quality 30% (SDK default):\n"
+                    alertMessage += "\(result.format.rawValue.uppercased()): \(sizeKB) KB"
+                }
+            }
+            
+            print(report)
+            
+            if alertMessage.isEmpty {
+                alertMessage = "Compression failed for all quality levels."
+            } else {
+                alertMessage += "\n\nSee console for all quality levels."
+            }
+            
+            self.showAlert(title: "Compression Report", message: alertMessage)
+        }
+        #else
+        showAlert(title: "Not Available", message: "SessionReplay module is not available")
+        #endif
+    }
+    
     // MARK: - Helpers
     
     private func confirmCrash(type: String, action: @escaping () -> Void) {
@@ -747,3 +932,300 @@ class MainViewController: UIViewController {
         present(alert, animated: true)
     }
 }
+
+#if canImport(SessionReplay)
+// MARK: - Session Replay Frame Viewer
+
+/// View controller that displays captured session replay frames in a scrollable grid.
+class SessionReplayFrameViewerViewController: UIViewController {
+    private let frames: [SessionReplayFrame]
+    private var collectionView: UICollectionView!
+    
+    init(frames: [SessionReplayFrame]) {
+        self.frames = frames
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+    }
+    
+    private func setupUI() {
+        title = "Captured Frames (\(frames.count))"
+        view.backgroundColor = .systemBackground
+        
+        // Close button
+        navigationItem.leftBarButtonItem = UIBarButtonItem(
+            barButtonSystemItem: .close,
+            target: self,
+            action: #selector(closeTapped)
+        )
+        
+        // Collection view layout
+        let layout = UICollectionViewFlowLayout()
+        layout.minimumInteritemSpacing = 10
+        layout.minimumLineSpacing = 10
+        layout.sectionInset = UIEdgeInsets(top: 10, left: 10, bottom: 10, right: 10)
+        
+        // Calculate item size (2 columns)
+        let screenWidth = view.bounds.width
+        let itemWidth = (screenWidth - 30) / 2 // 30 = 2*10 (insets) + 10 (spacing)
+        layout.itemSize = CGSize(width: itemWidth, height: itemWidth * 1.5) // 2:3 aspect ratio
+        
+        collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+        collectionView.translatesAutoresizingMaskIntoConstraints = false
+        collectionView.backgroundColor = .systemBackground
+        collectionView.delegate = self
+        collectionView.dataSource = self
+        collectionView.register(FrameCell.self, forCellWithReuseIdentifier: "FrameCell")
+        
+        view.addSubview(collectionView)
+        NSLayoutConstraint.activate([
+            collectionView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+    }
+    
+    @objc private func closeTapped() {
+        dismiss(animated: true)
+    }
+}
+
+extension SessionReplayFrameViewerViewController: UICollectionViewDataSource {
+    func collectionView(_ collectionView: UICollectionView, numberOfItemsInSection section: Int) -> Int {
+        return frames.count
+    }
+    
+    func collectionView(_ collectionView: UICollectionView, cellForItemAt indexPath: IndexPath) -> UICollectionViewCell {
+        let cell = collectionView.dequeueReusableCell(withReuseIdentifier: "FrameCell", for: indexPath) as! FrameCell
+        let frame = frames[indexPath.item]
+        cell.configure(with: frame)
+        return cell
+    }
+}
+
+extension SessionReplayFrameViewerViewController: UICollectionViewDelegate {
+    func collectionView(_ collectionView: UICollectionView, didSelectItemAt indexPath: IndexPath) {
+        let frame = frames[indexPath.item]
+        let detailVC = SessionReplayFrameDetailViewController(frame: frame)
+        navigationController?.pushViewController(detailVC, animated: true)
+    }
+}
+
+// MARK: - Frame Cell
+
+class FrameCell: UICollectionViewCell {
+    private let imageView = UIImageView()
+    private let infoLabel = UILabel()
+    private let timestampLabel = UILabel()
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupUI()
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    private func setupUI() {
+        contentView.backgroundColor = .secondarySystemBackground
+        contentView.layer.cornerRadius = 8
+        contentView.layer.masksToBounds = true
+        
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.backgroundColor = .tertiarySystemBackground
+        
+        infoLabel.font = .systemFont(ofSize: 10)
+        infoLabel.textColor = .secondaryLabel
+        infoLabel.textAlignment = .center
+        infoLabel.numberOfLines = 2
+        
+        timestampLabel.font = .systemFont(ofSize: 9)
+        timestampLabel.textColor = .tertiaryLabel
+        timestampLabel.textAlignment = .center
+        timestampLabel.numberOfLines = 1
+        
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        infoLabel.translatesAutoresizingMaskIntoConstraints = false
+        timestampLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        contentView.addSubview(imageView)
+        contentView.addSubview(infoLabel)
+        contentView.addSubview(timestampLabel)
+        
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            imageView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            imageView.heightAnchor.constraint(equalTo: contentView.heightAnchor, multiplier: 0.75),
+            
+            infoLabel.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 4),
+            infoLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            infoLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            
+            timestampLabel.topAnchor.constraint(equalTo: infoLabel.bottomAnchor, constant: 2),
+            timestampLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 4),
+            timestampLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -4),
+            timestampLabel.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -4)
+        ])
+    }
+    
+    func configure(with frame: SessionReplayFrame) {
+        // Decode image from data
+        if let image = UIImage(data: frame.imageData) {
+            imageView.image = image
+        } else {
+            imageView.image = nil
+            imageView.backgroundColor = .systemRed
+        }
+        
+        // Format info
+        let sizeKB = frame.imageData.count / 1024
+        infoLabel.text = "\(frame.format.rawValue.uppercased())\n\(frame.width)×\(frame.height) • \(sizeKB) KB"
+        
+        // Format timestamp
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        timestampLabel.text = formatter.string(from: frame.timestamp)
+    }
+}
+
+// MARK: - Frame Detail View Controller
+
+class SessionReplayFrameDetailViewController: UIViewController {
+    private let frame: SessionReplayFrame
+    private let scrollView = UIScrollView()
+    private let imageView = UIImageView()
+    private let infoStackView = UIStackView()
+    
+    init(frame: SessionReplayFrame) {
+        self.frame = frame
+        super.init(nibName: nil, bundle: nil)
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        setupUI()
+    }
+    
+    private func setupUI() {
+        title = "Frame Details"
+        view.backgroundColor = .systemBackground
+        
+        // Decode and display image
+        if let image = UIImage(data: frame.imageData) {
+            imageView.image = image
+            imageView.contentMode = .scaleAspectFit
+            imageView.backgroundColor = .black
+        } else {
+            imageView.backgroundColor = .systemRed
+            let label = UILabel()
+            label.text = "Failed to decode image"
+            label.textColor = .white
+            label.textAlignment = .center
+            imageView.addSubview(label)
+            label.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                label.centerXAnchor.constraint(equalTo: imageView.centerXAnchor),
+                label.centerYAnchor.constraint(equalTo: imageView.centerYAnchor)
+            ])
+        }
+        
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        
+        view.addSubview(scrollView)
+        scrollView.addSubview(imageView)
+        
+        // Info labels
+        infoStackView.axis = .vertical
+        infoStackView.spacing = 8
+        infoStackView.alignment = .leading
+        infoStackView.translatesAutoresizingMaskIntoConstraints = false
+        
+        let formatLabel = createInfoLabel(title: "Format", value: frame.format.rawValue.uppercased())
+        let sizeLabel = createInfoLabel(title: "Dimensions", value: "\(frame.width) × \(frame.height) pixels")
+        let dataSizeLabel = createInfoLabel(title: "Data Size", value: "\(frame.imageData.count) bytes (\(frame.imageData.count / 1024) KB)")
+        let sessionLabel = createInfoLabel(title: "Session ID", value: frame.sessionId)
+        let screenLabel = createInfoLabel(title: "Screen", value: frame.screenName)
+        
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        let timestampLabel = createInfoLabel(title: "Timestamp", value: formatter.string(from: frame.timestamp))
+        
+        infoStackView.addArrangedSubview(formatLabel)
+        infoStackView.addArrangedSubview(sizeLabel)
+        infoStackView.addArrangedSubview(dataSizeLabel)
+        infoStackView.addArrangedSubview(sessionLabel)
+        infoStackView.addArrangedSubview(screenLabel)
+        infoStackView.addArrangedSubview(timestampLabel)
+        
+        scrollView.addSubview(infoStackView)
+        
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            
+            imageView.topAnchor.constraint(equalTo: scrollView.topAnchor),
+            imageView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor),
+            imageView.widthAnchor.constraint(equalTo: scrollView.widthAnchor),
+            imageView.heightAnchor.constraint(equalTo: imageView.widthAnchor, multiplier: CGFloat(frame.height) / CGFloat(frame.width)),
+            
+            infoStackView.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 20),
+            infoStackView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 20),
+            infoStackView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -20),
+            infoStackView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -20)
+        ])
+    }
+    
+    private func createInfoLabel(title: String, value: String) -> UIView {
+        let container = UIView()
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        titleLabel.textColor = .label
+        
+        let valueLabel = UILabel()
+        valueLabel.text = value
+        valueLabel.font = .systemFont(ofSize: 14)
+        valueLabel.textColor = .secondaryLabel
+        valueLabel.numberOfLines = 0
+        
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        
+        container.addSubview(titleLabel)
+        container.addSubview(valueLabel)
+        
+        NSLayoutConstraint.activate([
+            titleLabel.topAnchor.constraint(equalTo: container.topAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            titleLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            
+            valueLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 4),
+            valueLabel.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            valueLabel.bottomAnchor.constraint(equalTo: container.bottomAnchor)
+        ])
+        
+        return container
+    }
+}
+#endif

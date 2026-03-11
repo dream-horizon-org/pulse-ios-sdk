@@ -26,8 +26,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             endpointBaseUrl: "http://127.0.0.1:4318",
             apiKey: "default",
             endpointHeaders: nil,
-            globalAttributes: globalAttributes
+            globalAttributes: globalAttributes,
+            instrumentations: { config in
+                // Enable Session Replay with default configuration
+                config.sessionReplay { replayConfig in
+                    replayConfig.enabled(true)
+                    replayConfig.configure { config in
+                        // Only set the endpoint - all other settings use defaults from SessionReplayConfig
+                        // Defaults: captureIntervalMs=1000, compressionQuality=0.3, maskAllTextInputs=true,
+                        // maskAllImages=true, screenshotScale=1.0, flushIntervalSeconds=60, flushAt=10, maxBatchSize=50
+                        config.replayEndpointBaseUrl = "http://127.0.0.1:3400"
+                    }
+                }
+            }
         )
+        
+        // Set user ID so the session capture service accepts the payload
+        PulseKit.shared.setUserId("test-user-ios-simulator")
         
         // Create window and root view controller
         window = UIWindow(frame: UIScreen.main.bounds)

@@ -19,4 +19,10 @@ internal struct InstallationContext {
     let endpointHeaders: [String: String]
 
     let flushLogProcessor: (() -> Void)?
+
+    /// Project identifier (from PulseKit.initialize).
+    let projectId: String
+
+    /// Returns the current user ID at call time (or nil). Thread-safe.
+    let userIdProvider: () -> String?
 }

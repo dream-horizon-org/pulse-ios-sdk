@@ -24,6 +24,8 @@ let package = Package(
     .library(name: "InMemoryExporter", targets: ["InMemoryExporter"]),
     .library(name: "OTelSwiftLog", targets: ["OTelSwiftLog"]),
     .library(name: "BaggagePropagationProcessor", targets: ["BaggagePropagationProcessor"]),
+    .library(name: "Sessions", targets: ["Sessions"]),
+    .library(name: "SessionReplay", targets: ["SessionReplay"]),
     .executable(name: "loggingTracer", targets: ["LoggingTracer"]),
     .executable(name: "StableMetricSample", targets: ["StableMetricSample"])
   ],
@@ -118,6 +120,62 @@ let package = Package(
 
       ],
       path: "Sources/Contrib/Processors/BaggagePropagationProcessor"
+    ),
+    .target(
+      name: "Sessions",
+      dependencies: [
+        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+
+      ],
+      path: "Sources/Instrumentation/Sessions",
+      exclude: ["README.md"]
+    ),
+    .target(
+      name: "phlibwebp",
+      path: "vendor/libwebp",
+      exclude: [
+        // Decoder-only files not needed by encoder
+        "quant_levels_dec_utils.c",
+        // Mux (animated WebP — not needed for single-frame encoding)
+        "muxedit.c",
+        "muxinternal.c",
+        "muxread.c",
+        // SSE2/SSE41 (x86-only SIMD — compiles to stubs on arm64 iOS)
+        "dec_sse2.c",
+        "dec_sse41.c",
+        "upsampling_sse2.c",
+        "upsampling_sse41.c",
+        "ssim_sse2.c",
+        "alpha_processing_sse2.c",
+        "alpha_processing_sse41.c",
+        "cost_sse2.c",
+        "enc_sse2.c",
+        "enc_sse41.c",
+        "filters_sse2.c",
+        "lossless_enc_sse2.c",
+        "lossless_enc_sse41.c",
+        "lossless_sse2.c",
+        "lossless_sse41.c",
+        "rescaler_sse2.c",
+        "sharpyuv_sse2.c",
+        "yuv_sse2.c",
+        "yuv_sse41.c"
+      ],
+      publicHeadersPath: ".",
+      cSettings: [
+        .headerSearchPath(".")
+      ]
+    ),
+    .target(
+      name: "SessionReplay",
+      dependencies: [
+        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+        "Sessions",
+        "phlibwebp"
+      ],
+      path: "Sources/Instrumentation/SessionReplay"
     ),
     .testTarget(
       name: "OTelSwiftLogTests",
@@ -421,10 +479,21 @@ extension Package {
         .testTarget(
           name: "ResourceExtensionTests",
           dependencies: [
-            "PulseKit",
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
+            .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
+            "OpenTelemetryProtocolExporterHttp",
+            "PersistenceExporter",
+            "ResourceExtension",
+            "Sessions",
+            "SessionReplay",
+            "URLSessionInstrumentation",
+            "NetworkStatus",
+            "SignPostIntegration",
+            "InteractionInstrumentation",
+            "Crashes"
           ],
-          path: "Tests/InstrumentationTests/SDKResourceExtensionTests"
+          path: "Sources/PulseKit"
         ),
         .testTarget(
           name: "PulseKitTests",
