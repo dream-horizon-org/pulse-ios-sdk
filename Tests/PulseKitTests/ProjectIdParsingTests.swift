@@ -10,8 +10,8 @@ import XCTest
 
 final class ProjectIdParsingTests: XCTestCase {
     func testWhenProjectIdContainsHyphenShouldReturnPrefixBeforeHyphen() {
-        let projectId = "tenant123-7876796bhbghb_bhbhvub"
-        let result = Pulse.extractProjectID(from: projectId)
+        let apiKey = "tenant123-7876796bhbghb_bhbhvub"
+        let result = Pulse.extractProjectID(from: apiKey)
         XCTAssertEqual(result, "tenant123-7876796bhbghb")
     }
 

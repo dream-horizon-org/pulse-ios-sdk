@@ -98,7 +98,7 @@ public class Pulse {
 
     public func initialize(
         endpointBaseUrl: String,
-        projectId: String,
+        apiKey: String,
         configEndpointUrl: String? = nil,
         customEventCollectorUrl: String? = nil,
         endpointHeaders: [String: String]? = nil,
@@ -122,9 +122,9 @@ public class Pulse {
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
 
-            // Merge projectId with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP)
-            let projectIdHeader = [PulseAttributes.projectIdHeaderKey: projectId]
-            let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
+            // Merge apiKey with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP)
+            let apiKeyHeader = [PulseAttributes.apiKeyHeaderKey: apiKey]
+            let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(apiKeyHeader) { _, new in new }
 
             // Config: load from persistence (sync)
             let configCoordinator = PulseSdkConfigCoordinator()
@@ -147,7 +147,7 @@ public class Pulse {
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
-            let resource = buildResource(projectId: projectId, resource: resource)
+            let resource = buildResource(apiKey: apiKey, resource: resource)
             // 3. Read from built resource
             let telemetrySdkName: String? = {
                 guard let av = resource.attributes[ResourceAttributes.telemetrySdkName.rawValue] else { return nil }
@@ -254,21 +254,21 @@ public class Pulse {
         let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
         return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
-    internal static func extractProjectID(from projectId: String) -> String {
-        if let lastUnderscoreIndex = projectId.lastIndex(of: "_"), lastUnderscoreIndex > projectId.startIndex {
-            return String(projectId[..<lastUnderscoreIndex])
+    internal static func extractProjectID(from apiKey: String) -> String {
+        if let lastUnderscoreIndex = apiKey.lastIndex(of: "_"), lastUnderscoreIndex > apiKey.startIndex {
+            return String(apiKey[..<lastUnderscoreIndex])
         }
-        return projectId
+        return apiKey
     }
 
     /// Set default telemetry.sdk.name first, then resource callback (overrides if it sets the key)
-    private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
+    private func buildResource(apiKey: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
         var attributes = defaultResource.attributes
 
         // 1. Set default (native iOS = pulse_ios_swift)
         attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
-        attributes[PulseAttributes.projectId] = AttributeValue.string(Self.extractProjectID(from: projectId))
+        attributes[PulseAttributes.projectId] = AttributeValue.string(Self.extractProjectID(from: apiKey))
 
         // 2. Resource callback can override (e.g. RN bridge sets pulse_ios_rn)
         if let resourceCustomizer = resource {

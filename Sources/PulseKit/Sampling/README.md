@@ -20,7 +20,7 @@ The sampling feature is implemented in this directory and integrates with the re
 ```swift
 PulseKit.shared.initialize(
     endpointBaseUrl: "https://your-collector.com",
-    projectId: "your-project-id",
+    apiKey: "your-api-key",
     configEndpointUrl: "https://config.example.com/v1/configs/active/"
 )
 ```
