@@ -8,8 +8,6 @@ import Foundation
 import FoundationNetworking
 #endif
 
-// MARK: - HTTP Transport
-
 class SessionReplayTransport {
 
     private let endpointUrl: URL
@@ -114,8 +112,6 @@ class SessionReplayTransport {
         }
     }
 }
-
-// MARK: - Gzip Compression
 
 #if canImport(Compression)
 import Compression

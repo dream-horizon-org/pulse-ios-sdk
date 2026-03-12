@@ -14,8 +14,6 @@ import ObjectiveC
     @_implementationOnly import phlibwebp
 #endif
 
-// MARK: - Capturer Protocol & Implementation
-
 internal protocol SessionReplayCapturer {
     func capture(window: UIWindow, scale: CGFloat, completion: @escaping (UIImage?) -> Void)
 }
@@ -32,9 +30,6 @@ internal class ScreenshotCapturer: SessionReplayCapturer {
     }
 }
 
-// MARK: - View Hierarchy Snapshot
-
-/// Lightweight snapshot of view hierarchy data for background thread processing
 private struct ViewSnapshot {
     let viewId: ObjectIdentifier
     let className: String
@@ -47,8 +42,11 @@ private struct ViewSnapshot {
     let tag: Int?
     let accessibilityLabel: String?
     let accessibilityIdentifier: String?
+    let privacyTagValue: String?  // Captured from associated object (pulseReplayMask/unmask)
+    let placeholder: String?  // Placeholder text for UITextField (used for sensitive field detection)
     // Type-specific data
     let isTextField: Bool
+    let isTextView: Bool
     let isLabel: Bool
     let isImageView: Bool
     let isPickerView: Bool
@@ -62,12 +60,12 @@ private struct ViewSnapshot {
     let superviewId: ObjectIdentifier?
 }
 
-// MARK: - Privacy Masker
-
 internal class SessionReplayMasker {
     private let config: SessionReplayConfig
     private var drawFlagChecker: (() -> Bool)?
-
+    private var lastTopViewController: UIViewController?
+    private var lastViewControllerChangeTime: Date?
+    
     init(config: SessionReplayConfig) {
         self.config = config
     }
@@ -76,12 +74,36 @@ internal class SessionReplayMasker {
         self.drawFlagChecker = checker
     }
 
-    /// Async version of captureWithMasking - runs on background threads
     func captureWithMaskingAsync(window: UIWindow, scale: CGFloat, completion: @escaping (UIImage?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 completion(nil)
                 return
+            }
+            
+            let currentTopVC = self.getTopViewController(in: window)
+            let viewControllerChanged = currentTopVC !== self.lastTopViewController
+            
+            if viewControllerChanged {
+                self.lastTopViewController = currentTopVC
+                self.lastViewControllerChangeTime = Date()
+                #if DEBUG
+                if let vc = currentTopVC {
+                    NSLog("[SessionReplay] 🔄 View controller changed to: \(type(of: vc))")
+                }
+                #endif
+            }
+            
+            if let changeTime = self.lastViewControllerChangeTime {
+                let timeSinceChange = Date().timeIntervalSince(changeTime)
+                let minStabilizationDelay: TimeInterval = 0.1 // 100ms
+                if timeSinceChange < minStabilizationDelay {
+                    #if DEBUG
+                    NSLog("[SessionReplay] ⏸️ Skipping capture: View controller changed \(String(format: "%.0f", timeSinceChange * 1000))ms ago (waiting for \(Int(minStabilizationDelay * 1000))ms)")
+                    #endif
+                    completion(nil)
+                    return
+                }
             }
             
             let isStable = self.isViewStateStable(window: window)
@@ -118,6 +140,11 @@ internal class SessionReplayMasker {
                 return
             }
             
+            var scrollPositionAtSnapshot: CGFloat = 0
+            if let scrollView = self.findScrollView(in: window) {
+                scrollPositionAtSnapshot = scrollView.contentOffset.y
+            }
+            
             var snapshots: [ObjectIdentifier: ViewSnapshot] = [:]
             var visited: Set<ObjectIdentifier> = []
             
@@ -128,6 +155,11 @@ internal class SessionReplayMasker {
                 NSLog("[SessionReplay] 🔍 Window root VC: \(type(of: rootVC)), view: \(rootVC.view != nil ? "exists" : "nil")")
             }
             #endif
+            
+            window.layoutIfNeeded()
+            if let rootVC = window.rootViewController {
+                rootVC.view.layoutIfNeeded()
+            }
             
             self.snapshotViewHierarchy(
                 view: window,
@@ -140,6 +172,31 @@ internal class SessionReplayMasker {
             NSLog("[SessionReplay] 🔍 Snapshot: captured \(snapshots.count) views")
             #endif
             
+            let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
+            
+            guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
+                #if DEBUG
+                NSLog("[SessionReplay] ❌ Screenshot capture failed or returned invalid image")
+                #endif
+                completion(nil)
+                return
+            }
+            
+            var scrollPositionAtScreenshot: CGFloat = 0
+            if let scrollView = self.findScrollView(in: window) {
+                scrollPositionAtScreenshot = scrollView.contentOffset.y
+            }
+            let scrollDelta = scrollPositionAtScreenshot - scrollPositionAtSnapshot
+            
+            if abs(scrollDelta) > 5.0 {
+                #if DEBUG
+                NSLog("[SessionReplay] ⏸️ Skipping frame: significant scroll (\(String(format: "%.1f", scrollDelta))px) detected during capture gap")
+                #endif
+                completion(nil)
+                return
+            }
+            
+            // Now dispatch masking processing to background thread
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
                     completion(nil)
@@ -147,6 +204,19 @@ internal class SessionReplayMasker {
                 }
                 
                 var visited: Set<ObjectIdentifier> = []
+                
+                // Check for views that should be masked but have nil windowFrame (security check)
+                let viewsNeedingMask = self.findViewsNeedingMask(snapshots: snapshots, windowBounds: windowBounds)
+                let viewsWithNilWindowFrame = viewsNeedingMask.filter { $0.windowFrame == nil }
+                
+                #if DEBUG
+                if !viewsWithNilWindowFrame.isEmpty {
+                    NSLog("[SessionReplay] ⚠️ SECURITY WARNING: Found \(viewsWithNilWindowFrame.count) view(s) that should be masked but have nil windowFrame:")
+                    for viewInfo in viewsWithNilWindowFrame {
+                        NSLog("[SessionReplay]   - \(viewInfo.className) (isTextField: \(viewInfo.isTextField), isTextView: \(viewInfo.isTextView), isLabel: \(viewInfo.isLabel))")
+                    }
+                }
+                #endif
                 
                 let maskRects = self.processMaskingFromSnapshot(
                     snapshots: snapshots,
@@ -166,192 +236,86 @@ internal class SessionReplayMasker {
                 }
                 #endif
                 
-                self.captureScreenshotAsync(window: window, bounds: windowBounds) { screenshot in
-                    guard let screenshot = screenshot else {
+                if !viewsWithNilWindowFrame.isEmpty {
+                    #if DEBUG
+                    NSLog("[SessionReplay] 🚫 SECURITY: Skipping capture - views need masking but have nil windowFrame. This prevents data leak.")
+                    #endif
+                    completion(nil)
+                    return
+                }
+                
+                let viewsNeedingMaskCount = viewsNeedingMask.count
+                
+                let capturedScreenshot = screenshot
+                
+                let maskedImage = self.drawMasksOnImage(
+                    image: capturedScreenshot,
+                    maskRects: maskRects
+                )
+                
+                #if DEBUG
+                if !maskRects.isEmpty {
+                    NSLog("[SessionReplay] 🎨 Applied \(maskRects.count) mask(s) to screenshot")
+                }
+                #endif
+                
+                guard let maskedImage = maskedImage, maskedImage.size.width > 0 && maskedImage.size.height > 0 else {
+                    if viewsNeedingMaskCount > 0 {
+                        #if DEBUG
+                        NSLog("[SessionReplay] 🚫 SECURITY: Masking failed but \(viewsNeedingMaskCount) view(s) need masking - skipping capture to prevent data leak")
+                        #endif
                         completion(nil)
                         return
                     }
-                    
-                let maskedImage = self.drawMasksOnImage(
-                    image: screenshot,
-                    maskRects: maskRects
-                )
-                    
-                    #if DEBUG
-                    if !maskRects.isEmpty {
-                        NSLog("[SessionReplay] 🎨 Applied \(maskRects.count) mask(s) to screenshot")
+                    completion(capturedScreenshot)
+                    return
+                }
+                
+                let clampedScale = max(0.01, min(1.0, scale))
+                if clampedScale < 1.0 {
+                    let finalSize = CGSize(
+                        width: max(1, maskedImage.size.width * clampedScale),
+                        height: max(1, maskedImage.size.height * clampedScale)
+                    )
+                    let format = UIGraphicsImageRendererFormat(for: .init(displayScale: 1))
+                    format.opaque = true
+                    let renderer = UIGraphicsImageRenderer(size: finalSize, format: format)
+                    let scaledImage = renderer.image { _ in
+                        maskedImage.draw(in: CGRect(origin: .zero, size: finalSize))
                     }
-                    #endif
-                    
-                    guard let maskedImage = maskedImage, maskedImage.size.width > 0 && maskedImage.size.height > 0 else {
-                        // Fallback: return original screenshot if masking fails
-                        completion(screenshot)
-                        return
-                    }
-                    
-                    let clampedScale = max(0.01, min(1.0, scale))
-                    if clampedScale < 1.0 {
-                        let finalSize = CGSize(
-                            width: max(1, maskedImage.size.width * clampedScale),
-                            height: max(1, maskedImage.size.height * clampedScale)
-                        )
-                        let format = UIGraphicsImageRendererFormat(for: .init(displayScale: 1))
-                        format.opaque = true
-                        let renderer = UIGraphicsImageRenderer(size: finalSize, format: format)
-                        let scaledImage = renderer.image { _ in
-                            maskedImage.draw(in: CGRect(origin: .zero, size: finalSize))
-                        }
-                        completion(scaledImage)
-                    } else {
-                        completion(maskedImage)
-                    }
+                    completion(scaledImage)
+                } else {
+                    completion(maskedImage)
                 }
             }
         }
     }
 
     
-    private func resolveInstanceDecision(view: UIView) -> MaskDecision {
-        if view.hasPulseReplayUnmaskTag {
-            return .unmask
-        }
-        if view.hasPulseReplayMaskTag {
-            return .mask
-        }
-        
-        if let accessibilityLabel = view.accessibilityLabel {
-            let lowerLabel = accessibilityLabel.lowercased()
-            if lowerLabel.contains("pulse-unmask") {
-                return .unmask
-            }
-            if lowerLabel.contains("pulse-mask") {
-                return .mask
-            }
-        }
-        
-        return .undecided
+    
+    private func getTopViewController(in window: UIWindow) -> UIViewController? {
+        guard let rootVC = window.rootViewController else { return nil }
+        return getTopViewController(from: rootVC)
     }
     
-    private func resolveClassDecision(view: UIView) -> MaskDecision {
-        if !config.unmaskViewClasses.isEmpty && isInstanceOfRegistered(view: view, classNames: config.unmaskViewClasses) {
-            return .unmask
-        }
-        if !config.maskViewClasses.isEmpty && isInstanceOfRegistered(view: view, classNames: config.maskViewClasses) {
-            return .mask
-        }
-        return .undecided
-    }
-    
-    private func isInstanceOfRegistered(view: UIView, classNames: Set<String>) -> Bool {
-        var currentClass: AnyClass? = type(of: view)
-        while let cls = currentClass {
-            let className = String(describing: cls)
-            if classNames.contains(className) {
-            return true
-            }
-            currentClass = class_getSuperclass(cls)
-            if className == "NSObject" {
-                break
-            }
-        }
-        return false
-    }
-
-    private func applyTypeSpecificMasking(view: UIView) -> CGRect? {
-        if let textField = view as? UITextField {
-            let shouldMask = shouldMaskTextField(textField)
-            if shouldMask {
-                let rect = getTextAreaWindowRect(view: textField)
-                if rect != nil {
-                    NSLog("[SessionReplay] 🎭 Type-specific: UITextField (textAndInputPrivacy=\(config.textAndInputPrivacy))")
-                }
-                return rect
-            }
-        } else if let label = view as? UILabel {
-            let hasContent = !(label.text?.isEmpty ?? true) || !(label.attributedText?.string.isEmpty ?? true)
-            let shouldMask = hasContent && shouldMaskLabel(label)
-            if shouldMask {
-                let rect = getTextAreaWindowRect(view: label)
-                if rect != nil {
-                    NSLog("[SessionReplay] 🎭 Type-specific: UILabel (textAndInputPrivacy=\(config.textAndInputPrivacy))")
-                }
-                return rect
-            }
-        } else if view is UIPickerView {
-            if shouldMaskSpinner() {
-                NSLog("[SessionReplay] 🎭 Type-specific: UIPickerView (textAndInputPrivacy=\(config.textAndInputPrivacy))")
-                return getWindowVisibleRect(view: view, in: view.window)
-            }
-        } else if let imageView = view as? UIImageView {
-            let shouldMask = shouldMaskImage(imageView)
-            if shouldMask {
-                let rect = getWindowVisibleRect(view: view, in: view.window)
-                if rect != nil {
-                    NSLog("[SessionReplay] 🎭 Type-specific: UIImageView (imagePrivacy=\(config.imagePrivacy))")
-                }
-                return rect
-            }
-        } else if view is WKWebView {
-            if shouldMaskWebView() {
-                NSLog("[SessionReplay] 🎭 Type-specific: WKWebView")
-                return getWindowVisibleRect(view: view, in: view.window)
-            }
-        }
-        return nil
-    }
-    
-    private func getWindowVisibleRect(view: UIView, in window: UIWindow?) -> CGRect? {
-        guard let window = window, let superview = view.superview else { return nil }
-        guard isViewStateStable(view: view) else { return nil }
-        
-        let frameInWindow = superview.convert(view.frame, to: window)
-        
-        guard frameInWindow.width > 0 && frameInWindow.height > 0 else { return nil }
-        guard frameInWindow.origin.x.isFinite && frameInWindow.origin.y.isFinite else { return nil }
-        guard frameInWindow.width.isFinite && frameInWindow.height.isFinite else { return nil }
-        
-        let windowBounds = window.bounds
-        let visibleRect = frameInWindow.intersection(windowBounds)
-        guard visibleRect.width > 0 && visibleRect.height > 0 else {
-            return nil
+    private func getTopViewController(from viewController: UIViewController) -> UIViewController {
+        if let presented = viewController.presentedViewController {
+            return getTopViewController(from: presented)
         }
         
-        return CGRect(
-            x: max(0, min(visibleRect.origin.x, windowBounds.width)),
-            y: max(0, min(visibleRect.origin.y, windowBounds.height)),
-            width: min(visibleRect.width, windowBounds.width - max(0, visibleRect.origin.x)),
-            height: min(visibleRect.height, windowBounds.height - max(0, visibleRect.origin.y))
-        )
-    }
-    
-    private func getTextAreaWindowRect(view: UIView) -> CGRect? {
-        guard let window = view.window else { return nil }
-        
-        let fullRect = getWindowVisibleRect(view: view, in: window)
-        guard let fullRect = fullRect else { return nil }
-        
-        if let textField = view as? UITextField {
-            let textRect = textField.textRect(forBounds: textField.bounds)
-            let textAreaInWindow = CGRect(
-                x: fullRect.origin.x + textRect.origin.x,
-                y: fullRect.origin.y + textRect.origin.y,
-                width: textRect.width,
-                height: textRect.height
-            )
-            return (textAreaInWindow.width > 0 && textAreaInWindow.height > 0) ? textAreaInWindow : fullRect
+        if let navController = viewController as? UINavigationController {
+            if let topVC = navController.topViewController {
+                return getTopViewController(from: topVC)
+            }
         }
         
-        return fullRect
-    }
-    
-    private func isViewVisible(_ view: UIView) -> Bool {
-        guard !view.isHidden else { return false }
-        guard view.alpha > 0 else { return false }
-        if view is UIWindow {
-            return true
+        if let tabController = viewController as? UITabBarController {
+            if let selected = tabController.selectedViewController {
+                return getTopViewController(from: selected)
+            }
         }
-        guard view.window != nil else { return false }
-        return true
+        
+        return viewController
     }
     
     private func isViewStateStable(view: UIView) -> Bool {
@@ -378,6 +342,15 @@ internal class SessionReplayMasker {
         }
     }
     
+    private func shouldMaskTextView(_ textView: UITextView) -> Bool {
+        if isPasswordTextView(textView) { return true }
+        switch config.textAndInputPrivacy {
+        case .maskAll: return true
+        case .maskAllInputs: return true
+        case .maskSensitiveInputs: return isSensitiveTextView(textView)
+        }
+    }
+    
     private func shouldMaskLabel(_ label: UILabel) -> Bool {
         switch config.textAndInputPrivacy {
         case .maskAll: return true
@@ -394,10 +367,14 @@ internal class SessionReplayMasker {
         }
     }
     
-    /// Check if input is sensitive type (matches Android's isSensitiveInputType)
     private func isSensitiveInputType(_ textField: UITextField) -> Bool {
         if isPasswordField(textField) { return true }
         return isEmailField(textField) || isPhoneField(textField)
+    }
+    
+    private func isSensitiveTextView(_ textView: UITextView) -> Bool {
+        if isPasswordTextView(textView) { return true }
+        return isEmailTextView(textView) || isPhoneTextView(textView)
     }
     
     private func isPasswordField(_ textField: UITextField) -> Bool {
@@ -455,11 +432,68 @@ internal class SessionReplayMasker {
             }
         }
         
-        // Heuristic: check placeholder or accessibility label
         let placeholder = textField.placeholder?.lowercased() ?? ""
         let accessibilityLabel = textField.accessibilityLabel?.lowercased() ?? ""
         if placeholder.contains("phone") || placeholder.contains("mobile") ||
            accessibilityLabel.contains("phone") || accessibilityLabel.contains("mobile") {
+            return true
+        }
+        
+        return false
+    }
+    
+    private func isPasswordTextView(_ textView: UITextView) -> Bool {
+        if textView.isSecureTextEntry {
+            return true
+        }
+        
+        if #available(iOS 10.0, *) {
+            if textView.textContentType == .password || 
+               textView.textContentType == .newPassword {
+                return true
+            }
+        }
+        
+        let accessibilityLabel = textView.accessibilityLabel?.lowercased() ?? ""
+        if accessibilityLabel.contains("password") {
+            return true
+        }
+        
+        return false
+    }
+    
+    private func isEmailTextView(_ textView: UITextView) -> Bool {
+        if textView.keyboardType == .emailAddress {
+            return true
+        }
+        
+        if #available(iOS 10.0, *) {
+            if textView.textContentType == .emailAddress {
+                return true
+            }
+        }
+        
+        let accessibilityLabel = textView.accessibilityLabel?.lowercased() ?? ""
+        if accessibilityLabel.contains("email") {
+            return true
+        }
+        
+        return false
+    }
+    
+    private func isPhoneTextView(_ textView: UITextView) -> Bool {
+        if textView.keyboardType == .phonePad {
+            return true
+        }
+        
+        if #available(iOS 10.0, *) {
+            if textView.textContentType == .telephoneNumber {
+                return true
+            }
+        }
+        
+        let accessibilityLabel = textView.accessibilityLabel?.lowercased() ?? ""
+        if accessibilityLabel.contains("phone") || accessibilityLabel.contains("mobile") {
             return true
         }
         
@@ -491,44 +525,68 @@ internal class SessionReplayMasker {
         let className = String(describing: type(of: view))
         let frame = view.frame
         let windowFrame: CGRect?
-        if let superview = view.superview {
-            windowFrame = superview.convert(view.frame, to: window)
+        if view == window {
+            windowFrame = window.bounds
+        } else if let superview = view.superview {
+            let convertedFrame = superview.convert(view.frame, to: window)
+            if convertedFrame.width > 0 && convertedFrame.height > 0 &&
+               convertedFrame.origin.x.isFinite && convertedFrame.origin.y.isFinite &&
+               convertedFrame.width.isFinite && convertedFrame.height.isFinite {
+                windowFrame = convertedFrame
+            } else {
+                windowFrame = view.convert(view.bounds, to: window)
+            }
+        } else if let viewWindow = view.window, viewWindow == window {
+            windowFrame = view.convert(view.bounds, to: window)
         } else {
-            windowFrame = nil
+            if let viewWindow = view.window {
+                windowFrame = view.convert(view.bounds, to: viewWindow)
+            } else {
+                windowFrame = nil
+            }
         }
         
         let textField = view as? UITextField
+        let textView = view as? UITextView
         let label = view as? UILabel
         let imageView = view as? UIImageView
         let isTextField = textField != nil
+        let isTextView = textView != nil
         let isLabel = label != nil
         let isImageView = imageView != nil
         let isPickerView = view is UIPickerView
         let isWebView = view is WKWebView
         
-        
-        // Text field specific
-        let isSecureTextEntry = textField?.isSecureTextEntry ?? false
+        let isSecureTextEntry = (textField?.isSecureTextEntry ?? false) || (textView?.isSecureTextEntry ?? false)
         let textContentType: String?
         let keyboardType: UIKeyboardType?
         if #available(iOS 10.0, *) {
-            textContentType = textField?.textContentType?.rawValue
+            textContentType = textField?.textContentType?.rawValue ?? textView?.textContentType?.rawValue
         } else {
             textContentType = nil
         }
-        keyboardType = textField?.keyboardType
+        keyboardType = textField?.keyboardType ?? textView?.keyboardType
         
         let hasText: Bool
+        let placeholder: String?
         if let textField = textField {
             hasText = !(textField.text?.isEmpty ?? true) || !(textField.placeholder?.isEmpty ?? true)
+            placeholder = textField.placeholder
+        } else if let textView = textView {
+            hasText = !(textView.text?.isEmpty ?? true)
+            placeholder = nil
         } else if let label = label {
             hasText = !(label.text?.isEmpty ?? true) || !(label.attributedText?.string.isEmpty ?? true)
+            placeholder = nil
         } else {
             hasText = false
+            placeholder = nil
         }
         
         let hasImage = imageView?.image != nil
         let subviewIds = view.subviews.map { ObjectIdentifier($0) }
+        
+        let privacyTagValue = view.getPrivacyTagValue()
         
         let snapshot = ViewSnapshot(
             viewId: viewId,
@@ -542,7 +600,10 @@ internal class SessionReplayMasker {
             tag: view.tag,
             accessibilityLabel: view.accessibilityLabel,
             accessibilityIdentifier: view.accessibilityIdentifier,
+            privacyTagValue: privacyTagValue,
+            placeholder: placeholder,
             isTextField: isTextField,
+            isTextView: isTextView,
             isLabel: isLabel,
             isImageView: isImageView,
             isPickerView: isPickerView,
@@ -650,6 +711,15 @@ internal class SessionReplayMasker {
     }
     
     private func resolveInstanceDecisionFromSnapshot(snapshot: ViewSnapshot) -> MaskDecision {
+        if let privacyTag = snapshot.privacyTagValue {
+            if privacyTag == "pulse-unmask" {
+                return .unmask
+            }
+            if privacyTag == "pulse-mask" {
+                return .mask
+            }
+        }
+        
         if let accessibilityLabel = snapshot.accessibilityLabel {
             let lowerLabel = accessibilityLabel.lowercased()
             if lowerLabel.contains("pulse-unmask") {
@@ -684,16 +754,146 @@ internal class SessionReplayMasker {
     }
     
     private func isInstanceOfRegistered(className: String, classNames: Set<String>) -> Bool {
-        return classNames.contains(className)
+        if classNames.contains(className) {
+            return true
+        }
+        
+        let classNameWithoutModule: String
+        if let lastDotIndex = className.lastIndex(of: ".") {
+            let indexAfterDot = className.index(after: lastDotIndex)
+            classNameWithoutModule = String(className[indexAfterDot...])
+        } else {
+            classNameWithoutModule = className
+        }
+        
+        for registeredClassName in classNames {
+            if registeredClassName == className {
+                return true
+            }
+            
+            let registeredNameWithoutModule: String
+            if let lastDotIndex = registeredClassName.lastIndex(of: ".") {
+                let indexAfterDot = registeredClassName.index(after: lastDotIndex)
+                registeredNameWithoutModule = String(registeredClassName[indexAfterDot...])
+            } else {
+                registeredNameWithoutModule = registeredClassName
+            }
+            
+            if classNameWithoutModule == registeredNameWithoutModule {
+                return true
+            }
+        }
+        
+        var cls: AnyClass? = NSClassFromString(className)
+        if cls == nil {
+            cls = NSClassFromString(classNameWithoutModule)
+        }
+        
+        guard let classObj = cls else {
+            return false
+        }
+        
+        var currentClass: AnyClass? = classObj
+        while let current = currentClass {
+            let currentClassName = String(describing: current)
+            
+            if classNames.contains(currentClassName) {
+                return true
+            }
+            
+            let currentNameWithoutModule: String
+            if let lastDotIndex = currentClassName.lastIndex(of: ".") {
+                let indexAfterDot = currentClassName.index(after: lastDotIndex)
+                currentNameWithoutModule = String(currentClassName[indexAfterDot...])
+            } else {
+                currentNameWithoutModule = currentClassName
+            }
+            
+            for registeredClassName in classNames {
+                let registeredNameWithoutModule: String
+                if let lastDotIndex = registeredClassName.lastIndex(of: ".") {
+                    let indexAfterDot = registeredClassName.index(after: lastDotIndex)
+                    registeredNameWithoutModule = String(registeredClassName[indexAfterDot...])
+                } else {
+                    registeredNameWithoutModule = registeredClassName
+                }
+                
+                if currentNameWithoutModule == registeredNameWithoutModule {
+                    return true
+                }
+            }
+            
+            currentClass = class_getSuperclass(current)
+            if currentClassName == "NSObject" {
+                break
+            }
+        }
+        
+        return false
+    }
+    
+    private func findViewsNeedingMask(snapshots: [ObjectIdentifier: ViewSnapshot], windowBounds: CGRect) -> [ViewSnapshot] {
+        var viewsNeedingMask: [ViewSnapshot] = []
+        
+        for (_, snapshot) in snapshots {
+            let isWindow = snapshot.className.contains("Window")
+            let isVisible = !snapshot.isHidden && snapshot.alpha > 0 && (isWindow || snapshot.hasWindow)
+            
+            guard isVisible else { continue }
+            
+            var shouldMask = false
+            
+            if snapshot.isTextField {
+                shouldMask = shouldMaskTextFieldFromSnapshot(snapshot: snapshot)
+            } else if snapshot.isTextView {
+                shouldMask = shouldMaskTextViewFromSnapshot(snapshot: snapshot)
+            } else if snapshot.isLabel {
+                shouldMask = snapshot.hasText && shouldMaskLabelFromSnapshot(snapshot: snapshot)
+            } else if snapshot.isPickerView {
+                shouldMask = shouldMaskSpinner()
+            } else if snapshot.isImageView {
+                shouldMask = snapshot.hasImage && shouldMaskImageFromSnapshot(snapshot: snapshot)
+            } else if snapshot.isWebView {
+                shouldMask = shouldMaskWebView()
+            }
+            
+            let instanceDecision = resolveInstanceDecisionFromSnapshot(snapshot: snapshot)
+            if instanceDecision == .mask {
+                shouldMask = true
+            }
+            
+            let classDecision = resolveClassDecisionFromSnapshot(snapshot: snapshot)
+            if classDecision == .mask {
+                shouldMask = true
+            }
+            
+            if shouldMask {
+                viewsNeedingMask.append(snapshot)
+            }
+        }
+        
+        return viewsNeedingMask
     }
     
     private func applyTypeSpecificMaskingFromSnapshot(snapshot: ViewSnapshot, windowBounds: CGRect) -> CGRect? {
         guard let windowFrame = snapshot.windowFrame else {
+            #if DEBUG
+            NSLog("[SessionReplay] ⚠️ Warning: windowFrame is nil for \(snapshot.className) - cannot mask. This may indicate views were captured before layout.")
+            #endif
             return nil
         }
         
         if snapshot.isTextField {
             let shouldMask = shouldMaskTextFieldFromSnapshot(snapshot: snapshot)
+            if shouldMask {
+                let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
+                guard clamped.width > 0 && clamped.height > 0 else {
+                    return nil
+                }
+                return clamped
+            }
+        } else if snapshot.isTextView {
+            let shouldMask = shouldMaskTextViewFromSnapshot(snapshot: snapshot)
             if shouldMask {
                 let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
                 guard clamped.width > 0 && clamped.height > 0 else {
@@ -741,6 +941,15 @@ internal class SessionReplayMasker {
         }
     }
     
+    private func shouldMaskTextViewFromSnapshot(snapshot: ViewSnapshot) -> Bool {
+        if snapshot.isSecureTextEntry { return true }
+        switch config.textAndInputPrivacy {
+        case .maskAll: return true
+        case .maskAllInputs: return true
+        case .maskSensitiveInputs: return isSensitiveInputTypeFromSnapshot(snapshot: snapshot)
+        }
+    }
+    
     private func shouldMaskLabelFromSnapshot(snapshot: ViewSnapshot) -> Bool {
         switch config.textAndInputPrivacy {
         case .maskAll: return true
@@ -756,26 +965,45 @@ internal class SessionReplayMasker {
     private func isSensitiveInputTypeFromSnapshot(snapshot: ViewSnapshot) -> Bool {
         if snapshot.isSecureTextEntry { return true }
         
-        if let textContentType = snapshot.textContentType {
+        // Check textContentType rawValue (works for UITextField, but UITextView doesn't have this property)
+        // rawValue format: "emailAddress", "telephoneNumber", "password", "newPassword", etc.
+        if let textContentType = snapshot.textContentType?.lowercased() {
             if textContentType.contains("password") {
                 return true
             }
-            if textContentType.contains("email") {
+            if textContentType.contains("email") || textContentType == "emailaddress" {
                 return true
             }
-            if textContentType.contains("telephone") {
+            if textContentType.contains("telephone") || textContentType == "telephonenumber" {
                 return true
             }
         }
         
+        // Check keyboardType (works for both UITextField and UITextView)
         if let keyboardType = snapshot.keyboardType {
             if keyboardType == .emailAddress || keyboardType == .phonePad {
                 return true
             }
         }
         
+        // Check placeholder text (for UITextField only)
+        if let placeholder = snapshot.placeholder?.lowercased() {
+            if placeholder.contains("password") || placeholder.contains("email") || 
+               placeholder.contains("phone") || placeholder.contains("mobile") {
+                return true
+            }
+        }
+        
+        // Check accessibility label (works for both UITextField and UITextView)
         if let label = snapshot.accessibilityLabel?.lowercased() {
             if label.contains("password") || label.contains("email") || label.contains("phone") {
+                return true
+            }
+        }
+        
+        // Check accessibility identifier (works for both UITextField and UITextView)
+        if let identifier = snapshot.accessibilityIdentifier?.lowercased() {
+            if identifier.contains("password") || identifier.contains("email") || identifier.contains("phone") {
                 return true
             }
         }
@@ -805,37 +1033,28 @@ internal class SessionReplayMasker {
         )
     }
     
-    private func captureScreenshotAsync(
+    private func captureScreenshotSync(
         window: UIWindow,
-        bounds: CGRect,
-        completion: @escaping (UIImage?) -> Void
-    ) {
-        // Dispatch to main thread to access window.screen safely
-        DispatchQueue.main.async { [weak self] in
-            guard let self = self else {
-                completion(nil)
-                return
-            }
-            
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = window.screen.scale
-            format.opaque = true
-            let renderer = UIGraphicsImageRenderer(size: bounds.size, format: format)
-            
-            let image = renderer.image { context in
-                window.drawHierarchy(in: bounds, afterScreenUpdates: false)
-            }
-            
-            DispatchQueue.global(qos: .userInitiated).async {
-                guard image.size.width > 0 && image.size.height > 0 else {
-                    completion(nil)
-                    return
-                }
-                
-                completion(image)
-            }
+        bounds: CGRect
+    ) -> UIImage? {
+        assert(Thread.isMainThread, "captureScreenshotSync must be called on main thread")
+        
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = window.screen.scale
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: bounds.size, format: format)
+        
+        let image = renderer.image { context in
+            window.drawHierarchy(in: bounds, afterScreenUpdates: false)
         }
+        
+        guard image.size.width > 0 && image.size.height > 0 else {
+            return nil
+        }
+        
+        return image
     }
+    
     
     private func drawMasksOnImage(
         image: UIImage,
@@ -886,6 +1105,29 @@ internal class SessionReplayMasker {
         return maskedImage
     }
     
+    private func machTimeToMilliseconds(_ machTime: UInt64) -> Double {
+        var timebase = mach_timebase_info_data_t()
+        mach_timebase_info(&timebase)
+        let nanoseconds = Double(machTime) * Double(timebase.numer) / Double(timebase.denom)
+        return nanoseconds / 1_000_000.0 // Convert to milliseconds
+    }
+    
+    private func findScrollView(in window: UIWindow) -> UIScrollView? {
+        guard let rootView = window.rootViewController?.view else { return nil }
+        return findScrollView(in: rootView)
+    }
+    
+    private func findScrollView(in view: UIView) -> UIScrollView? {
+        if let scrollView = view as? UIScrollView {
+            return scrollView
+        }
+        for subview in view.subviews {
+            if let scrollView = findScrollView(in: subview) {
+                return scrollView
+            }
+        }
+        return nil
+    }
     
     private func isViewStateStable(window: UIWindow) -> Bool {
         guard window.windowScene != nil else { return false }
@@ -903,7 +1145,82 @@ internal class SessionReplayMasker {
             }
         }
         
+        if let navController = findTopNavigationController(in: window) {
+            if navController.isBeingPresented || navController.isBeingDismissed {
+                #if DEBUG
+                NSLog("[SessionReplay] ⏸️ Skipping capture: Navigation controller is being presented/dismissed")
+                #endif
+                return false
+            }
+            
+            if let topVC = navController.topViewController {
+                if topVC.isBeingPresented || topVC.isBeingDismissed || topVC.isMovingFromParent || topVC.isMovingToParent {
+                    #if DEBUG
+                    NSLog("[SessionReplay] ⏸️ Skipping capture: View controller is transitioning")
+                    #endif
+                    return false
+                }
+            }
+            
+            if let transitionCoordinator = navController.transitionCoordinator, transitionCoordinator.isAnimated {
+                #if DEBUG
+                NSLog("[SessionReplay] ⏸️ Skipping capture: Navigation transition in progress")
+                #endif
+                return false
+            }
+        }
+        
+        if let rootVC = window.rootViewController {
+            if rootVC.isBeingPresented || rootVC.isBeingDismissed || rootVC.isMovingFromParent || rootVC.isMovingToParent {
+                #if DEBUG
+                NSLog("[SessionReplay] ⏸️ Skipping capture: Root view controller is transitioning")
+                #endif
+                return false
+            }
+            
+            if let transitionCoordinator = rootVC.transitionCoordinator, transitionCoordinator.isAnimated {
+                #if DEBUG
+                NSLog("[SessionReplay] ⏸️ Skipping capture: View controller transition in progress")
+                #endif
+                return false
+            }
+        }
+        
         return true
+    }
+    
+    private func findTopNavigationController(in window: UIWindow) -> UINavigationController? {
+        guard let rootVC = window.rootViewController else { return nil }
+        
+        if let navController = rootVC as? UINavigationController {
+            return navController
+        }
+        
+        return findNavigationController(in: rootVC)
+    }
+    
+    private func findNavigationController(in viewController: UIViewController) -> UINavigationController? {
+        if let navController = viewController as? UINavigationController {
+            return navController
+        }
+        
+        if let presented = viewController.presentedViewController {
+            if let navController = findNavigationController(in: presented) {
+                return navController
+            }
+        }
+        
+        for child in viewController.children {
+            if let navController = findNavigationController(in: child) {
+                return navController
+            }
+        }
+        
+        if let navController = viewController.navigationController {
+            return navController
+        }
+        
+        return nil
     }
     
     private func isViewHierarchyVisible(window: UIWindow) -> Bool {
@@ -919,8 +1236,6 @@ internal class SessionReplayMasker {
         return true
     }
 }
-
-// MARK: - Image Compressor
 
 public final class SessionReplayCompressor {
     private init() {}
@@ -1043,8 +1358,6 @@ public final class SessionReplayCompressor {
 }
 
 #else
-
-// MARK: - Non-iOS Stubs
 
 internal protocol SessionReplayCapturer {
     func capture(window: Any, scale: CGFloat, completion: @escaping (Any?) -> Void)

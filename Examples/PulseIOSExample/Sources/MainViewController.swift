@@ -237,6 +237,11 @@ class MainViewController: UIViewController {
         stackView.addArrangedSubview(createSectionHeader("Session Replay Testing"))
         
         stackView.addArrangedSubview(createButton(
+            title: "Test PII Masking",
+            action: #selector(testPIIMaskingTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
             title: "Start / Stop Recording",
             action: #selector(toggleRecordingTapped),
             color: .systemPurple
@@ -806,6 +811,16 @@ class MainViewController: UIViewController {
     }
     
     // MARK: - Session Replay Testing
+    
+    @objc private func testPIIMaskingTapped() {
+        print("━━━ testPIIMaskingTapped ━━━")
+        #if canImport(SessionReplay)
+        let testVC = PIIMaskingTestViewController()
+        navigationController?.pushViewController(testVC, animated: true)
+        #else
+        showAlert(title: "Not Available", message: "SessionReplay module is not available")
+        #endif
+    }
     
     @objc private func toggleRecordingTapped() {
         print("━━━ toggleRecordingTapped ━━━")

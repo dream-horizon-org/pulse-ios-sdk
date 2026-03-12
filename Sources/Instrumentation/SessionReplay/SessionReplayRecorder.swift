@@ -84,8 +84,6 @@ public class SessionReplayRecorder {
         }
     }
     
-    // MARK: - Private Methods
-
     private func resetDrawOccurredFlag() {
         drawOccurredLock.lock()
         drawOccurredSinceLastCapture = false

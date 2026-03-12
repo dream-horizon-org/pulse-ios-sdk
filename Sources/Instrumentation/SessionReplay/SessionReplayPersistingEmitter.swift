@@ -5,8 +5,6 @@
 
 import Foundation
 
-// MARK: - Persisting Replay Emitter
-
 internal final class SessionReplayPersistingEmitter {
 
     private let storageDir: URL
@@ -282,8 +280,6 @@ internal final class SessionReplayPersistingEmitter {
             userInfo: [NSLocalizedDescriptionKey: "Failed to read replay file: \(file.lastPathComponent)"]
         )
     }
-    
-    // MARK: - Session Metrics
     
     private struct SessionMetrics {
         let durationMs: Int64

@@ -32,9 +32,21 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 config.sessionReplay { replayConfig in
                     replayConfig.enabled(true)
                     replayConfig.configure { config in
-                        // Only set the endpoint - all other settings use defaults from SessionReplayConfig
-                        // Defaults: captureIntervalMs=1000, compressionQuality=0.3, maskAllTextInputs=true,
-                        // maskAllImages=true, screenshotScale=1.0, flushIntervalSeconds=60, flushAt=10, maxBatchSize=50
+                        // Test 5: Class-Level Override - Force Mask Custom View Class
+                        config.textAndInputPrivacy = .maskSensitiveInputs  // Normally would show labels
+                        config.imagePrivacy = .maskNone
+                        
+                        // Register custom classes for class-level overrides
+                        // Class names match the custom classes in PIIMaskingTestViewController.swift
+                        config.maskViewClasses = [
+                            "PulseIOSExample.PrivateSecureView",
+                            "PulseIOSExample.PrivateDataLabel",
+                            "PulseIOSExample.PublicInfoView",
+                            "PulseIOSExample.SafePublicLabel"
+                        ]
+                        
+                        
+                        
                         config.replayEndpointBaseUrl = "http://127.0.0.1:3400"
                     }
                 }

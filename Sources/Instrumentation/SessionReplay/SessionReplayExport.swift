@@ -5,10 +5,6 @@
 
 import Foundation
 
-// MARK: - API Contract Models
-
-// MARK: Wireframe
-
 struct SessionReplayWireframe: Encodable, Equatable {
     let id: Int
     let type: String
@@ -18,8 +14,6 @@ struct SessionReplayWireframe: Encodable, Equatable {
     let height: Double
     let base64: String?
 }
-
-// MARK: MetaEvent (Type 4)
 
 struct SessionReplayMetaEvent: Encodable {
     let type: Int = 4
@@ -32,8 +26,6 @@ struct MetaEventData: Encodable {
     let width: Int
     let height: Int
 }
-
-// MARK: FullSnapshotEvent (Type 2)
 
 struct SessionReplayFullSnapshotEvent: Encodable {
     let type: Int = 2
@@ -51,8 +43,6 @@ struct InitialOffset: Encodable {
     let left: Double
 }
 
-// MARK: IncrementalSnapshotEvent (Type 3)
-
 struct SessionReplayIncrementalSnapshotEvent: Encodable {
     let type: Int = 3
     let timestamp: Int64
@@ -68,8 +58,6 @@ struct WireframeUpdate: Encodable {
     let parentId: Int
     let wireframe: SessionReplayWireframe
 }
-
-// MARK: Top-Level Payload
 
 struct SessionReplayPayload: Encodable {
     let event: String = "snapshot"
@@ -97,8 +85,6 @@ struct SessionReplayProperties: Encodable {
     }
 }
 
-// MARK: Type-Erased Event Wrapper
-
 enum SessionReplayEvent: Encodable {
     case meta(SessionReplayMetaEvent)
     case fullSnapshot(SessionReplayFullSnapshotEvent)
@@ -112,8 +98,6 @@ enum SessionReplayEvent: Encodable {
         }
     }
 }
-
-// MARK: - Event Transformer
 
 struct WindowSnapshotStatus {
     var sentFullSnapshot: Bool = false
@@ -217,8 +201,6 @@ class SessionReplayEventTransformer {
         Int64(date.timeIntervalSince1970 * 1000)
     }
 }
-
-// MARK: - Exporter
 
 public class SessionReplayExporter {
     internal let transport: SessionReplayTransport

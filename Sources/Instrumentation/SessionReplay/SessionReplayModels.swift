@@ -12,9 +12,6 @@ import SwiftUI
 #endif
 #endif
 
-// MARK: - Privacy Enums
-
-/// Controls masking of text and input fields (UILabel, UITextField, UITextView, etc.)
 public enum TextAndInputPrivacy {
     /// Mask ALL text content — static labels, input fields, hints. Most restrictive (default).
     case maskAll
@@ -24,7 +21,6 @@ public enum TextAndInputPrivacy {
     case maskSensitiveInputs
 }
 
-/// Controls masking of UIImageView elements
 public enum ImagePrivacy {
     /// Replace all images with a solid black mask rectangle (default).
     case maskAll
@@ -32,16 +28,11 @@ public enum ImagePrivacy {
     case maskNone
 }
 
-// MARK: - Configuration
-
 public struct SessionReplayConfig {
     public var captureIntervalMs: Int = 1000
     public var compressionQuality: CGFloat = 0.3
-    /// Privacy level for text and input fields. Default: `.maskAll` (most restrictive).
     public var textAndInputPrivacy: TextAndInputPrivacy = .maskAll
-    /// Privacy level for images. Default: `.maskAll` (most restrictive).
     public var imagePrivacy: ImagePrivacy = .maskAll
-    /// Deprecated: Use `textAndInputPrivacy` instead. Kept for backward compatibility.
     @available(*, deprecated, message: "Use textAndInputPrivacy instead")
     public var maskAllTextInputs: Bool {
         get {
@@ -54,7 +45,6 @@ public struct SessionReplayConfig {
             textAndInputPrivacy = newValue ? .maskAll : .maskSensitiveInputs
         }
     }
-    /// Deprecated: Use `imagePrivacy` instead. Kept for backward compatibility.
     @available(*, deprecated, message: "Use imagePrivacy instead")
     public var maskAllImages: Bool {
         get {
@@ -104,7 +94,6 @@ public struct SessionReplayConfig {
         self.unmaskViewClasses = unmaskViewClasses
     }
     
-    /// Convenience initializer for backward compatibility
     @available(*, deprecated, message: "Use init with textAndInputPrivacy and imagePrivacy instead")
     public init(
         captureIntervalMs: Int = 1000,
@@ -130,18 +119,14 @@ public struct SessionReplayConfig {
         self.unmaskViewClasses = []
     }
     
-    /// Add a view class to always mask (class-wide masking)
     public mutating func addMaskViewClass(_ className: String) {
         maskViewClasses.insert(className)
     }
     
-    /// Add a view class to always unmask (class-wide unmasking)
     public mutating func addUnmaskViewClass(_ className: String) {
         unmaskViewClasses.insert(className)
     }
 }
-
-// MARK: - Frame
 
 public struct SessionReplayFrame {
     public enum ImageFormat: String {
@@ -175,8 +160,6 @@ public struct SessionReplayFrame {
         self.height = height
     }
 }
-
-// MARK: - UIView Instance-Level Masking Extensions
 
 #if os(iOS) || os(tvOS)
 extension UIView {
@@ -244,8 +227,6 @@ extension UIView {
     }
 }
 
-// MARK: - SwiftUI Masking Support
-
 #if canImport(SwiftUI)
 @available(iOS 14.0, macOS 11.0, tvOS 14.0, watchOS 7.0, *)
 public struct PulseReplayMaskModifier: ViewModifier {
@@ -271,7 +252,6 @@ extension View {
         modifier(PulseReplayMaskModifier(shouldMask: false))
     }
     
-    /// Legacy method for backward compatibility
     @available(*, deprecated, message: "Use pulseReplayMask() or pulseReplayUnmask() instead")
     public func pulseReplayMask(isEnabled: Bool) -> some View {
         modifier(PulseReplayMaskModifier(shouldMask: isEnabled))

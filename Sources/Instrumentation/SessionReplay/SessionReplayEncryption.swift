@@ -7,14 +7,10 @@ import Foundation
 import CryptoKit
 import Security
 
-// MARK: - Encryption Protocol
-
 internal protocol SessionReplayStorageEncryption {
     func encrypt(_ plaintext: Data) -> Data?
     func decrypt(_ ciphertext: Data) throws -> Data
 }
-
-// MARK: - Default AES-256-GCM Implementation
 
 @available(iOS 13.0, macOS 10.15, tvOS 13.0, watchOS 6.0, *)
 internal final class DefaultSessionReplayEncryption: SessionReplayStorageEncryption {
@@ -95,8 +91,6 @@ internal final class DefaultSessionReplayEncryption: SessionReplayStorageEncrypt
         }
     }
 }
-
-// MARK: - No-Op Encryption
 
 internal final class NoOpSessionReplayEncryption: SessionReplayStorageEncryption {
     func encrypt(_ plaintext: Data) -> Data? {
