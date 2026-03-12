@@ -17,12 +17,13 @@ internal class PersistenceUtils {
             .appendingPathComponent(storagePath, isDirectory: true)
     }
 
-    /// Creates persistence-backed span and log exporters. On failure, returns the original exporters.
+    /// Creates persistence-backed span, log, and metric exporters. On failure, returns the original exporters.
     /// Export from disk is gated by network availability on non-watchOS.
     static func createPersistentExporters(
         spanExporter: SpanExporter,
-        logExporter: LogRecordExporter
-    ) -> (spanExporter: SpanExporter, logExporter: LogRecordExporter) {
+        logExporter: LogRecordExporter,
+        metricExporter: MetricExporter
+    ) -> (spanExporter: SpanExporter, logExporter: LogRecordExporter, metricExporter: MetricExporter) {
         let persistenceStorageBase = storageBaseURL
 
         #if !os(watchOS)
@@ -49,9 +50,15 @@ internal class PersistenceUtils {
                 exportCondition: exportCondition,
                 performancePreset: .lowRuntimeImpact
             )
-            return (persistentSpan, persistentLog)
+            let persistentMetric = try PersistenceMetricExporterDecorator(
+                metricExporter: metricExporter,
+                storageURL: persistenceStorageBase.appendingPathComponent("metrics", isDirectory: true),
+                exportCondition: exportCondition,
+                performancePreset: .lowRuntimeImpact
+            )
+            return (persistentSpan, persistentLog, persistentMetric)
         } catch {
-            return (spanExporter, logExporter)
+            return (spanExporter, logExporter, metricExporter)
         }
     }
 

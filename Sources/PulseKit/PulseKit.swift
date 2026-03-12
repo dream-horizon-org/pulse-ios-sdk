@@ -12,6 +12,14 @@ internal enum PulseKitConstants {
 }
 
 public class Pulse {
+    /// When true, wraps the metric exporter with PulseLoggingMetricExporter to print exported metrics in the console.
+    /// Automatically true in Debug builds, false in Release.
+    #if DEBUG
+    private static let enableMetricExportLogging = true
+    #else
+    private static let enableMetricExportLogging = false
+    #endif
+
     public static let shared = Pulse()
 
     // Thread-safe initialization
@@ -36,6 +44,7 @@ public class Pulse {
     private var openTelemetry: OpenTelemetry?
     private var batchSpanProcessor: BatchSpanProcessor?
     private var batchLogProcessor: BatchLogRecordProcessor?
+    private var meterProvider: MeterProviderSdk?
     private var instrumentationConfig: InstrumentationConfiguration?
     
     // User session emitter
@@ -328,10 +337,44 @@ public class Pulse {
             finalLogExporter = logsExporter
         }
 
-        let (persistentSpanExporter, persistentLogExporter) = PersistenceUtils.createPersistentExporters(
+        // Metric pipeline: OtlpHttpMetricExporter -> [PulseLoggingMetricExporter] -> SampledMetricExporter -> PersistenceMetricExporter -> PeriodicMetricReader -> MeterProviderSdk
+        // PulseLoggingMetricExporter is behind enableMetricExportLogging (dev-only) to avoid prod logs.
+        let metricsUrl = currentSdkConfig.map { URL(string: $0.signals.metricCollectorUrl)! }
+            ?? URL(string: "\(base)/v1/metrics")!
+        let otlpMetricExporter = OtlpHttpMetricExporter(endpoint: metricsUrl, envVarHeaders: envVarHeaders)
+        let baseMetricExporterForPipeline: MetricExporter =
+            Self.enableMetricExportLogging
+                ? PulseLoggingMetricExporter(delegate: otlpMetricExporter)
+                : otlpMetricExporter
+
+        let finalMetricExporter: MetricExporter
+        if let processors = _samplingSignalProcessors {
+            finalMetricExporter = processors.makeSampledMetricExporter(delegateExporter: baseMetricExporterForPipeline)
+        } else {
+            finalMetricExporter = baseMetricExporterForPipeline
+        }
+
+        let (persistentSpanExporter, persistentLogExporter, persistentMetricExporter) = PersistenceUtils.createPersistentExporters(
             spanExporter: finalSpanExporter,
-            logExporter: finalLogExporter
+            logExporter: finalLogExporter,
+            metricExporter: finalMetricExporter
         )
+
+        let builtMeterProvider = MeterProviderSdk.builder()
+            .setResource(resource: resource)
+            .registerView(
+                selector: InstrumentSelector.builder().setInstrument(name: ".*").build(),
+                view: View.builder().build()
+            )
+            .registerMetricReader(
+                reader: PeriodicMetricReaderBuilder(exporter: persistentMetricExporter)
+                    .setInterval(timeInterval: 60)
+                    .build()
+            )
+            .build()
+
+        self.meterProvider = builtMeterProvider
+        OpenTelemetry.registerMeterProvider(meterProvider: builtMeterProvider)
 
         let spanProcessor = BatchSpanProcessor(
             spanExporter: persistentSpanExporter,
@@ -500,9 +543,11 @@ public class Pulse {
 
             batchSpanProcessor?.shutdown()
             _ = batchLogProcessor?.shutdown()
+            _ = meterProvider?.shutdown()
             PersistenceUtils.clearStorage()
 
             openTelemetry = nil
+            meterProvider = nil
             _isShutdown = true
         }
     }
@@ -651,6 +696,82 @@ public class Pulse {
         builderAction(&properties)
         setUserProperties(properties)
     }
+
+    // MARK: - Metric Test Helpers (internal — will be removed before release)
+
+    private func getPulseMeter() -> MeterSdk? {
+        return meterProvider?.meterBuilder(name: "com.pulse.signal.processors.metric").build()
+    }
+
+    /// Long Counter (monotonic, integer) — matches Android Counter(!isFraction, isMonotonic)
+    public func trackLongCounterMetric(name: String, value: Int = 1, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var counter = getPulseMeter()?.counterBuilder(name: name).build() else { return }
+        counter.add(value: value, attributes: attributes)
+    }
+
+    /// Double Counter (monotonic, fraction) — matches Android Counter(isFraction, isMonotonic)
+    public func trackDoubleCounterMetric(name: String, value: Double = 1.0, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var counter = getPulseMeter()?.counterBuilder(name: name).ofDoubles().build() else { return }
+        counter.add(value: value, attributes: attributes)
+    }
+
+    /// Long UpDownCounter (non-monotonic, integer) — matches Android Counter(!isFraction, !isMonotonic)
+    public func trackLongUpDownCounterMetric(name: String, value: Int, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var upDown = getPulseMeter()?.upDownCounterBuilder(name: name).build() else { return }
+        upDown.add(value: value, attributes: attributes)
+    }
+
+    /// Double UpDownCounter (non-monotonic, fraction) — matches Android Counter(isFraction, !isMonotonic)
+    public func trackDoubleUpDownCounterMetric(name: String, value: Double, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var upDown = getPulseMeter()?.upDownCounterBuilder(name: name).ofDoubles().build() else { return }
+        upDown.add(value: value, attributes: attributes)
+    }
+
+    /// Double Gauge — matches Android Gauge(isFraction)
+    public func trackDoubleGaugeMetric(name: String, value: Double, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var gauge = getPulseMeter()?.gaugeBuilder(name: name).build() else { return }
+        gauge.record(value: value, attributes: attributes)
+    }
+
+    /// Long Gauge — matches Android Gauge(!isFraction)
+    public func trackLongGaugeMetric(name: String, value: Int, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var gauge = getPulseMeter()?.gaugeBuilder(name: name).ofLongs().build() else { return }
+        gauge.record(value: value, attributes: attributes)
+    }
+
+    /// Double Histogram — matches Android Histogram(isFraction)
+    public func trackDoubleHistogramMetric(name: String, value: Double, bucketBoundaries: [Double]? = nil, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, let meter = getPulseMeter() else { return }
+        let builder = meter.histogramBuilder(name: name)
+        if let boundaries = bucketBoundaries {
+            _ = builder.setExplicitBucketBoundariesAdvice(boundaries)
+        }
+        var histogram = builder.build()
+        histogram.record(value: value, attributes: attributes)
+    }
+
+    /// Long Histogram — matches Android Histogram(!isFraction)
+    public func trackLongHistogramMetric(name: String, value: Int, bucketBoundaries: [Double]? = nil, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, let meter = getPulseMeter() else { return }
+        let builder = meter.histogramBuilder(name: name)
+        if let boundaries = bucketBoundaries {
+            _ = builder.setExplicitBucketBoundariesAdvice(boundaries)
+        }
+        var histogram = builder.ofLongs().build()
+        histogram.record(value: value, attributes: attributes)
+    }
+
+    /// Double Sum (UpDownCounter) — matches Android Sum(isFraction)
+    public func trackDoubleSumMetric(name: String, value: Double, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var sum = getPulseMeter()?.upDownCounterBuilder(name: name).ofDoubles().build() else { return }
+        sum.add(value: value, attributes: attributes)
+    }
+
+    /// Long Sum (UpDownCounter) — matches Android Sum(!isFraction)
+    public func trackLongSumMetric(name: String, value: Int, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var sum = getPulseMeter()?.upDownCounterBuilder(name: name).build() else { return }
+        sum.add(value: value, attributes: attributes)
+    }
 }
 
 // MARK: - Batch Processor Constants
@@ -660,6 +781,51 @@ internal enum BatchProcessorDefaults {
     static let maxQueueSize: Int = 2048
     static let maxExportBatchSize: Int = 512
     static let exportTimeout: TimeInterval = 30
+}
+
+// MARK: - Debug Metric Logging (remove before release)
+
+internal class PulseLoggingMetricExporter: MetricExporter {
+    private let delegate: MetricExporter
+
+    init(delegate: MetricExporter) {
+        self.delegate = delegate
+    }
+
+    func export(metrics: [MetricData]) -> ExportResult {
+        if !metrics.isEmpty {
+            print("┌─── [PulseMetrics] Exporting \(metrics.count) metric(s) ───")
+            for metric in metrics {
+                print("│ Name: \(metric.name)")
+                print("│ Type: \(metric.type) | Unit: \(metric.unit) | Monotonic: \(metric.isMonotonic)")
+                print("│ Scope: \(metric.instrumentationScopeInfo.name)")
+                for point in metric.data.points {
+                    let attrs = point.attributes.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+                    let valueStr: String
+                    switch point {
+                    case let lp as LongPointData:
+                        valueStr = "\(lp.value)"
+                    case let dp as DoublePointData:
+                        valueStr = "\(dp.value)"
+                    case let hp as HistogramPointData:
+                        valueStr = "count=\(hp.count) sum=\(hp.sum) min=\(hp.min) max=\(hp.max) boundaries=\(hp.boundaries)"
+                    default:
+                        valueStr = "(unknown point type)"
+                    }
+                    print("│   Point: value=\(valueStr) | attrs=[\(attrs)]")
+                }
+                print("│")
+            }
+            print("└─── [PulseMetrics] Exported ───")
+        }
+        return delegate.export(metrics: metrics)
+    }
+
+    func flush() -> ExportResult { delegate.flush() }
+    func shutdown() -> ExportResult { delegate.shutdown() }
+    func getAggregationTemporality(for instrument: InstrumentType) -> AggregationTemporality {
+        delegate.getAggregationTemporality(for: instrument)
+    }
 }
 
 
