@@ -98,8 +98,7 @@ Location is **off** by default. Enable it during initialization:
 
 ```swift
 PulseKit.shared.initialize(
-    endpointBaseUrl: "https://your-backend.com",
-    tenantId: "your-tenant-id",
+    apiKey: "your-api-key",
     instrumentations: { config in
         config.location { location in
             location.enabled(true)

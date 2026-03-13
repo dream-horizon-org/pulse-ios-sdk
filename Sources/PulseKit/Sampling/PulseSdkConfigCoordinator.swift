@@ -26,7 +26,7 @@ public final class PulseSdkConfigCoordinator {
     /// Starts a background fetch for config and persists only when version changed (apply on next launch).
     /// Dispatchers.IO, fetch via PulseSdkConfigRestProvider, persist only if newConfig != null && newConfig.version != currentVersion.
     /// - Parameters:
-    ///   - configEndpointUrl: Final config URL (already resolved by PulseKit from endpointBaseUrl when nil; e.g. `{base:8080}/v1/configs/active/`).
+    ///   - configEndpointUrl: Final config URL (derived from OTLP base URL by replacing port 4318 with 8080 and appending `/v1/configs/active/`).
     ///   - endpointHeaders: Headers sent with the GET request (e.g. X-API-KEY / api key).
     ///   - currentConfigVersion: Version of the config already loaded at init (avoids loading from storage again).
     public func startBackgroundFetch(
