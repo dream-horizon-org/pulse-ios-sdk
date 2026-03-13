@@ -41,7 +41,7 @@ import PulseKit
 // Initialize Pulse in your AppDelegate
 Pulse.shared.initialize(
     endpointBaseUrl: "https://your-backend.com/otlp",
-    projectId: "your-project-id"
+    apiKey: "your-api-key"
 )
 ```
 

@@ -22,7 +22,7 @@ public enum PulseAttributes {
 
     /// Project identifier; used as resource attribute "project.id" and in HTTP header X-API-KEY.
     public static let projectId = "project.id"
-    internal static let projectIdHeaderKey = "X-Tenant-ID"
+    internal static let apiKeyHeaderKey = "X-API-KEY"
 
     public static func pulseUserParameter(_ key: String) -> String {
         return "\(pulseUserPrefix).\(key)"

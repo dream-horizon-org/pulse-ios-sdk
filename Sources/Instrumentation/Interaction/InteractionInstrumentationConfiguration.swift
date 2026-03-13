@@ -12,7 +12,7 @@ public struct InteractionInstrumentationConfiguration {
     /// Default: "http://10.0.2.2:8080/v1/interactions/all-active-interactions"
     public var configUrlProvider: () -> String
 
-    /// HTTP headers for the config fetch request (e.g. X-API-KEY / projectId)
+    /// HTTP headers for the config fetch request (e.g. X-API-KEY)
     public var headers: [String: String]
 
     /// Custom attribute extractor for adding additional attributes to interaction spans

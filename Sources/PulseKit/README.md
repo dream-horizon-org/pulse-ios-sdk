@@ -10,22 +10,22 @@ The Pulse iOS SDK provides a simple, unified API for instrumenting iOS applicati
 import PulseKit
 
 // Initialize the SDK
-PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com", projectId: "your-project-id")
+PulseKit.shared.initialize(endpointBaseUrl: "https://your-backend.com", apiKey: "your-api-key")
 ```
 
 ## API Reference
 
 ### Initialization
 
-#### `initialize(endpointBaseUrl:projectId:configEndpointUrl:endpointHeaders:...)`
+#### `initialize(endpointBaseUrl:apiKey:configEndpointUrl:endpointHeaders:...)`
 
-Initializes the Pulse SDK with the specified configuration. **projectId** is sent as the `X-API-KEY` header on all API calls (config, traces, logs); optional **endpointHeaders** are merged with it (projectId wins for X-API-KEY).
+Initializes the Pulse SDK with the specified configuration. **apiKey** is sent as the `X-API-KEY` header on all API calls (config, traces, logs); optional **endpointHeaders** are merged with it (apiKey wins for X-API-KEY).
 
 **Parameters:**
 - `endpointBaseUrl: String` - **Required**. The base URL for the OTLP endpoint (e.g., `"https://your-backend.com"` or `"http://localhost:4318"`)
-- `projectId: String` - **Required**. Project identifier; sent as `X-API-KEY` header and as resource attribute `project.id`.
+- `apiKey: String` - **Required**. API key; sent as `X-API-KEY` header and as resource attribute `project.id`.
 - `configEndpointUrl: String?` - **Optional**. Config API URL; when nil, defaults to `{endpointBaseUrl with port 8080}/v1/configs/active/`.
-- `endpointHeaders: [String: String]?` - **Optional**. Extra HTTP headers; merged with X-API-KEY (projectId) for all requests.
+- `endpointHeaders: [String: String]?` - **Optional**. Extra HTTP headers; merged with X-API-KEY (apiKey) for all requests.
 - `globalAttributes: [String: String]?` - **Optional**. Global attributes to add to all telemetry data
 - `instrumentations: ((inout InstrumentationConfiguration) -> Void)?` - **Optional**. Closure to configure instrumentations using DSL syntax
 
