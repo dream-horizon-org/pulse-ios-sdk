@@ -28,26 +28,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             endpointHeaders: nil,
             globalAttributes: globalAttributes,
             instrumentations: { config in
-                // Enable Session Replay with default configuration
+                // Enable Session Replay
                 config.sessionReplay { replayConfig in
                     replayConfig.enabled(true)
-                    replayConfig.configure { config in
-                        // Test 5: Class-Level Override - Force Mask Custom View Class
-                        config.textAndInputPrivacy = .maskSensitiveInputs  // Normally would show labels
-                        config.imagePrivacy = .maskNone
+                    replayConfig.configure { localConfig in
+                        localConfig.textAndInputPrivacy = .maskSensitiveInputs
+                        localConfig.imagePrivacy = .maskAll
+                        localConfig.captureIntervalMs = 1000
+                        localConfig.screenshotScale = 1.0
                         
                         // Register custom classes for class-level overrides
-                        // Class names match the custom classes in PIIMaskingTestViewController.swift
-                        config.maskViewClasses = [
+                        localConfig.maskViewClasses = Set([
                             "PulseIOSExample.PrivateSecureView",
                             "PulseIOSExample.PrivateDataLabel",
                             "PulseIOSExample.PublicInfoView",
                             "PulseIOSExample.SafePublicLabel"
-                        ]
-                        
-                        
-                        
-                        config.replayEndpointBaseUrl = "http://127.0.0.1:3400"
+                        ])
+                        localConfig.replayEndpointBaseUrl = "http://127.0.0.1:3400"
                     }
                 }
             }
@@ -65,5 +62,3 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 }
-
-

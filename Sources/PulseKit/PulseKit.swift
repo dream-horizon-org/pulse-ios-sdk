@@ -4,6 +4,9 @@ import OpenTelemetrySdk
 #if canImport(OpenTelemetryProtocolExporterHttp)
 import OpenTelemetryProtocolExporterHttp
 #endif
+#if canImport(SessionReplay)
+import SessionReplay
+#endif
 
 // MARK: - SDK Constants
 internal enum PulseKitConstants {
@@ -162,6 +165,43 @@ public class Pulse {
                 _samplingSignalProcessors = processors
                 let enabledFeatures = processors.getEnabledFeatures()
                 applyDisabledFeatures(enabledFeatures: enabledFeatures, config: &config)
+                
+                // Extract and merge Session Replay config from backend
+                #if canImport(SessionReplay)
+                let sessionReplayFeature = sdkConfig.features.first { feature in
+                    feature.featureName == .session_replay &&
+                    feature.sdks.contains(currentSdkName) &&
+                    feature.sessionSampleRate > 0
+                }
+                
+                if let feature = sessionReplayFeature {
+                    let remoteConfig = SessionReplayRemoteConfig.from(featureConfig: feature)
+                    let localConfig = config.sessionReplay.config
+                    let mergedConfig = SessionReplayConfig.merge(
+                        remote: remoteConfig,
+                        local: localConfig
+                    )
+                    // Update SessionReplayInstrumentationConfig with merged config
+                    config.sessionReplay { replayConfig in
+                        // Update all config properties from merged config
+                        replayConfig.configure { config in
+                            config.captureIntervalMs = mergedConfig.captureIntervalMs
+                            config.compressionQuality = mergedConfig.compressionQuality
+                            config.textAndInputPrivacy = mergedConfig.textAndInputPrivacy
+                            config.imagePrivacy = mergedConfig.imagePrivacy
+                            config.screenshotScale = mergedConfig.screenshotScale
+                            config.flushIntervalSeconds = mergedConfig.flushIntervalSeconds
+                            config.flushAt = mergedConfig.flushAt
+                            config.maxBatchSize = mergedConfig.maxBatchSize
+                            config.replayEndpointBaseUrl = mergedConfig.replayEndpointBaseUrl
+                            // Preserve local-only settings (maskViewClasses, unmaskViewClasses)
+                            // These are already in mergedConfig from the merge function
+                            config.maskViewClasses = mergedConfig.maskViewClasses
+                            config.unmaskViewClasses = mergedConfig.unmaskViewClasses
+                        }
+                    }
+                }
+                #endif
             }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
