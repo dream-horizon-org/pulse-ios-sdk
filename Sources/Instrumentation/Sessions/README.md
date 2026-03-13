@@ -21,8 +21,7 @@ Session instrumentation is configured via PulseSDK initialization in your app's 
 import PulseSDK
 
 PulseSDK.initialize(
-    endpointBaseUrl: "https://your-endpoint.com",
-    projectId: "your-project-id",
+    apiKey: "your-api-key",
     instrumentations: { config in
         config.sessions { sessionsConfig in
             sessionsConfig.enabled(true) // true (default)

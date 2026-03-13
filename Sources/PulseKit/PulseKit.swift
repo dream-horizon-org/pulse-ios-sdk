@@ -14,6 +14,11 @@ internal enum PulseKitConstants {
 public class Pulse {
     public static let shared = Pulse()
 
+    // Default base URL for OTLP endpoints (traces, logs, metrics).
+    // Port 4318 is the standard OTLP HTTP port.
+    // Uses 127.0.0.1 for iOS simulator compatibility.
+    private static let defaultOtlpBaseUrl = "http://127.0.0.1:4318"
+
     // Thread-safe initialization
     private let initializationQueue = DispatchQueue(label: "com.pulse.ios.sdk.initialization")
     private var _isInitialized = false
@@ -97,10 +102,7 @@ public class Pulse {
     private init() {}
 
     public func initialize(
-        endpointBaseUrl: String,
         apiKey: String,
-        configEndpointUrl: String? = nil,
-        customEventCollectorUrl: String? = nil,
         endpointHeaders: [String: String]? = nil,
         globalAttributes: [String: AttributeValue]? = nil,
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
@@ -137,7 +139,7 @@ public class Pulse {
                 PulseLogger.log("No persisted config, using defaults.")
             }
 
-            let resolvedConfigEndpointUrl = configEndpointUrl ?? Self.defaultConfigEndpointUrl(from: endpointBaseUrl)
+            let resolvedConfigEndpointUrl = Self.defaultConfigEndpointUrl(from: Self.defaultOtlpBaseUrl)
             configCoordinator.startBackgroundFetch(
                 configEndpointUrl: resolvedConfigEndpointUrl,
                 endpointHeaders: endpointHeadersWithProject,
@@ -165,8 +167,6 @@ public class Pulse {
             }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
-                endpointBaseUrl: endpointBaseUrl,
-                customEventCollectorUrl: customEventCollectorUrl,
                 endpointHeaders: endpointHeadersWithProject,
                 resource: resource,
                 config: config,
@@ -180,7 +180,7 @@ public class Pulse {
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
                 openTelemetry: openTelemetry,
-                endpointBaseUrl: endpointBaseUrl,
+                endpointBaseUrl: Self.defaultOtlpBaseUrl,
                 endpointHeaders: endpointHeadersWithProject,
                 flushLogProcessor: { [weak self] in
                     self?.batchLogProcessor?.forceFlush()
@@ -249,11 +249,12 @@ public class Pulse {
         return b
     }
 
-    /// Default config endpoint URL when not provided
+    /// Default config endpoint URL derived from OTLP base URL by replacing port 4318 with 8080.
     private static func defaultConfigEndpointUrl(from endpointBaseUrl: String) -> String {
         let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
         return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
+
     internal static func extractProjectID(from apiKey: String) -> String {
         if let lastUnderscoreIndex = apiKey.lastIndex(of: "_"), lastUnderscoreIndex > apiKey.startIndex {
             return String(apiKey[..<lastUnderscoreIndex])
@@ -279,8 +280,6 @@ public class Pulse {
     }
 
     private func buildOpenTelemetrySDK(
-        endpointBaseUrl: String,
-        customEventCollectorUrl: String?,
         endpointHeaders: [String: String]?,
         resource: Resource,
         config: InstrumentationConfiguration,
@@ -295,20 +294,20 @@ public class Pulse {
         let envVarHeaders: [(String, String)]? = headers.map { ($0.key, $0.value) }
 
         // URL resolution (see expectations in PulseKit README):
-        // Traces/Logs/Metrics: config present → use full path from config; else → baseUrl + /v1/{traces|logs|metrics}
-        // customEventCollectorUrl: config present → from config; else user-provided; else baseUrl + /v1/logs
-        let base = Self.normalizedBaseUrl(endpointBaseUrl)
+        // Traces/Logs/Metrics: config present → use full path from config; else → defaultOtlpBaseUrl + /v1/{traces|logs|metrics}
+        // customEventCollectorUrl: config present → from config; else → defaultOtlpBaseUrl + /v1/logs
+        let base = Self.normalizedBaseUrl(Self.defaultOtlpBaseUrl)
         let tracesUrl = currentSdkConfig.map { URL(string: $0.signals.spanCollectorUrl)! }
             ?? URL(string: "\(base)/v1/traces")!
         let logsUrl = currentSdkConfig.map { URL(string: $0.signals.logsCollectorUrl)! }
             ?? URL(string: "\(base)/v1/logs")!
         let customEventUrl = currentSdkConfig.map { URL(string: $0.signals.customEventCollectorUrl)! }
-            ?? (customEventCollectorUrl.flatMap { URL(string: $0) } ?? URL(string: "\(base)/v1/logs")!)
+            ?? URL(string: "\(base)/v1/logs")!
         let otlpSpanExporter = OtlpHttpTraceExporter(endpoint: tracesUrl, envVarHeaders: envVarHeaders)
         let filteredSpanExporter = FilteringSpanExporter(delegate: otlpSpanExporter)
 
         // Always use SelectedLogExporter: route custom events to customEventUrl, others to logsUrl.
-        // When config is nil: customEventUrl = customEventCollectorUrl from init ?? logsUrl.
+        // When config is nil: customEventUrl = logsUrl .
         let defaultLogsExporter = OtlpHttpLogExporter(endpoint: logsUrl, envVarHeaders: envVarHeaders)
         let customEventExporter = OtlpHttpLogExporter(endpoint: customEventUrl, envVarHeaders: envVarHeaders)
         let selectExporter = PulseSignalSelectExporter(currentSdkName: currentSdkName)
@@ -650,6 +649,10 @@ public class Pulse {
         var properties: [String: AttributeValue?] = [:]
         builderAction(&properties)
         setUserProperties(properties)
+    }
+    
+    public var defaultOtlpBaseUrl: String {
+        return Self.defaultOtlpBaseUrl
     }
 }
 

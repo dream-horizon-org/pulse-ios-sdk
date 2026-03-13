@@ -37,7 +37,10 @@ extension InteractionInstrumentationConfig: InstrumentationLifecycle {
         guard self.enabled else { return }
 
         let configUrlProvider = self.configUrlProvider ?? {
-            "http://127.0.0.1:8080/v1/interaction-configs/"
+            let baseUrl = Pulse.shared.defaultOtlpBaseUrl
+            let apiBaseUrl = baseUrl.replacingOccurrences(of: ":4318", with: ":8080")
+            let normalized = apiBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            return "\(normalized)/v1/interaction-configs/"
         }
         let interactionConfig = InteractionInstrumentationConfiguration(
             configUrlProvider: configUrlProvider,

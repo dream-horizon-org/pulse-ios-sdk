@@ -14,16 +14,8 @@ The sampling feature is implemented in this directory and integrates with the re
 
 **Config endpoint**
 
-- By default, the SDK derives the config URL from `endpointBaseUrl`: it replaces port `4318` with `8080` and appends `/v1/configs/active/`.
-- To use a different config endpoint, pass `configEndpointUrl`:
-
-```swift
-PulseKit.shared.initialize(
-    endpointBaseUrl: "https://your-collector.com",
-    apiKey: "your-api-key",
-    configEndpointUrl: "https://config.example.com/v1/configs/active/"
-)
-```
+- The SDK derives the config URL from the OTLP base URL by replacing port `4318` with `8080` and appending `/v1/configs/active/`.
+- This is handled internally by `Pulse.defaultConfigEndpointUrl(from:)`.
 
 ---
 

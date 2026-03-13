@@ -23,7 +23,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         ]
         
         Pulse.shared.initialize(
-            endpointBaseUrl: "http://127.0.0.1:4318",
             apiKey: "default",
             endpointHeaders: nil,
             globalAttributes: globalAttributes
