@@ -25,7 +25,8 @@ let package = Package(
     .library(name: "OTelSwiftLog", targets: ["OTelSwiftLog"]),
     .library(name: "BaggagePropagationProcessor", targets: ["BaggagePropagationProcessor"]),
     .executable(name: "loggingTracer", targets: ["LoggingTracer"]),
-    .executable(name: "StableMetricSample", targets: ["StableMetricSample"])
+    .executable(name: "StableMetricSample", targets: ["StableMetricSample"]),
+    .plugin(name: "PulseUploadPlugin", targets: ["PulseUploadPlugin"])
   ],
   dependencies: [
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.3.0"),
@@ -188,6 +189,17 @@ let package = Package(
       ],
       path: "Examples/Stable Metric Sample",
       exclude: ["README.md"]
+    ),
+    .plugin(
+      name: "PulseUploadPlugin",
+      capability: .command(
+        intent: .custom(verb: "uploadSourceMaps", description: "Upload source maps (dSYM files) to Pulse backend"),
+        permissions: [
+          // Network permission is required because SPM command plugins run in a sandbox that blocks network access by default. 
+          .allowNetworkConnections(scope: .all(ports: []), reason: "Upload dSYM files to Pulse backend via HTTP POST")
+        ]
+      ),
+      path: "Plugins/PulseUploadPlugin"
     )
   ]
 ).addPlatformSpecific()
