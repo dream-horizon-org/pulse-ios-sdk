@@ -4,7 +4,9 @@
  */
 
 import Foundation
+#if canImport(Sessions)
 import Sessions
+#endif
 #if os(iOS) || os(tvOS)
 import UIKit
 #endif

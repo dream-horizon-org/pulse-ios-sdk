@@ -87,20 +87,12 @@ internal class SessionReplayMasker {
             if viewControllerChanged {
                 self.lastTopViewController = currentTopVC
                 self.lastViewControllerChangeTime = Date()
-                #if DEBUG
-                if let vc = currentTopVC {
-                    NSLog("[SessionReplay] 🔄 View controller changed to: \(type(of: vc))")
-                }
-                #endif
             }
             
             if let changeTime = self.lastViewControllerChangeTime {
                 let timeSinceChange = Date().timeIntervalSince(changeTime)
-                let minStabilizationDelay: TimeInterval = 0.1 // 100ms
+                let minStabilizationDelay: TimeInterval = 0.1
                 if timeSinceChange < minStabilizationDelay {
-                    #if DEBUG
-                    NSLog("[SessionReplay] ⏸️ Skipping capture: View controller changed \(String(format: "%.0f", timeSinceChange * 1000))ms ago (waiting for \(Int(minStabilizationDelay * 1000))ms)")
-                    #endif
                     completion(nil)
                     return
                 }
@@ -109,15 +101,6 @@ internal class SessionReplayMasker {
             let isStable = self.isViewStateStable(window: window)
             let isVisible = self.isViewHierarchyVisible(window: window)
             
-            #if DEBUG
-            if !isStable {
-                NSLog("[SessionReplay] ❌ Capture failed: window state not stable")
-            }
-            if !isVisible {
-                NSLog("[SessionReplay] ❌ Capture failed: view hierarchy not visible")
-            }
-            #endif
-            
             guard isStable && isVisible else {
                 completion(nil)
                 return
@@ -125,17 +108,11 @@ internal class SessionReplayMasker {
             
             let windowBounds = window.bounds
             guard windowBounds.width > 0 && windowBounds.height > 0 else {
-                #if DEBUG
-                NSLog("[SessionReplay] ❌ Invalid window bounds: \(windowBounds)")
-                #endif
                 completion(nil)
                 return
             }
             
             guard window.rootViewController != nil || !window.subviews.isEmpty else {
-                #if DEBUG
-                NSLog("[SessionReplay] ❌ Window has no root view controller and no subviews")
-                #endif
                 completion(nil)
                 return
             }
@@ -147,14 +124,6 @@ internal class SessionReplayMasker {
             
             var snapshots: [ObjectIdentifier: ViewSnapshot] = [:]
             var visited: Set<ObjectIdentifier> = []
-            
-            #if DEBUG
-            NSLog("[SessionReplay] 🔍 Starting widget snapshot on window: \(windowBounds)")
-            NSLog("[SessionReplay] 🔍 Config: textAndInputPrivacy=\(self.config.textAndInputPrivacy), imagePrivacy=\(self.config.imagePrivacy)")
-            if let rootVC = window.rootViewController {
-                NSLog("[SessionReplay] 🔍 Window root VC: \(type(of: rootVC)), view: \(rootVC.view != nil ? "exists" : "nil")")
-            }
-            #endif
             
             window.layoutIfNeeded()
             if let rootVC = window.rootViewController {
@@ -168,20 +137,78 @@ internal class SessionReplayMasker {
                 visited: &visited
             )
             
-            #if DEBUG
-            NSLog("[SessionReplay] 🔍 Snapshot: captured \(snapshots.count) views")
-            #endif
+            var visitedForMasking: Set<ObjectIdentifier> = []
+            let viewsNeedingMask = self.findViewsNeedingMask(snapshots: snapshots, windowBounds: windowBounds)
+            let viewsWithNilWindowFrame = viewsNeedingMask.filter { $0.windowFrame == nil }
             
-            let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
-            
-            guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
-                #if DEBUG
-                NSLog("[SessionReplay] ❌ Screenshot capture failed or returned invalid image")
-                #endif
+            if !viewsWithNilWindowFrame.isEmpty {
                 completion(nil)
                 return
             }
             
+            // Collect mask rects on main thread (fast - just coordinate calculations)
+            var maskRects = self.processMaskingFromSnapshot(
+                snapshots: snapshots,
+                rootViewId: ObjectIdentifier(window),
+                windowBounds: windowBounds,
+                visited: &visitedForMasking
+            )
+            
+            maskRects = self.mergeOverlappingRects(maskRects)
+            
+            let viewsNeedingMaskCount = viewsNeedingMask.count
+            
+            // FAST PATH: If no masking needed, skip to background immediately
+            if maskRects.isEmpty && viewsNeedingMaskCount == 0 {
+                // No masking required - move heavy operations to background
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    guard let self = self else {
+                        completion(nil)
+                        return
+                    }
+                    
+                    // Capture screenshot on background (but must be called from main thread)
+                    DispatchQueue.main.async {
+                        let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
+                        
+                        guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
+                            completion(nil)
+                            return
+                        }
+                        
+                        // Process on background
+                        DispatchQueue.global(qos: .userInitiated).async {
+                            let clampedScale = max(0.01, min(1.0, scale))
+                            if clampedScale < 1.0 {
+                                let finalSize = CGSize(
+                                    width: max(1, screenshot.size.width * clampedScale),
+                                    height: max(1, screenshot.size.height * clampedScale)
+                                )
+                                let format = UIGraphicsImageRendererFormat(for: .init(displayScale: 1))
+                                format.opaque = true
+                                let renderer = UIGraphicsImageRenderer(size: finalSize, format: format)
+                                let scaledImage = renderer.image { _ in
+                                    screenshot.draw(in: CGRect(origin: .zero, size: finalSize))
+                                }
+                                completion(scaledImage)
+                            } else {
+                                completion(screenshot)
+                            }
+                        }
+                    }
+                }
+                return
+            }
+            
+            // MASKING PATH: Capture screenshot, then apply masks on background
+            let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
+            
+            guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
+                completion(nil)
+                return
+            }
+            
+            // Check for scroll changes between snapshot and screenshot
             var scrollPositionAtScreenshot: CGFloat = 0
             if let scrollView = self.findScrollView(in: window) {
                 scrollPositionAtScreenshot = scrollView.contentOffset.y
@@ -189,81 +216,32 @@ internal class SessionReplayMasker {
             let scrollDelta = scrollPositionAtScreenshot - scrollPositionAtSnapshot
             
             if abs(scrollDelta) > 5.0 {
-                #if DEBUG
-                NSLog("[SessionReplay] ⏸️ Skipping frame: significant scroll (\(String(format: "%.1f", scrollDelta))px) detected during capture gap")
-                #endif
                 completion(nil)
                 return
             }
             
-            // Now dispatch masking processing to background thread
+            // Move heavy operations (mask rendering, encoding) to background thread
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
                     completion(nil)
                     return
                 }
                 
-                var visited: Set<ObjectIdentifier> = []
-                
-                // Check for views that should be masked but have nil windowFrame (security check)
-                let viewsNeedingMask = self.findViewsNeedingMask(snapshots: snapshots, windowBounds: windowBounds)
-                let viewsWithNilWindowFrame = viewsNeedingMask.filter { $0.windowFrame == nil }
-                
-                #if DEBUG
-                if !viewsWithNilWindowFrame.isEmpty {
-                    NSLog("[SessionReplay] ⚠️ SECURITY WARNING: Found \(viewsWithNilWindowFrame.count) view(s) that should be masked but have nil windowFrame:")
-                    for viewInfo in viewsWithNilWindowFrame {
-                        NSLog("[SessionReplay]   - \(viewInfo.className) (isTextField: \(viewInfo.isTextField), isTextView: \(viewInfo.isTextView), isLabel: \(viewInfo.isLabel))")
-                    }
-                }
-                #endif
-                
-                let maskRects = self.processMaskingFromSnapshot(
-                    snapshots: snapshots,
-                    rootViewId: ObjectIdentifier(window),
-                    windowBounds: windowBounds,
-                    visited: &visited
-                )
-                
-                #if DEBUG
-                NSLog("[SessionReplay] 🔍 Processed masking: found \(maskRects.count) maskable regions")
-                if !maskRects.isEmpty {
-                    for (index, rect) in maskRects.enumerated() {
-                        NSLog("[SessionReplay]   Mask[\(index)]: x=\(Int(rect.origin.x)), y=\(Int(rect.origin.y)), w=\(Int(rect.width)), h=\(Int(rect.height))")
-                    }
-                } else {
-                    NSLog("[SessionReplay] ✅ No masking required (no maskable widgets found)")
-                }
-                #endif
-                
-                if !viewsWithNilWindowFrame.isEmpty {
-                    #if DEBUG
-                    NSLog("[SessionReplay] 🚫 SECURITY: Skipping capture - views need masking but have nil windowFrame. This prevents data leak.")
-                    #endif
-                    completion(nil)
-                    return
-                }
-                
-                let viewsNeedingMaskCount = viewsNeedingMask.count
-                
                 let capturedScreenshot = screenshot
+                
+                // CRITICAL: Verify screenshot size matches window bounds (coordinate space validation)
+                
+                // Phase 5: Validate mask rects before rendering (use screenshot size, not window bounds)
+                let validatedRects = self.validateMaskRects(maskRects, imageSize: capturedScreenshot.size)
+               
                 
                 let maskedImage = self.drawMasksOnImage(
                     image: capturedScreenshot,
-                    maskRects: maskRects
+                    maskRects: validatedRects
                 )
-                
-                #if DEBUG
-                if !maskRects.isEmpty {
-                    NSLog("[SessionReplay] 🎨 Applied \(maskRects.count) mask(s) to screenshot")
-                }
-                #endif
                 
                 guard let maskedImage = maskedImage, maskedImage.size.width > 0 && maskedImage.size.height > 0 else {
                     if viewsNeedingMaskCount > 0 {
-                        #if DEBUG
-                        NSLog("[SessionReplay] 🚫 SECURITY: Masking failed but \(viewsNeedingMaskCount) view(s) need masking - skipping capture to prevent data leak")
-                        #endif
                         completion(nil)
                         return
                     }
@@ -271,6 +249,7 @@ internal class SessionReplayMasker {
                     return
                 }
                 
+                // Scale if needed
                 let clampedScale = max(0.01, min(1.0, scale))
                 if clampedScale < 1.0 {
                     let finalSize = CGSize(
@@ -512,7 +491,8 @@ internal class SessionReplayMasker {
         window: UIWindow,
         snapshots: inout [ObjectIdentifier: ViewSnapshot],
         visited: inout Set<ObjectIdentifier>,
-        parentId: ObjectIdentifier? = nil
+        parentId: ObjectIdentifier? = nil,
+        screenToWindowOffset: CGPoint? = nil
     ) {
         let viewId = ObjectIdentifier(view)
         if visited.contains(viewId) { return }
@@ -524,25 +504,55 @@ internal class SessionReplayMasker {
         
         let className = String(describing: type(of: view))
         let frame = view.frame
-        let windowFrame: CGRect?
+        
+        // CRITICAL FIX: Use direct window coordinate conversion (not screen->window offset)
+        // view.convert(view.bounds, to: window) gives us coordinates in window space,
+        // which directly matches the screenshot bitmap coordinate space.
+        // This is simpler and more accurate than screen->window offset conversion.
+        var windowFrame: CGRect?
         if view == window {
             windowFrame = window.bounds
-        } else if let superview = view.superview {
-            let convertedFrame = superview.convert(view.frame, to: window)
-            if convertedFrame.width > 0 && convertedFrame.height > 0 &&
-               convertedFrame.origin.x.isFinite && convertedFrame.origin.y.isFinite &&
-               convertedFrame.width.isFinite && convertedFrame.height.isFinite {
-                windowFrame = convertedFrame
-            } else {
-                windowFrame = view.convert(view.bounds, to: window)
-            }
-        } else if let viewWindow = view.window, viewWindow == window {
-            windowFrame = view.convert(view.bounds, to: window)
         } else {
-            if let viewWindow = view.window {
-                windowFrame = view.convert(view.bounds, to: viewWindow)
+            // Direct conversion to window coordinates - this matches screenshot bitmap space
+            // Try multiple conversion methods for robustness
+            if let superview = view.superview {
+                // Method 1: Convert via superview (most accurate for views in hierarchy)
+                let convertedFrame = superview.convert(view.frame, to: window)
+                if convertedFrame.width > 0 && convertedFrame.height > 0 &&
+                   convertedFrame.origin.x.isFinite && convertedFrame.origin.y.isFinite &&
+                   convertedFrame.width.isFinite && convertedFrame.height.isFinite &&
+                   convertedFrame.origin.x >= -1000 && convertedFrame.origin.y >= -1000 && // Reasonable bounds check
+                   convertedFrame.origin.x < window.bounds.width + 1000 &&
+                   convertedFrame.origin.y < window.bounds.height + 1000 {
+                    windowFrame = convertedFrame
+                } else {
+                    // Method 2: Direct conversion (fallback)
+                    windowFrame = view.convert(view.bounds, to: window)
+                }
+            } else if let viewWindow = view.window, viewWindow == window {
+                // Method 3: Direct conversion when view is in target window
+                windowFrame = view.convert(view.bounds, to: window)
             } else {
+                // View is not in the target window - cannot convert
                 windowFrame = nil
+            }
+            
+            // Validate the converted frame
+            if let frame = windowFrame {
+                // Ensure frame is valid and within reasonable bounds
+                if frame.width <= 0 || frame.height <= 0 ||
+                   !frame.origin.x.isFinite || !frame.origin.y.isFinite ||
+                   !frame.width.isFinite || !frame.height.isFinite {
+                    windowFrame = nil
+                } else {
+                    // Additional validation: check if frame is way outside window bounds (likely wrong conversion)
+                    let tolerance: CGFloat = 100 // Allow some tolerance for views slightly outside
+                    if frame.origin.x < -tolerance || frame.origin.y < -tolerance ||
+                       frame.origin.x > window.bounds.width + tolerance ||
+                       frame.origin.y > window.bounds.height + tolerance {
+                        // Still use it but it will be clamped later
+                    }
+                }
             }
         }
         
@@ -624,7 +634,8 @@ internal class SessionReplayMasker {
                 window: window,
                 snapshots: &snapshots,
                 visited: &visited,
-                parentId: viewId
+                parentId: viewId,
+                screenToWindowOffset: nil // Not needed with direct conversion
             )
         }
     }
@@ -652,6 +663,31 @@ internal class SessionReplayMasker {
         let isVisible = !snapshot.isHidden && snapshot.alpha > 0 && (isWindow || snapshot.hasWindow)
         
         guard isVisible else {
+            return maskableRects
+        }
+        
+        // CRITICAL FIX: Never mask the window itself - it's just a container
+        // Only process its children for masking. The window itself should never be masked
+        // unless explicitly requested via pulseReplayMask() (which would be unusual).
+        if isWindow {
+            // For window, skip masking decision and just process children
+            // The window itself should never be masked by default
+            #if DEBUG
+            let instanceDecision = resolveInstanceDecisionFromSnapshot(snapshot: snapshot)
+            let classDecision = resolveClassDecisionFromSnapshot(snapshot: snapshot)
+            #endif
+            
+            // Process children with parent's forced mask state
+            for childId in snapshot.subviewIds {
+                let childRects = processMaskingFromSnapshot(
+                    snapshots: snapshots,
+                    rootViewId: childId,
+                    windowBounds: windowBounds,
+                    visited: &visited,
+                    parentForcedMask: parentForcedMask
+                )
+                maskableRects.append(contentsOf: childRects)
+            }
             return maskableRects
         }
         
@@ -875,17 +911,94 @@ internal class SessionReplayMasker {
         return viewsNeedingMask
     }
     
-    private func applyTypeSpecificMaskingFromSnapshot(snapshot: ViewSnapshot, windowBounds: CGRect) -> CGRect? {
+    /// Get text area window rect for text fields/views, accounting for padding.
+    /// Similar to Android's getTextAreaWindowRect - masks only the text content area, not the full view frame.
+    /// Note: This requires the actual view instance, which we don't have in snapshot-only processing.
+    /// For now, we use full frame masking. This can be enhanced by storing padding info in ViewSnapshot.
+    private func getTextAreaWindowRect(
+        snapshot: ViewSnapshot,
+        windowBounds: CGRect,
+        view: UIView?
+    ) -> CGRect? {
         guard let windowFrame = snapshot.windowFrame else {
-            #if DEBUG
-            NSLog("[SessionReplay] ⚠️ Warning: windowFrame is nil for \(snapshot.className) - cannot mask. This may indicate views were captured before layout.")
-            #endif
+            return nil
+        }
+        
+        // For text fields and text views, adjust for padding/insets if we have the view
+        if snapshot.isTextField, let textField = view as? UITextField {
+            // UITextField padding: leftView, rightView, and border style affect content area
+            var leftPadding: CGFloat = textField.leftView?.frame.width ?? 0
+            var rightPadding: CGFloat = textField.rightView?.frame.width ?? 0
+            var topPadding: CGFloat = 0
+            var bottomPadding: CGFloat = 0
+            
+            // Account for border insets
+            if textField.borderStyle != .none {
+                leftPadding += 8 // Approximate border padding
+                rightPadding += 8
+                topPadding += 4
+                bottomPadding += 4
+            }
+            
+            // Calculate text area rect
+            let textAreaRect = CGRect(
+                x: windowFrame.origin.x + leftPadding,
+                y: windowFrame.origin.y + topPadding,
+                width: max(0, windowFrame.width - leftPadding - rightPadding),
+                height: max(0, windowFrame.height - topPadding - bottomPadding)
+            )
+            
+            // Ensure valid rect
+            guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
+                // Fallback to full frame if text area is invalid
+                return clampRectToBounds(rect: windowFrame, bounds: windowBounds)
+            }
+            
+            return clampRectToBounds(rect: textAreaRect, bounds: windowBounds)
+        } else if snapshot.isTextView, let textView = view as? UITextView {
+            // UITextView: use text container insets
+            let leftPadding = textView.textContainerInset.left
+            let rightPadding = textView.textContainerInset.right
+            let topPadding = textView.textContainerInset.top
+            let bottomPadding = textView.textContainerInset.bottom
+            
+            // Calculate text area rect
+            let textAreaRect = CGRect(
+                x: windowFrame.origin.x + leftPadding,
+                y: windowFrame.origin.y + topPadding,
+                width: max(0, windowFrame.width - leftPadding - rightPadding),
+                height: max(0, windowFrame.height - topPadding - bottomPadding)
+            )
+            
+            // Ensure valid rect
+            guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
+                // Fallback to full frame if text area is invalid
+                return clampRectToBounds(rect: windowFrame, bounds: windowBounds)
+            }
+            
+            return clampRectToBounds(rect: textAreaRect, bounds: windowBounds)
+        }
+        
+        // For other view types or when view is not available, use full frame
+        return clampRectToBounds(rect: windowFrame, bounds: windowBounds)
+    }
+    
+    private func applyTypeSpecificMaskingFromSnapshot(snapshot: ViewSnapshot, windowBounds: CGRect) -> CGRect? {
+        // Never mask the window itself via type-specific logic
+        let isWindow = snapshot.className.contains("Window")
+        guard !isWindow else {
+            return nil
+        }
+        
+        guard let windowFrame = snapshot.windowFrame else {
             return nil
         }
         
         if snapshot.isTextField {
             let shouldMask = shouldMaskTextFieldFromSnapshot(snapshot: snapshot)
             if shouldMask {
+                // Note: We can't get the actual view here (snapshot only), so use full frame
+                // In a future enhancement, we could store padding info in ViewSnapshot
                 let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
                 guard clamped.width > 0 && clamped.height > 0 else {
                     return nil
@@ -895,6 +1008,7 @@ internal class SessionReplayMasker {
         } else if snapshot.isTextView {
             let shouldMask = shouldMaskTextViewFromSnapshot(snapshot: snapshot)
             if shouldMask {
+                // Note: We can't get the actual view here (snapshot only), so use full frame
                 let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
                 guard clamped.width > 0 && clamped.height > 0 else {
                     return nil
@@ -1011,6 +1125,86 @@ internal class SessionReplayMasker {
         return false
     }
     
+    /// Compute the delta between screen coordinates and window coordinates.
+    /// Similar to Android's computeScreenToWindowOffset - converts screen coords to window (bitmap) coordinates.
+    private func computeScreenToWindowOffset(view: UIView, window: UIWindow) -> CGPoint {
+        // Get location in screen coordinates
+        let screenFrame = view.convert(view.bounds, to: nil)
+        let screenOrigin = screenFrame.origin
+        
+        // Get location in window coordinates
+        let windowFrame = view.convert(view.bounds, to: window)
+        let windowOrigin = windowFrame.origin
+        
+        // Calculate offset: screen - window
+        return CGPoint(
+            x: screenOrigin.x - windowOrigin.x,
+            y: screenOrigin.y - windowOrigin.y
+        )
+    }
+    
+    /// Returns the visible rect of this view in window coordinates (matching the screenshot bitmap's coordinate space).
+    /// Similar to Android's windowVisibleRectSafe - validates view state and converts coordinates safely.
+    private func windowVisibleRectSafe(
+        view: UIView,
+        window: UIWindow,
+        offset: CGPoint,
+        logger: ((String) -> Void)? = nil
+    ) -> CGRect? {
+        guard isViewStateStableForCoordinateConversion(view: view) else {
+            logger?("[SessionReplay] View state not stable for coordinate conversion: \(type(of: view))")
+            return nil
+        }
+        
+        // Get global visible rect (screen coordinates)
+        guard let screenRect = globalVisibleRect(view: view) else {
+            return nil
+        }
+        
+        // Convert to window coordinates by applying offset
+        let windowRect = CGRect(
+            x: screenRect.origin.x - offset.x,
+            y: screenRect.origin.y - offset.y,
+            width: screenRect.width,
+            height: screenRect.height
+        )
+        
+        return windowRect
+    }
+    
+    /// Check if view state is stable for coordinate conversion operations.
+    /// Similar to Android's isViewStateStableForMatrixOperations.
+    private func isViewStateStableForCoordinateConversion(view: UIView) -> Bool {
+        guard view.isHidden == false else { return false }
+        guard view.alpha > 0 else { return false }
+        guard view.window != nil else { return false }
+        guard view.bounds.width > 0 && view.bounds.height > 0 else { return false }
+        
+        // Check for active animations
+        if let animationKeys = view.layer.animationKeys(), !animationKeys.isEmpty {
+            return false
+        }
+        
+        return true
+    }
+    
+    /// Get global visible rect (screen coordinates) for a view.
+    /// Equivalent to Android's getGlobalVisibleRect.
+    /// Uses convert(_:to:) with nil to get screen coordinates.
+    private func globalVisibleRect(view: UIView) -> CGRect? {
+        guard view.window != nil else { return nil }
+        
+        // Convert view bounds to screen coordinates (nil = screen coordinate space)
+        let screenRect = view.convert(view.bounds, to: nil)
+        
+        // Ensure valid rect
+        guard screenRect.width > 0 && screenRect.height > 0 else { return nil }
+        guard screenRect.origin.x.isFinite && screenRect.origin.y.isFinite else { return nil }
+        guard screenRect.width.isFinite && screenRect.height.isFinite else { return nil }
+        
+        return screenRect
+    }
+    
     private func clampRectToBounds(rect: CGRect, bounds: CGRect) -> CGRect {
         guard rect.width > 0 && rect.height > 0 else { return .zero }
         guard rect.origin.x.isFinite && rect.origin.y.isFinite else { return .zero }
@@ -1025,12 +1219,95 @@ internal class SessionReplayMasker {
         let clampedWidth = min(rect.width, availableWidth)
         let clampedHeight = min(rect.height, availableHeight)
         
-        return CGRect(
+        let clamped = CGRect(
             x: clampedX,
             y: clampedY,
             width: max(0, clampedWidth),
             height: max(0, clampedHeight)
         )
+        
+        
+        return clamped
+    }
+    
+    /// Merge overlapping mask rects to reduce rendering overhead.
+    /// Similar to Android's approach - combines adjacent/overlapping rects.
+    private func mergeOverlappingRects(_ rects: [CGRect]) -> [CGRect] {
+        guard rects.count > 1 else { return rects }
+        
+        var merged: [CGRect] = []
+        var remaining = rects.sorted { $0.origin.y < $1.origin.y || ($0.origin.y == $1.origin.y && $0.origin.x < $1.origin.x) }
+        
+        while !remaining.isEmpty {
+            var current = remaining.removeFirst()
+            var mergedAny = true
+            
+            // Try to merge with other rects
+            while mergedAny {
+                mergedAny = false
+                var i = 0
+                while i < remaining.count {
+                    let other = remaining[i]
+                    
+                    // Check if rects overlap or are adjacent (within 2px)
+                    let tolerance: CGFloat = 2.0
+                    let overlaps = current.intersects(other) ||
+                        (abs(current.maxX - other.minX) <= tolerance && abs(current.minY - other.minY) <= tolerance && abs(current.maxY - other.maxY) <= tolerance) ||
+                        (abs(current.minX - other.maxX) <= tolerance && abs(current.minY - other.minY) <= tolerance && abs(current.maxY - other.maxY) <= tolerance) ||
+                        (abs(current.maxY - other.minY) <= tolerance && abs(current.minX - other.minX) <= tolerance && abs(current.maxX - other.maxX) <= tolerance) ||
+                        (abs(current.minY - other.maxY) <= tolerance && abs(current.minX - other.minX) <= tolerance && abs(current.maxX - other.maxX) <= tolerance)
+                    
+                    if overlaps {
+                        // Merge rects
+                        current = current.union(other)
+                        remaining.remove(at: i)
+                        mergedAny = true
+                    } else {
+                        i += 1
+                    }
+                }
+            }
+            
+            merged.append(current)
+        }
+        
+        
+        return merged
+    }
+    
+    /// Validate mask rects before rendering - ensure all are within image bounds and valid.
+    private func validateMaskRects(_ rects: [CGRect], imageSize: CGSize) -> [CGRect] {
+        var validRects: [CGRect] = []
+        
+        for rect in rects {
+            guard rect.width > 0 && rect.height > 0 else {
+                continue
+            }
+            
+            guard rect.origin.x.isFinite && rect.origin.y.isFinite else {
+                continue
+            }
+            
+            guard rect.width.isFinite && rect.height.isFinite else {
+                continue
+            }
+            
+            // Clamp to image bounds
+            let clamped = CGRect(
+                x: max(0, min(rect.origin.x, imageSize.width)),
+                y: max(0, min(rect.origin.y, imageSize.height)),
+                width: min(rect.width, imageSize.width - max(0, rect.origin.x)),
+                height: min(rect.height, imageSize.height - max(0, rect.origin.y))
+            )
+            
+            guard clamped.width > 0 && clamped.height > 0 else {
+                continue
+            }
+            
+            validRects.append(clamped)
+        }
+        
+        return validRects
     }
     
     private func captureScreenshotSync(
@@ -1083,6 +1360,7 @@ internal class SessionReplayMasker {
             cgContext.setAlpha(1.0)
         
             for rect in maskRects {
+                // Clamp rect to image bounds (screenshot coordinate space)
                 let clampedRect = CGRect(
                     x: max(0, min(rect.origin.x, image.size.width)),
                     y: max(0, min(rect.origin.y, image.size.height)),
@@ -1147,41 +1425,26 @@ internal class SessionReplayMasker {
         
         if let navController = findTopNavigationController(in: window) {
             if navController.isBeingPresented || navController.isBeingDismissed {
-                #if DEBUG
-                NSLog("[SessionReplay] ⏸️ Skipping capture: Navigation controller is being presented/dismissed")
-                #endif
                 return false
             }
             
             if let topVC = navController.topViewController {
                 if topVC.isBeingPresented || topVC.isBeingDismissed || topVC.isMovingFromParent || topVC.isMovingToParent {
-                    #if DEBUG
-                    NSLog("[SessionReplay] ⏸️ Skipping capture: View controller is transitioning")
-                    #endif
                     return false
                 }
             }
             
             if let transitionCoordinator = navController.transitionCoordinator, transitionCoordinator.isAnimated {
-                #if DEBUG
-                NSLog("[SessionReplay] ⏸️ Skipping capture: Navigation transition in progress")
-                #endif
                 return false
             }
         }
         
         if let rootVC = window.rootViewController {
             if rootVC.isBeingPresented || rootVC.isBeingDismissed || rootVC.isMovingFromParent || rootVC.isMovingToParent {
-                #if DEBUG
-                NSLog("[SessionReplay] ⏸️ Skipping capture: Root view controller is transitioning")
-                #endif
                 return false
             }
             
             if let transitionCoordinator = rootVC.transitionCoordinator, transitionCoordinator.isAnimated {
-                #if DEBUG
-                NSLog("[SessionReplay] ⏸️ Skipping capture: View controller transition in progress")
-                #endif
                 return false
             }
         }

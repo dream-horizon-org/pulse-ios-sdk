@@ -225,7 +225,7 @@ public class Pulse {
                 flushLogProcessor: { [weak self] in
                     self?.batchLogProcessor?.forceFlush()
                 },
-                projectId: projectId,
+                projectId: Self.extractProjectID(from: apiKey),
                 userIdProvider: { [weak self] in
                     self?.userSessionEmitter.userId
                 }

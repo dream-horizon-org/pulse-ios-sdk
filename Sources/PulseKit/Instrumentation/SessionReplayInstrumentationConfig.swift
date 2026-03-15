@@ -4,7 +4,9 @@
  */
 
 import Foundation
+#if canImport(SessionReplay)
 import SessionReplay
+#endif
 #if os(iOS) || os(tvOS)
 import UIKit
 #endif
@@ -27,7 +29,7 @@ public struct SessionReplayInstrumentationConfig {
     }
 }
 
-extension SessionReplayInstrumentationConfig: InstrumentationInitializer {
+extension SessionReplayInstrumentationConfig: InstrumentationLifecycle {
     internal func initialize(ctx: InstallationContext) {
         guard self.enabled else { return }
         
@@ -44,5 +46,8 @@ extension SessionReplayInstrumentationConfig: InstrumentationInitializer {
             exporter: exporter
         )
         instrumentation.install()
+    }
+    internal func uninstall() {
+        SessionReplayInstrumentation.getInstance()?.uninstall()
     }
 }

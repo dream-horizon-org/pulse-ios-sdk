@@ -30,7 +30,6 @@ internal final class DefaultSessionReplayEncryption: SessionReplayStorageEncrypt
             guard let combined = sealedBox.combined else { return nil }
             return combined
         } catch {
-            NSLog("[SessionReplay] Encryption failed: %@", error.localizedDescription)
             return nil
         }
     }
@@ -85,10 +84,7 @@ internal final class DefaultSessionReplayEncryption: SessionReplayStorageEncrypt
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
 
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
-        if status != errSecSuccess {
-            NSLog("[SessionReplay] Failed to save encryption key to Keychain: %d", status)
-        }
+        SecItemAdd(addQuery as CFDictionary, nil)
     }
 }
 

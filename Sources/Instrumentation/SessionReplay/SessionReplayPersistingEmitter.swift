@@ -69,12 +69,10 @@ internal final class SessionReplayPersistingEmitter {
             }
             do {
                 guard let jsonData = payloadJson.data(using: .utf8) else {
-                    NSLog("[SessionReplay] Failed to encode payload to UTF-8")
                     return
                 }
 
                 guard let encrypted = self.encryption.encrypt(jsonData) else {
-                    NSLog("[SessionReplay] Encryption failed, dropping batch")
                     return
                 }
 
@@ -89,15 +87,10 @@ internal final class SessionReplayPersistingEmitter {
                 self.deque.append(fileURL)
                 let currentCount = self.deque.count
                 self.dequeLock.unlock()
-
-                NSLog("[SessionReplay] 💾 Persisted batch: \(fileName) (\(encrypted.count) bytes), queue size: \(currentCount)/\(self.flushAt)")
-                
                 if currentCount >= self.flushAt {
-                    NSLog("[SessionReplay] 📊 Flush threshold reached (\(currentCount) >= \(self.flushAt)), triggering flush...")
                     self.flushIfNeeded()
                 }
             } catch {
-                NSLog("[SessionReplay] Persist failed: %@", error.localizedDescription)
             }
         }
     }
@@ -117,50 +110,85 @@ internal final class SessionReplayPersistingEmitter {
 
                 guard !files.isEmpty else { return }
 
-                NSLog("[SessionReplay] 🔄 Recovering \(files.count) cached batch(es) from previous run")
-
-                var fileToContent: [(URL, String)] = []
-                for file in files {
-                    do {
-                        let content = try self.readFileContent(file)
-                        fileToContent.append((file, content))
-                    } catch {
-                        NSLog("[SessionReplay] Failed to read cached file %@: %@", file.lastPathComponent, error.localizedDescription)
-                        try? fm.removeItem(at: file)
-                    }
-                }
-
-                guard !fileToContent.isEmpty else { return }
-
-                let contents = fileToContent.map { $0.1 }
-                let payload: String
-                if contents.count == 1 {
-                    payload = contents[0]
-                } else {
-                    payload = "[" + contents.joined(separator: ",") + "]"
-                }
-
-                let sessionMetrics = self.parseSessionMetrics(from: payload)
+                let maxUncompressedSizeBytes = 1 * 1024 * 1024
+                let maxBatchesPerChunk = 5
                 
-                NSLog("[SessionReplay] 🔄 Sending \(fileToContent.count) cached batch(es)")
-                if let metrics = sessionMetrics {
-                    let durationSeconds = Double(metrics.durationMs) / 1000.0
-                    NSLog("[SessionReplay] ⏱️  Session Duration: \(String(format: "%.2f", durationSeconds))s (\(metrics.durationMs)ms)")
-                    NSLog("[SessionReplay] 📊 Total Events: \(metrics.totalEvents) | Total Wireframes: \(metrics.totalWireframes)")
-                    NSLog("[SessionReplay] 📈 Event Breakdown: Meta=\(metrics.metaCount), FullSnapshot=\(metrics.fullSnapshotCount), Incremental=\(metrics.incrementalCount)")
-                }
+                var remainingFiles = files
+                var totalSent = 0
+                var chunkNumber = 0
+                
+                while !remainingFiles.isEmpty {
+                    chunkNumber += 1
+                    var fileToContent: [(URL, String)] = []
+                    var filesToRemove: [URL] = []
+                    
+                    for file in remainingFiles {
+                        do {
+                            let content = try self.readFileContent(file)
+                            let testContent = fileToContent.map { $0.1 } + [content]
+                            let testPayload: String
+                            if testContent.count == 1 {
+                                testPayload = testContent[0]
+                            } else {
+                                testPayload = "[" + testContent.joined(separator: ",") + "]"
+                            }
+                            let testPayloadSize = testPayload.data(using: .utf8)?.count ?? 0
+                            if testPayloadSize > maxUncompressedSizeBytes && !fileToContent.isEmpty {
+                                break
+                            }
+                            fileToContent.append((file, content))
+                            filesToRemove.append(file)
+                            if fileToContent.count >= maxBatchesPerChunk {
+                                break
+                            }
+                        } catch {
+                            try? fm.removeItem(at: file)
+                            filesToRemove.append(file)
+                        }
+                    }
+                    
+                    for file in filesToRemove {
+                        if let index = remainingFiles.firstIndex(of: file) {
+                            remainingFiles.remove(at: index)
+                        }
+                    }
 
-                self.transport.sendRaw(jsonString: payload) { success in
-                    if success {
+                    guard !fileToContent.isEmpty else { continue }
+
+                    let contents = fileToContent.map { $0.1 }
+                    let payload: String
+                    if contents.count == 1 {
+                        payload = contents[0]
+                    } else {
+                        payload = "[" + contents.joined(separator: ",") + "]"
+                    }
+
+                    let semaphore = DispatchSemaphore(value: 0)
+                    var sendSuccess = false
+                    
+                    self.transport.sendRaw(jsonString: payload) { success in
+                        sendSuccess = success
+                        semaphore.signal()
+                    }
+                    
+                    let timeout = semaphore.wait(timeout: .now() + 30)
+                    
+                    if timeout == .timedOut {
+                        break
+                    }
+                    
+                    if sendSuccess {
+                        self.dequeLock.lock()
                         for (file, _) in fileToContent {
                             try? fm.removeItem(at: file)
                         }
+                        self.dequeLock.unlock()
+                        totalSent += fileToContent.count
                     } else {
-                        NSLog("[SessionReplay] ⚠️ Failed to send cached events after retries, will retry on next launch")
+                        break
                     }
                 }
             } catch {
-                NSLog("[SessionReplay] sendCachedEvents failed: %@", error.localizedDescription)
             }
         }
     }
@@ -202,7 +230,6 @@ internal final class SessionReplayPersistingEmitter {
                 let content = try readFileContent(file)
                 fileToContent.append((file, content))
             } catch {
-                NSLog("[SessionReplay] Flush read failed for %@: %@", file.lastPathComponent, error.localizedDescription)
                 try? fm.removeItem(at: file)
             }
         }
@@ -217,27 +244,15 @@ internal final class SessionReplayPersistingEmitter {
             payload = "[" + contents.joined(separator: ",") + "]"
         }
 
-        let batchSize = fileToContent.count
-        let totalSize = payload.data(using: .utf8)?.count ?? 0
-        let sessionMetrics = parseSessionMetrics(from: payload)
-        
-        NSLog("[SessionReplay] 🚀 Flushing \(batchSize) batch(es), total payload: \(totalSize) bytes")
-        if let metrics = sessionMetrics {
-            let durationSeconds = Double(metrics.durationMs) / 1000.0
-            NSLog("[SessionReplay] ⏱️  Session Duration: \(String(format: "%.2f", durationSeconds))s (\(metrics.durationMs)ms)")
-            NSLog("[SessionReplay] 📊 Total Events: \(metrics.totalEvents) | Total Wireframes: \(metrics.totalWireframes)")
-            NSLog("[SessionReplay] 📈 Event Breakdown: Meta=\(metrics.metaCount), FullSnapshot=\(metrics.fullSnapshotCount), Incremental=\(metrics.incrementalCount)")
-        }
-        
         transport.sendRaw(jsonString: payload) { [weak self] success in
             guard let self = self else { return }
             if success {
-                NSLog("[SessionReplay] ✅ Successfully flushed \(batchSize) batch(es)")
+                self.dequeLock.lock()
                 for (file, _) in fileToContent {
                     try? fm.removeItem(at: file)
                 }
+                self.dequeLock.unlock()
             } else {
-                NSLog("[SessionReplay] ❌ Flush failed after retries, re-queuing \(batchSize) batch(es) for retry")
                 self.dequeLock.lock()
                 for (file, _) in fileToContent.reversed() {
                     self.deque.insert(file, at: 0)
@@ -248,15 +263,22 @@ internal final class SessionReplayPersistingEmitter {
     }
 
     private func scheduleFlushTimer() {
-        NSLog("[SessionReplay] ⏰ Scheduled flush timer: every \(flushIntervalSeconds) seconds")
+        flushTimer?.cancel()
+        
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(
             deadline: .now() + flushIntervalSeconds,
-            repeating: flushIntervalSeconds
+            repeating: flushIntervalSeconds,
+            leeway: .seconds(1)
         )
         timer.setEventHandler { [weak self] in
-            NSLog("[SessionReplay] ⏰ Flush timer fired")
-            self?.flushIfNeeded()
+            guard let self = self else { return }
+            self.dequeLock.lock()
+            let queueSize = self.deque.count
+            self.dequeLock.unlock()
+            if queueSize > 0 {
+                self.flushIfNeeded()
+            }
         }
         timer.resume()
         self.flushTimer = timer
@@ -281,147 +303,4 @@ internal final class SessionReplayPersistingEmitter {
         )
     }
     
-    private struct SessionMetrics {
-        let durationMs: Int64
-        let totalEvents: Int
-        let totalWireframes: Int
-        let metaCount: Int
-        let fullSnapshotCount: Int
-        let incrementalCount: Int
-    }
-    
-    private func parseSessionMetrics(from jsonString: String) -> SessionMetrics? {
-        guard let jsonData = jsonString.data(using: .utf8) else {
-            return nil
-        }
-        
-        if let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-            return parseMetricsFromPayload(json)
-        }
-        
-        if let jsonArray = try? JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] {
-            return parseMetricsFromArray(jsonArray)
-        }
-        
-        return nil
-    }
-    
-    private func parseMetricsFromArray(_ payloads: [[String: Any]]) -> SessionMetrics? {
-        var allEvents: [[String: Any]] = []
-        var firstTimestamp: Int64?
-        var lastTimestamp: Int64?
-        var metaCount = 0
-        var fullSnapshotCount = 0
-        var incrementalCount = 0
-        var totalWireframes = 0
-        
-        for payload in payloads {
-            if let properties = payload["properties"] as? [String: Any],
-               let snapshotData = properties["snapshot_data"] as? [[String: Any]] {
-                allEvents.append(contentsOf: snapshotData)
-                
-                for event in snapshotData {
-                    let eventType = event["type"] as? Int ?? 0
-                    let timestamp = (event["timestamp"] as? NSNumber)?.int64Value ?? 0
-                    
-                    if firstTimestamp == nil || timestamp < firstTimestamp! {
-                        firstTimestamp = timestamp
-                    }
-                    if lastTimestamp == nil || timestamp > lastTimestamp! {
-                        lastTimestamp = timestamp
-                    }
-                    
-                    switch eventType {
-                    case 2:
-                        fullSnapshotCount += 1
-                        if let data = event["data"] as? [String: Any],
-                           let wireframes = data["wireframes"] as? [[String: Any]] {
-                            totalWireframes += wireframes.count
-                        }
-                    case 3:
-                        incrementalCount += 1
-                        if let data = event["data"] as? [String: Any],
-                           let updates = data["updates"] as? [[String: Any]] {
-                            totalWireframes += updates.count
-                        }
-                    case 4:
-                        metaCount += 1
-                    default:
-                        break
-                    }
-                }
-            }
-        }
-        
-        guard let first = firstTimestamp, let last = lastTimestamp else {
-            return nil
-        }
-        
-        return SessionMetrics(
-            durationMs: last - first,
-            totalEvents: allEvents.count,
-            totalWireframes: totalWireframes,
-            metaCount: metaCount,
-            fullSnapshotCount: fullSnapshotCount,
-            incrementalCount: incrementalCount
-        )
-    }
-    
-    private func parseMetricsFromPayload(_ payload: [String: Any]) -> SessionMetrics? {
-        guard let properties = payload["properties"] as? [String: Any],
-              let snapshotData = properties["snapshot_data"] as? [[String: Any]] else {
-            return nil
-        }
-        
-        var firstTimestamp: Int64?
-        var lastTimestamp: Int64?
-        var metaCount = 0
-        var fullSnapshotCount = 0
-        var incrementalCount = 0
-        var totalWireframes = 0
-        
-        for event in snapshotData {
-            let eventType = event["type"] as? Int ?? 0
-            let timestamp = (event["timestamp"] as? NSNumber)?.int64Value ?? 0
-            
-            if firstTimestamp == nil || timestamp < firstTimestamp! {
-                firstTimestamp = timestamp
-            }
-            if lastTimestamp == nil || timestamp > lastTimestamp! {
-                lastTimestamp = timestamp
-            }
-            
-            switch eventType {
-            case 2:
-                fullSnapshotCount += 1
-                if let data = event["data"] as? [String: Any],
-                   let wireframes = data["wireframes"] as? [[String: Any]] {
-                    totalWireframes += wireframes.count
-                }
-            case 3:
-                incrementalCount += 1
-                if let data = event["data"] as? [String: Any],
-                   let updates = data["updates"] as? [[String: Any]] {
-                    totalWireframes += updates.count
-                }
-            case 4:
-                metaCount += 1
-            default:
-                break
-            }
-        }
-        
-        guard let first = firstTimestamp, let last = lastTimestamp else {
-            return nil
-        }
-        
-        return SessionMetrics(
-            durationMs: last - first,
-            totalEvents: snapshotData.count,
-            totalWireframes: totalWireframes,
-            metaCount: metaCount,
-            fullSnapshotCount: fullSnapshotCount,
-            incrementalCount: incrementalCount
-        )
-    }
 }

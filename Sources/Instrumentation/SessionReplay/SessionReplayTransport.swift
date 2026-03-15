@@ -39,7 +39,6 @@ class SessionReplayTransport {
             : "[\(jsonString)]"
 
         guard let jsonData = body.data(using: .utf8) else {
-            NSLog("[SessionReplay] Failed to encode raw JSON to Data")
             completion(false)
             return
         }
@@ -66,34 +65,25 @@ class SessionReplayTransport {
         request.httpBody = jsonData
         #endif
 
-        let requestSize = jsonData.count
-        let isCompressed = request.allHTTPHeaderFields?["Content-Encoding"] == "gzip"
-        NSLog("[SessionReplay] 📤 Sending request to \(endpointUrl.absoluteString): \(requestSize) bytes (\(isCompressed ? "gzip" : "uncompressed")), attempt \(attempt + 1)/\(maxRetries + 1)")
-        
         let task = session.dataTask(with: request) { [weak self] _, response, error in
             guard let self = self else { return }
 
             if let error = error {
-                NSLog("[SessionReplay] ❌ Network error: %@", error.localizedDescription)
                 self.retryIfPossible(jsonData: jsonData, attempt: attempt, completion: completion)
                 return
             }
 
             guard let httpResponse = response as? HTTPURLResponse else {
-                NSLog("[SessionReplay] ❌ Invalid response type")
                 self.retryIfPossible(jsonData: jsonData, attempt: attempt, completion: completion)
                 return
             }
 
             switch httpResponse.statusCode {
             case 200...299:
-                NSLog("[SessionReplay] ✅ Successfully sent data: HTTP \(httpResponse.statusCode)")
                 completion(true)
             case 400...499:
-                NSLog("[SessionReplay] ❌ Client error %d, not retrying", httpResponse.statusCode)
                 completion(false)
             default:
-                NSLog("[SessionReplay] ⚠️ Server error %d, will retry", httpResponse.statusCode)
                 self.retryIfPossible(jsonData: jsonData, attempt: attempt, completion: completion)
             }
         }
@@ -102,7 +92,6 @@ class SessionReplayTransport {
 
     private func retryIfPossible(jsonData: Data, attempt: Int, completion: @escaping (Bool) -> Void) {
         guard attempt < maxRetries else {
-            NSLog("[SessionReplay] Max retries (%d) exceeded, dropping batch", maxRetries)
             completion(false)
             return
         }

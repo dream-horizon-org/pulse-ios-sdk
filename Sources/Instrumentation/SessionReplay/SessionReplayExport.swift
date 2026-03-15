@@ -122,11 +122,8 @@ class SessionReplayEventTransformer {
     ) -> [SessionReplayEvent] {
         var events: [SessionReplayEvent] = []
         
-        // Update session ID if changed (but don't reset window status - that's per-window)
         if frame.sessionId != currentSessionId {
             currentSessionId = frame.sessionId
-            // Note: We don't reset windowStatus here because it's per-window
-            // Each window maintains its own snapshot state
         }
         
         if !windowStatus.sentMetaEvent {
@@ -189,12 +186,7 @@ class SessionReplayEventTransformer {
     }
 
     private func base64Encode(frame: SessionReplayFrame) -> String {
-        let prefix: String
-        switch frame.format {
-        case .webp:  prefix = "data:image/webp;base64,"
-        case .jpeg:  prefix = "data:image/jpeg;base64,"
-        }
-        return prefix + frame.imageData.base64EncodedString()
+        return frame.imageData.base64EncodedString()
     }
 
     private func unixMs(from date: Date) -> Int64 {

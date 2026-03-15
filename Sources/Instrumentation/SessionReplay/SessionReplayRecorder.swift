@@ -4,7 +4,9 @@
  */
 
 import Foundation
+#if canImport(Sessions)
 import Sessions
+#endif
 #if os(iOS) || os(tvOS)
 import UIKit
 import QuartzCore
@@ -64,7 +66,6 @@ public class SessionReplayRecorder {
             self.throttler = SessionReplayThrottler(throttleDelayMs: self.config.captureIntervalMs, queue: self.queue)
             self.resetDrawOccurredFlag()
             self.startDisplayLink()
-            NSLog("[SessionReplay] ✅ Recording started (resetState: \(resetState), interval: \(self.config.captureIntervalMs)ms)")
         }
     }
     
@@ -79,7 +80,6 @@ public class SessionReplayRecorder {
             self.throttler?.cancel()
             self.throttler = nil
             self.stopDisplayLink()
-            NSLog("[SessionReplay] ⏹️ Recording stopped, flushing remaining data...")
             self.persistingEmitter?.flush()
         }
     }
@@ -132,9 +132,7 @@ public class SessionReplayRecorder {
         
         if self.currentSessionId == nil {
             self.currentSessionId = frameSessionId
-            NSLog("[SessionReplay] 🆕 New session started: \(frameSessionId)")
         } else if self.currentSessionId != frameSessionId {
-            NSLog("[SessionReplay] 🔄 Session changed: \(self.currentSessionId?.prefix(8) ?? "nil")... → \(frameSessionId.prefix(8))...")
             self.currentSessionId = frameSessionId
         }
         
@@ -179,8 +177,6 @@ public class SessionReplayRecorder {
                 capturedFrames.append(frame)
                 framesLock.unlock()
                 
-                NSLog("[SessionReplay] 📸 Frame captured: \(imgW)×\(imgH), \(compressed.format.rawValue.uppercased()), \(compressed.data.count) bytes, screen: \(screenName), session: \(frame.sessionId.prefix(8))...")
-                
                 if let _ = self.persistingEmitter, let pid = self.projectId {
                     var windowStatus = self.getWindowStatus(window: window)
                     let events = self.transformer.transformFrame(
@@ -190,20 +186,6 @@ public class SessionReplayRecorder {
                         userId: self.userIdProvider?()
                     )
                     self.updateWindowStatus(window: window, status: windowStatus)
-                    
-                    if events.count > 0 {
-                        var eventTypes: [String] = []
-                        for event in events {
-                            switch event {
-                            case .meta: eventTypes.append("Meta(4)")
-                            case .fullSnapshot: eventTypes.append("FullSnapshot(2)")
-                            case .incrementalSnapshot: eventTypes.append("Incremental(3)")
-                            }
-                        }
-                        NSLog("[SessionReplay] 📦 Transformed frame into \(events.count) event(s): \(eventTypes.joined(separator: ", "))")
-                    } else {
-                        NSLog("[SessionReplay] ⏭️  Frame unchanged, no events generated")
-                    }
                     
                     eventsLock.lock()
                     allEvents.append(contentsOf: events)
@@ -224,37 +206,6 @@ public class SessionReplayRecorder {
             }
 
             if let emitter = self.persistingEmitter, let pid = self.projectId, !allEvents.isEmpty, let sessionId = self.currentSessionId {
-                // Log event type breakdown
-                var metaCount = 0
-                var fullSnapshotCount = 0
-                var incrementalSnapshotCount = 0
-                var eventDetails: [String] = []
-                
-                for event in allEvents {
-                    switch event {
-                    case .meta(let metaEvent):
-                        metaCount += 1
-                        eventDetails.append("Meta(type=4, ts=\(metaEvent.timestamp), width=\(metaEvent.data.width), height=\(metaEvent.data.height), href=\(metaEvent.data.href))")
-                    case .fullSnapshot(let fullEvent):
-                        fullSnapshotCount += 1
-                        let wireframeCount = fullEvent.data.wireframes.count
-                        let firstWireframe = fullEvent.data.wireframes.first
-                        let wireframeInfo = firstWireframe.map { "id=\($0.id), type=\($0.type), size=\(Int($0.width))×\(Int($0.height)), base64Len=\($0.base64?.count ?? 0)" } ?? "none"
-                        eventDetails.append("FullSnapshot(type=2, ts=\(fullEvent.timestamp), wireframes=\(wireframeCount), first: \(wireframeInfo))")
-                    case .incrementalSnapshot(let incEvent):
-                        incrementalSnapshotCount += 1
-                        let updateCount = incEvent.data.updates?.count ?? 0
-                        let firstUpdate = incEvent.data.updates?.first?.wireframe
-                        let updateInfo = firstUpdate.map { "id=\($0.id), type=\($0.type), size=\(Int($0.width))×\(Int($0.height)), base64Len=\($0.base64?.count ?? 0)" } ?? "none"
-                        eventDetails.append("Incremental(type=3, ts=\(incEvent.timestamp), source=\(incEvent.data.source), updates=\(updateCount), first: \(updateInfo))")
-                    }
-                }
-                
-                NSLog("[SessionReplay] 📊 Payload breakdown: Meta=\(metaCount), FullSnapshot=\(fullSnapshotCount), Incremental=\(incrementalSnapshotCount)")
-                for (index, detail) in eventDetails.enumerated() {
-                    NSLog("[SessionReplay]   Event[\(index)]: \(detail)")
-                }
-                
                 let payload = SessionReplayPayload(
                     projectId: pid,
                     userId: self.userIdProvider?(),
@@ -267,33 +218,7 @@ public class SessionReplayRecorder {
                 
                 if let jsonData = try? JSONEncoder().encode(payload),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
-                    let payloadSize = jsonData.count
-                    NSLog("[SessionReplay] 💾 Emitting payload: \(allEvents.count) events, \(payloadSize) bytes, session: \(sessionId.prefix(8))...")
-                    
-                    // Log payload structure (truncated JSON for readability)
-                    let maxPreviewLength = 500
-                    if jsonString.count > maxPreviewLength {
-                        let preview = String(jsonString.prefix(maxPreviewLength))
-                        NSLog("[SessionReplay] 📄 Payload preview (first \(maxPreviewLength) chars): \(preview)...")
-                    } else {
-                        NSLog("[SessionReplay] 📄 Payload JSON: \(jsonString)")
-                    }
-                    
-                    // Log payload summary
-                    let userId = self.userIdProvider?() ?? "nil"
-                    NSLog("[SessionReplay] 📋 Payload summary: event=\(payload.event), projectId=\(pid), userId=\(userId), sessionId=\(sessionId), snapshotSource=ios, snapshotDataCount=\(allEvents.count)")
-                    
                     emitter.emit(payloadJson: jsonString)
-                } else {
-                    NSLog("[SessionReplay] ❌ Failed to encode payload to JSON")
-                }
-            } else {
-                if allEvents.isEmpty {
-                    NSLog("[SessionReplay] ⚠️ No events to emit (empty frame)")
-                } else if self.persistingEmitter == nil {
-                    NSLog("[SessionReplay] ⚠️ No emitter configured, events not sent")
-                } else if self.projectId == nil {
-                    NSLog("[SessionReplay] ⚠️ No project ID, events not sent")
                 }
             }
 
@@ -442,11 +367,21 @@ public class SessionReplayRecorder {
         }
         lifecycleObservers.append(didBecomeActive)
         
+        let willResignActive = center.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: nil
+        ) { [weak self] _ in
+            self?.persistingEmitter?.flush()
+        }
+        lifecycleObservers.append(willResignActive)
+        
         let didEnterBackground = center.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
             queue: nil
         ) { [weak self] _ in
+            self?.persistingEmitter?.flush()
             self?.stop()
         }
         lifecycleObservers.append(didEnterBackground)
