@@ -12,6 +12,10 @@ import Security
 
 // MARK: - PulseSamplingSignalProcessors
 
+/// Closure that records a value into a metric instrument. Receives the signal name (for .name target)
+/// or attribute value (for .attribute target). For counters with .name target, the value is ignored and 1 is added.
+public typealias DataRecorder = (Any?) -> Void
+
 /// Holds SampledSpanExporter, SampledLogExporter, SampledMetricExporter and getEnabledFeatures.
 public final class PulseSamplingSignalProcessors {
     private let sdkConfig: PulseSdkConfig
@@ -20,6 +24,7 @@ public final class PulseSamplingSignalProcessors {
     private let sessionParser: PulseSessionParser
     private let sessionSamplingDecision: PulseSessionSamplingDecision
     private let regexCache = SamplingRegexCache()
+    private let meterProviderForMetricsToAdd: (any MeterProvider)?
 
     public init(
         deviceContext: PulseDeviceContext = .current,
@@ -27,12 +32,14 @@ public final class PulseSamplingSignalProcessors {
         currentSdkName: PulseSdkName,
         signalMatcher: PulseSignalMatcher = PulseSignalsAttrMatcher(),
         sessionParser: PulseSessionParser = PulseSessionConfigParser(),
-        randomGenerator: (() -> Float)? = nil
+        randomGenerator: (() -> Float)? = nil,
+        meterProviderForMetricsToAdd: (any MeterProvider)? = nil
     ) {
         self.sdkConfig = sdkConfig
         self.currentSdkName = currentSdkName
         self.signalMatcher = signalMatcher
         self.sessionParser = sessionParser
+        self.meterProviderForMetricsToAdd = meterProviderForMetricsToAdd
         sessionSamplingDecision = PulseSessionSamplingDecision(
             deviceContext: deviceContext,
             samplingConfig: sdkConfig.sampling,
@@ -53,6 +60,94 @@ public final class PulseSamplingSignalProcessors {
     private func getAddedAttributesConfig(scope: PulseSignalScope) -> [PulseAttributesToAddEntry] {
         sdkConfig.signals.attributesToAdd.filter {
             $0.condition.scopes.contains(scope) && $0.condition.sdks.contains(currentSdkName)
+        }
+    }
+
+    /// Returns metricsToAdd entries that apply to the given scope and SDK, each paired with its DataRecorder.
+    internal func getMetricsToAddConfig(scope: PulseSignalScope) -> [(PulseMetricsToAddEntry, DataRecorder)] {
+        sdkConfig.signals.metricsToAdd
+            .filter { $0.condition.scopes.contains(scope) && $0.condition.sdks.contains(currentSdkName) }
+            .map { ($0, createMeter(entry: $0)) }
+    }
+
+    private func createMeter(entry: PulseMetricsToAddEntry) -> DataRecorder {
+        let provider = meterProviderForMetricsToAdd ?? MeterProviderSdk.builder().build() as any MeterProvider
+        let meter = provider.meterBuilder(name: "com.pulse.signal.processors.metric").build()
+        let sanitizedName = PulseOtelUtils.sanitizeMetricName(name: entry.name)
+
+        switch entry.data {
+        case .counter(let isMonotonic, let isFraction):
+            if isFraction, isMonotonic {
+                var counter = meter.counterBuilder(name: sanitizedName).ofDoubles().build()
+                return { _ in counter.add(value: 1.0, attributes: [:]) }
+            } else if isFraction, !isMonotonic {
+                var upDown = meter.upDownCounterBuilder(name: sanitizedName).ofDoubles().build()
+                return { _ in upDown.add(value: 1.0, attributes: [:]) }
+            } else if !isFraction, isMonotonic {
+                var counter = meter.counterBuilder(name: sanitizedName).build()
+                return { _ in counter.add(value: 1, attributes: [:]) }
+            } else {
+                var upDown = meter.upDownCounterBuilder(name: sanitizedName).build()
+                return { _ in upDown.add(value: 1, attributes: [:]) }
+            }
+        case .gauge(let isFraction):
+            if isFraction {
+                var gauge = meter.gaugeBuilder(name: sanitizedName).build()
+                return { value in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let d = Double(s) else { return }
+                    gauge.record(value: d, attributes: [:])
+                }
+            } else {
+                var gauge = meter.gaugeBuilder(name: sanitizedName).ofLongs().build()
+                return { value in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let l = Int64(s) else { return }
+                    gauge.record(value: Int(l), attributes: [:])
+                }
+            }
+        case .histogram(let bucket, let isFraction):
+            let builder = meter.histogramBuilder(name: sanitizedName)
+            if let buckets = bucket, !buckets.isEmpty {
+                _ = builder.setExplicitBucketBoundariesAdvice(buckets)
+            }
+            if isFraction {
+                var histogram = builder.build()
+                return { value in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let d = Double(s) else { return }
+                    histogram.record(value: d, attributes: [:])
+                }
+            } else {
+                var histogram = builder.ofLongs().build()
+                return { value in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let l = Int64(s) else { return }
+                    histogram.record(value: Int(l), attributes: [:])
+                }
+            }
+        case .sum(let isFraction):
+            if isFraction {
+                var sum = meter.upDownCounterBuilder(name: sanitizedName).ofDoubles().build()
+                return { value in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let d = Double(s) else { return }
+                    sum.add(value: d, attributes: [:])
+                }
+            } else {
+                var sum = meter.upDownCounterBuilder(name: sanitizedName).build()
+                return { value in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let l = Int64(s) else { return }
+                    sum.add(value: Int(l), attributes: [:])
+                }
+            }
         }
     }
 
