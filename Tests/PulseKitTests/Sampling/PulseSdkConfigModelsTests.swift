@@ -84,4 +84,85 @@ final class PulseSdkConfigModelsTests: XCTestCase {
         XCTAssertEqual(entry.condition.scopes, [.traces])
         XCTAssertEqual(entry.condition.sdks, [.pulse_ios_swift])
     }
+
+    func testDecodeSignalConfigWithoutMetricsToAddDefaultsToEmpty() throws {
+        let json = """
+        {
+            "version": 1,
+            "description": "test",
+            "sampling": { "default": { "sessionSampleRate": 0.5 }, "rules": [] },
+            "signals": {
+                "scheduleDurationMs": 60000,
+                "logsCollectorUrl": "https://logs",
+                "metricCollectorUrl": "https://metrics",
+                "spanCollectorUrl": "https://spans",
+                "customEventCollectorUrl": "https://custom",
+                "attributesToDrop": [],
+                "attributesToAdd": [],
+                "filters": { "mode": "blacklist", "values": [] }
+            },
+            "interaction": {
+                "collectorUrl": "https://coll",
+                "configUrl": "https://config",
+                "beforeInitQueueSize": 100
+            },
+            "features": []
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let config = try JSONDecoder().decode(PulseSdkConfig.self, from: data)
+        XCTAssertTrue(config.signals.metricsToAdd.isEmpty)
+    }
+
+    func testDecodeSignalConfigWithMetricsToAdd() throws {
+        let json = """
+        {
+            "version": 1,
+            "description": "test",
+            "sampling": { "default": { "sessionSampleRate": 0.5 }, "rules": [] },
+            "signals": {
+                "scheduleDurationMs": 60000,
+                "logsCollectorUrl": "https://logs",
+                "metricCollectorUrl": "https://metrics",
+                "spanCollectorUrl": "https://spans",
+                "customEventCollectorUrl": "https://custom",
+                "attributesToDrop": [],
+                "attributesToAdd": [],
+                "metricsToAdd": [
+                    {
+                        "name": "pulse.screen.load.count",
+                        "target": "name",
+                        "condition": {
+                            "name": "Created",
+                            "props": [],
+                            "scopes": ["traces"],
+                            "sdks": ["pulse_ios_swift", "pulse_ios_rn"]
+                        },
+                        "type": {
+                            "counter": { "isMonotonic": true, "isFraction": false }
+                        }
+                    }
+                ],
+                "filters": { "mode": "blacklist", "values": [] }
+            },
+            "interaction": {
+                "collectorUrl": "https://coll",
+                "configUrl": "https://config",
+                "beforeInitQueueSize": 100
+            },
+            "features": []
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let config = try JSONDecoder().decode(PulseSdkConfig.self, from: data)
+        XCTAssertEqual(config.signals.metricsToAdd.count, 1)
+        let entry = config.signals.metricsToAdd[0]
+        XCTAssertEqual(entry.name, "pulse.screen.load.count")
+        if case .name = entry.target { } else { XCTFail("Expected target .name") }
+        XCTAssertEqual(entry.condition.name, "Created")
+        if case .counter(let isMonotonic, let isFraction) = entry.data {
+            XCTAssertTrue(isMonotonic)
+            XCTAssertFalse(isFraction)
+        } else { XCTFail("Expected .counter") }
+    }
 }

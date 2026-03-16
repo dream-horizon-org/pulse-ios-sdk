@@ -139,6 +139,7 @@ public struct PulseSignalConfig: Codable, Equatable {
     public let customEventCollectorUrl: String
     public let attributesToDrop: [PulseAttributesToDropEntry]
     public let attributesToAdd: [PulseAttributesToAddEntry]
+    public let metricsToAdd: [PulseMetricsToAddEntry]
     public let filters: PulseSignalFilter
 
     enum CodingKeys: String, CodingKey {
@@ -149,6 +150,7 @@ public struct PulseSignalConfig: Codable, Equatable {
         case customEventCollectorUrl
         case attributesToDrop
         case attributesToAdd
+        case metricsToAdd
         case filters
     }
 
@@ -161,6 +163,7 @@ public struct PulseSignalConfig: Codable, Equatable {
         customEventCollectorUrl = try c.decode(String.self, forKey: .customEventCollectorUrl)
         attributesToDrop = (try? c.decode([PulseAttributesToDropEntry].self, forKey: .attributesToDrop)) ?? []
         attributesToAdd = (try? c.decode([PulseAttributesToAddEntry].self, forKey: .attributesToAdd)) ?? []
+        metricsToAdd = (try? c.decode([PulseMetricsToAddEntry].self, forKey: .metricsToAdd)) ?? []
         filters = try c.decode(PulseSignalFilter.self, forKey: .filters)
     }
 
@@ -172,6 +175,7 @@ public struct PulseSignalConfig: Codable, Equatable {
         customEventCollectorUrl: String,
         attributesToDrop: [PulseAttributesToDropEntry],
         attributesToAdd: [PulseAttributesToAddEntry],
+        metricsToAdd: [PulseMetricsToAddEntry] = [],
         filters: PulseSignalFilter
     ) {
         self.scheduleDurationMs = scheduleDurationMs
@@ -181,6 +185,7 @@ public struct PulseSignalConfig: Codable, Equatable {
         self.customEventCollectorUrl = customEventCollectorUrl
         self.attributesToDrop = attributesToDrop
         self.attributesToAdd = attributesToAdd
+        self.metricsToAdd = metricsToAdd
         self.filters = filters
     }
 }

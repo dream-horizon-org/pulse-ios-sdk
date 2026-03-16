@@ -136,6 +136,7 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: [],
                 attributesToAdd: [],
+                metricsToAdd: [],
                 filters: PulseSignalFilter(
                     mode: .blacklist,
                     values: []
@@ -168,6 +169,7 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: attributesToDrop,
                 attributesToAdd: [],
+                metricsToAdd: [],
                 filters: PulseSignalFilter(mode: .blacklist, values: [])
             ),
             interaction: PulseInteractionConfig(

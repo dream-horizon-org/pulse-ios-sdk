@@ -67,6 +67,7 @@ final class PulseSdkConfigStorageTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: [],
                 attributesToAdd: [],
+                metricsToAdd: [],
                 filters: PulseSignalFilter(mode: .blacklist, values: [])
             ),
             interaction: PulseInteractionConfig(

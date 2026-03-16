@@ -58,6 +58,7 @@ final class PulseSdkConfigCoordinatorTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: [],
                 attributesToAdd: [],
+                metricsToAdd: [],
                 filters: PulseSignalFilter(mode: .blacklist, values: [])
             ),
             interaction: PulseInteractionConfig(
