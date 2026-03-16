@@ -63,7 +63,7 @@ final class PulseSdkConfigCoordinatorTests: XCTestCase {
         mockCoordinator.startBackgroundFetch(
             configEndpointUrl: "https://example.com/config",
             endpointHeaders: [:],
-            currentConfigVersion: nil
+            currentConfigVersion: nil as Int?
         )
     }
 

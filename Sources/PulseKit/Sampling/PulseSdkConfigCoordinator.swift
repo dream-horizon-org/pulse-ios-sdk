@@ -16,9 +16,9 @@ public final class PulseSdkConfigCoordinator {
     /// Do NOT enable in production.
     private let useLocalMockConfig: Bool
 
-    public init(storage: PulseSdkConfigStorage = PulseSdkConfigStorage()) {
+    public init(storage: PulseSdkConfigStorage = PulseSdkConfigStorage(), useLocalMockConfig: Bool = false) {
         self.storage = storage
-        self.useLocalMockConfig = false
+        self.useLocalMockConfig = useLocalMockConfig
     }
 
     /// Loads and returns the current config from persistence (sync). Returns nil if none stored or decode failed.
