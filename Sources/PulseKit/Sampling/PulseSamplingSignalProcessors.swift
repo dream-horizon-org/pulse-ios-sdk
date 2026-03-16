@@ -24,7 +24,13 @@ public final class PulseSamplingSignalProcessors {
     private let sessionParser: PulseSessionParser
     private let sessionSamplingDecision: PulseSessionSamplingDecision
     private let regexCache = SamplingRegexCache()
-    private let meterProviderForMetricsToAdd: (any MeterProvider)?
+    private var meterProviderForMetricsToAdd: (any MeterProvider)?
+
+    /// Injects the MeterProvider for metrics-to-add (called by PulseKit after building the metric pipeline).
+    /// When nil, createMeter uses a standalone provider; metrics are recorded but not exported.
+    internal func setMeterProviderForMetricsToAdd(_ provider: (any MeterProvider)?) {
+        meterProviderForMetricsToAdd = provider
+    }
 
     public init(
         deviceContext: PulseDeviceContext = .current,
@@ -151,6 +157,38 @@ public final class PulseSamplingSignalProcessors {
         }
     }
 
+    /// Records metrics for signals that match metricsToAdd conditions.
+    private func recordMetricsForSignal(
+        scope: PulseSignalScope,
+        name: String?,
+        props: [String: Any?],
+        metricsToAdd: [(PulseMetricsToAddEntry, DataRecorder)]
+    ) {
+        guard !metricsToAdd.isEmpty else { return }
+        for (entry, recorder) in metricsToAdd {
+            guard signalMatcher.matches(
+                scope: scope,
+                name: name,
+                props: props,
+                condition: entry.condition,
+                sdkName: currentSdkName
+            ) else { continue }
+            switch entry.target {
+            case .name:
+                recorder(name ?? "")
+            case .attribute(let attrCondition, _):
+                for (attrKey, attrValue) in props {
+                    let keyMatches = attrCondition.props.contains { prop in
+                        regexCache.matches(string: attrKey, pattern: prop.name)
+                    }
+                    if keyMatches {
+                        recorder(attrValue)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - SampledSpanExporter
 
     public final class SampledSpanExporter: SpanExporter {
@@ -168,6 +206,10 @@ public final class PulseSamplingSignalProcessors {
 
         private var attributesToAdd: [PulseAttributesToAddEntry] {
             parent?.getAddedAttributesConfig(scope: .traces) ?? []
+        }
+
+        private var metricsToAdd: [(PulseMetricsToAddEntry, DataRecorder)] {
+            parent?.getMetricsToAddConfig(scope: .traces) ?? []
         }
 
         public func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
@@ -204,8 +246,15 @@ public final class PulseSamplingSignalProcessors {
                         attributesToAdd: attributesToAdd
                     ) {
                         result = spanWithAttributes(result, added)
+                        currentAttrs = added
                     }
                 }
+                parent.recordMetricsForSignal(
+                    scope: .traces,
+                    name: span.name,
+                    props: PulseSamplingSignalProcessors.attributesToMap(result.attributes),
+                    metricsToAdd: metricsToAdd
+                )
                 return result
             }
             return delegateExporter.export(spans: filtered, explicitTimeout: explicitTimeout)
@@ -246,6 +295,10 @@ public final class PulseSamplingSignalProcessors {
             parent?.getAddedAttributesConfig(scope: .logs) ?? []
         }
 
+        private var metricsToAdd: [(PulseMetricsToAddEntry, DataRecorder)] {
+            parent?.getMetricsToAddConfig(scope: .logs) ?? []
+        }
+
         public func export(logRecords: [ReadableLogRecord], explicitTimeout: TimeInterval?) -> ExportResult {
             guard let parent = parent else {
                 return delegateExporter.export(logRecords: logRecords, explicitTimeout: explicitTimeout)
@@ -284,6 +337,10 @@ public final class PulseSamplingSignalProcessors {
                     ) {
                         result = logRecordWithAttributes(result, added)
                     }
+                }
+                if !metricsToAdd.isEmpty {
+                    let finalProps = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
+                    parent.recordMetricsForSignal(scope: .logs, name: logName, props: finalProps, metricsToAdd: metricsToAdd)
                 }
                 return result
             }

@@ -316,7 +316,118 @@ final class PulseMetricCreationTests: XCTestCase {
         }
     }
 
+    // MARK: - Phase 4: End-to-end metrics recording via span/log export
+
+    func testSpanExportRecordsMatchingMetrics() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "spans_exported",
+                target: .name,
+                condition: PulseSignalMatchCondition(
+                    name: "test\\.span",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                data: .counter(isMonotonic: true, isFraction: false),
+                attributesToPick: []
+            ),
+        ])
+        let mockSpanExporter = MockSpanExporter()
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
+        let span = createTestSpan(name: "test.span")
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        XCTAssertEqual(mockSpanExporter.exportedSpans.count, 1)
+        let metrics = mock.exportedMetrics
+        let m = metrics.first { $0.name == "spans_exported" }
+        XCTAssertNotNil(m, "Metric should be recorded when matching span is exported")
+    }
+
+    func testLogExportRecordsMatchingMetrics() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "logs_exported",
+                target: .name,
+                condition: PulseSignalMatchCondition(
+                    name: ".*",
+                    props: [],
+                    scopes: [.logs],
+                    sdks: [.pulse_ios_swift]
+                ),
+                data: .counter(isMonotonic: true, isFraction: false),
+                attributesToPick: []
+            ),
+        ])
+        let mockLogExporter = MockLogExporter()
+        let sampledExporter = processors.makeSampledLogExporter(delegateExporter: mockLogExporter)
+        let logRecord = createTestLogRecord(body: "my_log_event")
+        _ = sampledExporter.export(logRecords: [logRecord], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        XCTAssertEqual(mockLogExporter.exportedLogs.count, 1)
+        let metrics = mock.exportedMetrics
+        let m = metrics.first { $0.name == "logs_exported" }
+        XCTAssertNotNil(m, "Metric should be recorded when matching log is exported")
+    }
+
+    func testSpanExportDoesNotRecordWhenConditionDoesNotMatch() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "only_specific_span",
+                target: .name,
+                condition: PulseSignalMatchCondition(
+                    name: "^exact\\.match$",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                data: .counter(isMonotonic: true, isFraction: false),
+                attributesToPick: []
+            ),
+        ])
+        let mockSpanExporter = MockSpanExporter()
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
+        let span = createTestSpan(name: "other.span")
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        XCTAssertEqual(mockSpanExporter.exportedSpans.count, 1)
+        let metrics = mock.exportedMetrics
+        let m = metrics.first { $0.name == "only_specific_span" }
+        XCTAssertNil(m, "Metric should not be recorded when condition does not match")
+    }
+
     // MARK: - Helpers
+
+    private func createTestSpan(name: String, attributes: [String: AttributeValue] = [:]) -> SpanData {
+        let start = Date()
+        let end = start.addingTimeInterval(0.1)
+        var spanData = SpanData(
+            traceId: TraceId.random(),
+            spanId: SpanId.random(),
+            name: name,
+            kind: SpanKind.internal,
+            startTime: start,
+            endTime: end
+        )
+        spanData.settingAttributes(attributes)
+        spanData.settingTotalAttributeCount(attributes.count)
+        spanData.settingHasEnded(true)
+        spanData.settingTotalRecordedEvents(0)
+        spanData.settingLinks([])
+        spanData.settingTotalRecordedLinks(0)
+        spanData.settingStatus(Status.ok)
+        return spanData
+    }
+
+    private func createTestLogRecord(body: String = "test", attributes: [String: AttributeValue] = [:]) -> ReadableLogRecord {
+        ReadableLogRecord(
+            resource: Resource(attributes: [:]),
+            instrumentationScopeInfo: InstrumentationScopeInfo(name: "test"),
+            timestamp: Date(),
+            body: .string(body),
+            attributes: attributes
+        )
+    }
 
     private func makeSdkConfig(metricsToAdd: [PulseMetricsToAddEntry] = []) -> PulseSdkConfig {
         PulseSdkConfig(
@@ -374,6 +485,32 @@ final class PulseMetricCreationTests: XCTestCase {
         return (processors, mock, provider)
     }
 
+}
+
+// MARK: - MockSpanExporter / MockLogExporter (for Phase 4 E2E tests)
+
+private final class MockSpanExporter: SpanExporter {
+    var exportedSpans: [SpanData] = []
+
+    func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
+        exportedSpans.append(contentsOf: spans)
+        return .success
+    }
+
+    func flush(explicitTimeout: TimeInterval?) -> SpanExporterResultCode { .success }
+    func shutdown(explicitTimeout: TimeInterval?) {}
+}
+
+private final class MockLogExporter: LogRecordExporter {
+    var exportedLogs: [ReadableLogRecord] = []
+
+    func export(logRecords: [ReadableLogRecord], explicitTimeout: TimeInterval?) -> ExportResult {
+        exportedLogs.append(contentsOf: logRecords)
+        return .success
+    }
+
+    func forceFlush(explicitTimeout: TimeInterval?) -> ExportResult { .success }
+    func shutdown(explicitTimeout: TimeInterval?) {}
 }
 
 // MARK: - MetricExporterMock

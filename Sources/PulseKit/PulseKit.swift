@@ -376,6 +376,8 @@ public class Pulse {
         self.meterProvider = builtMeterProvider
         OpenTelemetry.registerMeterProvider(meterProvider: builtMeterProvider)
 
+        _samplingSignalProcessors?.setMeterProviderForMetricsToAdd(builtMeterProvider)
+
         let spanProcessor = BatchSpanProcessor(
             spanExporter: persistentSpanExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
