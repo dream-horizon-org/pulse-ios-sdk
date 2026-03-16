@@ -80,6 +80,18 @@ public class Pulse {
     /// Keeps PulseSamplingSignalProcessors alive so SampledSpanExporter/SampledLogExporter weak parent ref stays valid.
     private var _samplingSignalProcessors: PulseSamplingSignalProcessors?
 
+    private var _dataCollectionState: PulseDataCollectionConsent = .allowed
+    private let consentStateLock = NSLock()
+
+    internal var currentDataCollectionState: PulseDataCollectionConsent {
+        consentStateLock.lock()
+        defer { consentStateLock.unlock() }
+        return _dataCollectionState
+    }
+
+    private var _consentSpanExporter: ConsentSpanExporter?
+    private var _consentLogExporter: ConsentLogExporter?
+
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
             fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
@@ -106,12 +118,14 @@ public class Pulse {
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
         configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
         instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil,
+        dataCollectionState: PulseDataCollectionConsent = .allowed,
         beforeSendSpan: BeforeSendSpanCallback? = nil,
         beforeSendLog: BeforeSendLogCallback? = nil,
         beforeSendMetric: BeforeSendMetricCallback? = nil,
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)? = nil,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])? = nil
     ) {
+        var shouldShutdownAfterInit = false
         initializationQueue.sync {
             guard !_isShutdown else { return }
             guard !_isInitialized else {
@@ -124,6 +138,10 @@ public class Pulse {
             var pulseKitConfig = PulseKitConfiguration()
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
+
+            consentStateLock.lock()
+            _dataCollectionState = dataCollectionState
+            consentStateLock.unlock()
 
             // Merge apiKey with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP)
             let apiKeyHeader = [PulseAttributes.apiKeyHeaderKey: apiKey]
@@ -175,6 +193,7 @@ public class Pulse {
                 config: config,
                 currentSdkConfig: configStorageQueue.sync { _currentSdkConfig },
                 currentSdkName: currentSdkName,
+                dataCollectionState: dataCollectionState,
                 beforeSendSpan: beforeSendSpan,
                 beforeSendLog: beforeSendLog,
                 beforeSendMetric: beforeSendMetric,
@@ -214,7 +233,11 @@ public class Pulse {
             } else {
                 PulseLogger.log("Initialized (using defaults, no config).")
             }
+            if dataCollectionState == .denied {
+                shouldShutdownAfterInit = true  // run shutdown outside sync so "denied" is terminal at init too
+            }
         }
+        if shouldShutdownAfterInit { shutdown() }
     }
 
     // MARK: - Private Helper Methods
@@ -292,6 +315,7 @@ public class Pulse {
         config: InstrumentationConfiguration,
         currentSdkConfig: PulseSdkConfig?,
         currentSdkName: PulseSdkName,
+        dataCollectionState: PulseDataCollectionConsent,
         beforeSendSpan: BeforeSendSpanCallback?,
         beforeSendLog: BeforeSendLogCallback?,
         beforeSendMetric: BeforeSendMetricCallback?,
@@ -352,15 +376,26 @@ public class Pulse {
             logExporter: finalLogExporter
         )
 
+        let consentSpanExporter = ConsentSpanExporter(
+            delegate: persistentSpanExporter,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        let consentLogExporter = ConsentLogExporter(
+            delegate: persistentLogExporter,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentSpanExporter = consentSpanExporter
+        self._consentLogExporter = consentLogExporter
+
         let spanProcessor = BatchSpanProcessor(
-            spanExporter: persistentSpanExporter,
+            spanExporter: consentSpanExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
         let baseLogProcessor = BatchLogRecordProcessor(
-            logRecordExporter: persistentLogExporter,
+            logRecordExporter: consentLogExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
@@ -505,6 +540,41 @@ public class Pulse {
     }
 
     // MARK: - Shutdown
+
+    /// Updates data collection consent. `.allowed` flushes buffered signals then exports normally. `.denied` clears buffer and shuts down pulse. 
+    public func setDataCollectionState(_ newState: PulseDataCollectionConsent) {
+        var shouldShutdown = false
+        var shouldFlush = false
+        initializationQueue.sync {
+            let current: PulseDataCollectionConsent = {
+                consentStateLock.lock()
+                defer { consentStateLock.unlock() }
+                return _dataCollectionState
+            }()
+            if current == newState { return }
+            if current == .denied { return }
+
+            consentStateLock.lock()
+            _dataCollectionState = newState
+            consentStateLock.unlock()
+
+            switch newState {
+            case .allowed:
+                shouldFlush = true
+            case .denied:
+                _consentSpanExporter?.clearBuffer()
+                _consentLogExporter?.clearBuffer()
+                shouldShutdown = true
+            case .pending:
+                break
+            }
+        }
+        if shouldFlush {
+            _consentSpanExporter?.flushBuffer()
+            _consentLogExporter?.flushBuffer()
+        }
+        if shouldShutdown { shutdown() }
+    }
 
     /// Permanently shuts down the SDK. Cannot be re-initialized in this process.
     public func shutdown() {

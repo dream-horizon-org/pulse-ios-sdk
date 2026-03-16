@@ -26,10 +26,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             endpointBaseUrl: "http://127.0.0.1:4318",
             apiKey: "default",
             endpointHeaders: nil,
-            globalAttributes: globalAttributes
+            globalAttributes: globalAttributes,
+            dataCollectionState: .allowed
         )
-        
-        // Create window and root view controller
         window = UIWindow(frame: UIScreen.main.bounds)
         let mainViewController = MainViewController()
         window?.rootViewController = UINavigationController(rootViewController: mainViewController)
