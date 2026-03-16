@@ -56,6 +56,11 @@ private struct ViewSnapshot {
     let keyboardType: UIKeyboardType?
     let hasText: Bool
     let hasImage: Bool
+    // Padding information for text area masking (similar to Android's compoundPadding)
+    let paddingLeft: CGFloat
+    let paddingTop: CGFloat
+    let paddingRight: CGFloat
+    let paddingBottom: CGFloat
     // For coordinate conversion
     let superviewId: ObjectIdentifier?
 }
@@ -147,6 +152,7 @@ internal class SessionReplayMasker {
             }
             
             // Collect mask rects on main thread (fast - just coordinate calculations)
+            // Similar to Android: collect mask rects BEFORE screenshot to avoid timing races
             var maskRects = self.processMaskingFromSnapshot(
                 snapshots: snapshots,
                 rootViewId: ObjectIdentifier(window),
@@ -155,6 +161,10 @@ internal class SessionReplayMasker {
             )
             
             maskRects = self.mergeOverlappingRects(maskRects)
+            
+            // Pre-validate mask rects against window bounds BEFORE screenshot (like Android's masksValid)
+            // This ensures we don't capture screenshot if mask rects are invalid
+            let masksValid = self.preValidateMaskRects(maskRects, windowBounds: windowBounds)
             
             let viewsNeedingMaskCount = viewsNeedingMask.count
             
@@ -200,7 +210,22 @@ internal class SessionReplayMasker {
                 return
             }
             
-            // MASKING PATH: Capture screenshot, then apply masks on background
+            // MASKING PATH: Only capture screenshot if mask rects are valid (like Android's masksValid check)
+            // This prevents unnecessary screenshot capture if mask rects are invalid
+            guard masksValid else {
+                // Mask rects are invalid - reject before screenshot (early rejection like Android)
+                completion(nil)
+                return
+            }
+            
+            // Check for draw flag (similar to Android's onDrawFlag check)
+            if let drawFlagChecker = self.drawFlagChecker, drawFlagChecker() {
+                // Screen changed during mask collection - reject before screenshot
+                completion(nil)
+                return
+            }
+            
+            // Capture screenshot only after validation passes (matching Android's flow)
             let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
             
             guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
@@ -220,6 +245,14 @@ internal class SessionReplayMasker {
                 return
             }
             
+            // Check draw flag after screenshot (similar to Android's onDrawFlag check inside PixelCopy callback)
+            // This ensures screen didn't change during screenshot capture
+            if let drawFlagChecker = self.drawFlagChecker, drawFlagChecker() {
+                // Screen changed during screenshot capture - reject
+                completion(nil)
+                return
+            }
+            
             // Move heavy operations (mask rendering, encoding) to background thread
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
@@ -229,9 +262,9 @@ internal class SessionReplayMasker {
                 
                 let capturedScreenshot = screenshot
                 
-                // CRITICAL: Verify screenshot size matches window bounds (coordinate space validation)
-                
-                // Phase 5: Validate mask rects before rendering (use screenshot size, not window bounds)
+                // Final validation: verify mask rects against actual screenshot size
+                // This ensures coordinate space matches (window bounds vs screenshot bitmap)
+                // Similar to Android's validation inside PixelCopy callback (line 93: if (!onDrawFlag() && masksValid))
                 let validatedRects = self.validateMaskRects(maskRects, imageSize: capturedScreenshot.size)
                
                 
@@ -520,11 +553,18 @@ internal class SessionReplayMasker {
                 let convertedFrame = superview.convert(view.frame, to: window)
                 if convertedFrame.width > 0 && convertedFrame.height > 0 &&
                    convertedFrame.origin.x.isFinite && convertedFrame.origin.y.isFinite &&
-                   convertedFrame.width.isFinite && convertedFrame.height.isFinite &&
-                   convertedFrame.origin.x >= -1000 && convertedFrame.origin.y >= -1000 && // Reasonable bounds check
-                   convertedFrame.origin.x < window.bounds.width + 1000 &&
-                   convertedFrame.origin.y < window.bounds.height + 1000 {
-                    windowFrame = convertedFrame
+                   convertedFrame.width.isFinite && convertedFrame.height.isFinite {
+                    // Accept reasonable coordinate conversions (allow negative Y for status bar area)
+                    // clampRectToBounds will handle the masking correctly
+                    let tolerance: CGFloat = 1000 // Large tolerance - let clampRectToBounds decide
+                    if convertedFrame.origin.x >= -tolerance && convertedFrame.origin.y >= -tolerance &&
+                       convertedFrame.origin.x < window.bounds.width + tolerance &&
+                       convertedFrame.origin.y < window.bounds.height + tolerance {
+                        windowFrame = convertedFrame
+                    } else {
+                        // Way outside - try fallback
+                        windowFrame = view.convert(view.bounds, to: window)
+                    }
                 } else {
                     // Method 2: Direct conversion (fallback)
                     windowFrame = view.convert(view.bounds, to: window)
@@ -539,20 +579,15 @@ internal class SessionReplayMasker {
             
             // Validate the converted frame
             if let frame = windowFrame {
-                // Ensure frame is valid and within reasonable bounds
+                // Ensure frame is valid (basic checks only)
+                // Don't reject based on coordinates - let clampRectToBounds handle masking correctly
                 if frame.width <= 0 || frame.height <= 0 ||
                    !frame.origin.x.isFinite || !frame.origin.y.isFinite ||
                    !frame.width.isFinite || !frame.height.isFinite {
                     windowFrame = nil
-                } else {
-                    // Additional validation: check if frame is way outside window bounds (likely wrong conversion)
-                    let tolerance: CGFloat = 100 // Allow some tolerance for views slightly outside
-                    if frame.origin.x < -tolerance || frame.origin.y < -tolerance ||
-                       frame.origin.x > window.bounds.width + tolerance ||
-                       frame.origin.y > window.bounds.height + tolerance {
-                        // Still use it but it will be clamped later
-                    }
                 }
+                // Keep all valid frames - clampRectToBounds will correctly handle negative Y coordinates
+                // and only mask the visible portion
             }
         }
         
@@ -598,6 +633,32 @@ internal class SessionReplayMasker {
         
         let privacyTagValue = view.getPrivacyTagValue()
         
+        // Capture padding information for text area masking (similar to Android's compoundPadding)
+        var paddingLeft: CGFloat = 0
+        var paddingTop: CGFloat = 0
+        var paddingRight: CGFloat = 0
+        var paddingBottom: CGFloat = 0
+        
+        if let textField = textField {
+            // UITextField padding: leftView, rightView, and border style affect content area
+            paddingLeft = textField.leftView?.frame.width ?? 0
+            paddingRight = textField.rightView?.frame.width ?? 0
+            
+            // Account for border insets (similar to Android's compoundPadding)
+            if textField.borderStyle != .none {
+                paddingLeft += 8 // Approximate border padding
+                paddingRight += 8
+                paddingTop += 4
+                paddingBottom += 4
+            }
+        } else if let textView = textView {
+            // UITextView: use text container insets (similar to Android's compoundPadding)
+            paddingLeft = textView.textContainerInset.left
+            paddingTop = textView.textContainerInset.top
+            paddingRight = textView.textContainerInset.right
+            paddingBottom = textView.textContainerInset.bottom
+        }
+        
         let snapshot = ViewSnapshot(
             viewId: viewId,
             className: className,
@@ -623,6 +684,10 @@ internal class SessionReplayMasker {
             keyboardType: keyboardType,
             hasText: hasText,
             hasImage: hasImage,
+            paddingLeft: paddingLeft,
+            paddingTop: paddingTop,
+            paddingRight: paddingRight,
+            paddingBottom: paddingBottom,
             superviewId: parentId
         )
         
@@ -913,56 +978,24 @@ internal class SessionReplayMasker {
     
     /// Get text area window rect for text fields/views, accounting for padding.
     /// Similar to Android's getTextAreaWindowRect - masks only the text content area, not the full view frame.
-    /// Note: This requires the actual view instance, which we don't have in snapshot-only processing.
-    /// For now, we use full frame masking. This can be enhanced by storing padding info in ViewSnapshot.
+    /// Uses padding information stored in ViewSnapshot (captured during snapshot phase).
     private func getTextAreaWindowRect(
         snapshot: ViewSnapshot,
-        windowBounds: CGRect,
-        view: UIView?
+        windowBounds: CGRect
     ) -> CGRect? {
         guard let windowFrame = snapshot.windowFrame else {
             return nil
         }
         
-        // For text fields and text views, adjust for padding/insets if we have the view
-        if snapshot.isTextField, let textField = view as? UITextField {
-            // UITextField padding: leftView, rightView, and border style affect content area
-            var leftPadding: CGFloat = textField.leftView?.frame.width ?? 0
-            var rightPadding: CGFloat = textField.rightView?.frame.width ?? 0
-            var topPadding: CGFloat = 0
-            var bottomPadding: CGFloat = 0
+        // For text fields and text views, adjust for padding/insets (similar to Android's compoundPadding)
+        if snapshot.isTextField || snapshot.isTextView {
+            // Use padding information captured during snapshot phase
+            let leftPadding = snapshot.paddingLeft
+            let topPadding = snapshot.paddingTop
+            let rightPadding = snapshot.paddingRight
+            let bottomPadding = snapshot.paddingBottom
             
-            // Account for border insets
-            if textField.borderStyle != .none {
-                leftPadding += 8 // Approximate border padding
-                rightPadding += 8
-                topPadding += 4
-                bottomPadding += 4
-            }
-            
-            // Calculate text area rect
-            let textAreaRect = CGRect(
-                x: windowFrame.origin.x + leftPadding,
-                y: windowFrame.origin.y + topPadding,
-                width: max(0, windowFrame.width - leftPadding - rightPadding),
-                height: max(0, windowFrame.height - topPadding - bottomPadding)
-            )
-            
-            // Ensure valid rect
-            guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
-                // Fallback to full frame if text area is invalid
-                return clampRectToBounds(rect: windowFrame, bounds: windowBounds)
-            }
-            
-            return clampRectToBounds(rect: textAreaRect, bounds: windowBounds)
-        } else if snapshot.isTextView, let textView = view as? UITextView {
-            // UITextView: use text container insets
-            let leftPadding = textView.textContainerInset.left
-            let rightPadding = textView.textContainerInset.right
-            let topPadding = textView.textContainerInset.top
-            let bottomPadding = textView.textContainerInset.bottom
-            
-            // Calculate text area rect
+            // Calculate text area rect (only the content area, excluding padding)
             let textAreaRect = CGRect(
                 x: windowFrame.origin.x + leftPadding,
                 y: windowFrame.origin.y + topPadding,
@@ -979,7 +1012,7 @@ internal class SessionReplayMasker {
             return clampRectToBounds(rect: textAreaRect, bounds: windowBounds)
         }
         
-        // For other view types or when view is not available, use full frame
+        // For other view types, use full frame
         return clampRectToBounds(rect: windowFrame, bounds: windowBounds)
     }
     
@@ -997,8 +1030,15 @@ internal class SessionReplayMasker {
         if snapshot.isTextField {
             let shouldMask = shouldMaskTextFieldFromSnapshot(snapshot: snapshot)
             if shouldMask {
-                // Note: We can't get the actual view here (snapshot only), so use full frame
-                // In a future enhancement, we could store padding info in ViewSnapshot
+                // Use padding-aware text area masking (similar to Android's getTextAreaWindowRect)
+                // This masks only the text content area, not the full view frame
+                if let textAreaRect = getTextAreaWindowRect(snapshot: snapshot, windowBounds: windowBounds) {
+                    guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
+                        return nil
+                    }
+                    return textAreaRect
+                }
+                // Fallback to full frame if text area calculation fails
                 let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
                 guard clamped.width > 0 && clamped.height > 0 else {
                     return nil
@@ -1008,7 +1048,15 @@ internal class SessionReplayMasker {
         } else if snapshot.isTextView {
             let shouldMask = shouldMaskTextViewFromSnapshot(snapshot: snapshot)
             if shouldMask {
-                // Note: We can't get the actual view here (snapshot only), so use full frame
+                // Use padding-aware text area masking (similar to Android's getTextAreaWindowRect)
+                // This masks only the text content area, not the full view frame
+                if let textAreaRect = getTextAreaWindowRect(snapshot: snapshot, windowBounds: windowBounds) {
+                    guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
+                        return nil
+                    }
+                    return textAreaRect
+                }
+                // Fallback to full frame if text area calculation fails
                 let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
                 guard clamped.width > 0 && clamped.height > 0 else {
                     return nil
@@ -1205,29 +1253,50 @@ internal class SessionReplayMasker {
         return screenRect
     }
     
+    /// Clamp a rectangle to window bounds, correctly handling negative coordinates.
+    /// For views with negative Y (e.g., status bar area), only the visible portion is returned.
+    /// Only rejects frames that are COMPLETELY outside bounds (with reasonable tolerance).
     private func clampRectToBounds(rect: CGRect, bounds: CGRect) -> CGRect {
         guard rect.width > 0 && rect.height > 0 else { return .zero }
         guard rect.origin.x.isFinite && rect.origin.y.isFinite else { return .zero }
         guard rect.width.isFinite && rect.height.isFinite else { return .zero }
         
-        let clampedX = max(0, min(rect.origin.x, bounds.width))
-        let clampedY = max(0, min(rect.origin.y, bounds.height))
+        // Calculate the actual bounds of the rect
+        let rectMaxX = rect.origin.x + rect.width
+        let rectMaxY = rect.origin.y + rect.height
         
-        let availableWidth = bounds.width - clampedX
-        let availableHeight = bounds.height - clampedY
+        // Only reject if COMPLETELY outside bounds (with small tolerance for rounding)
+        // This prevents incorrect masks while keeping all valid frames
+        let tolerance: CGFloat = 1.0 // Small tolerance for floating point rounding
+        if rectMaxX <= -tolerance || rectMaxY <= -tolerance ||
+           rect.origin.x >= bounds.width + tolerance ||
+           rect.origin.y >= bounds.height + tolerance {
+            // Completely outside - return zero (this is rare and indicates invalid coordinates)
+            return .zero
+        }
         
-        let clampedWidth = min(rect.width, availableWidth)
-        let clampedHeight = min(rect.height, availableHeight)
+        // Calculate visible portion (handle negative origins correctly)
+        // For views with negative Y, only the visible part below Y=0 will be masked
+        let visibleX = max(0, rect.origin.x)
+        let visibleY = max(0, rect.origin.y)
+        let visibleMaxX = min(rectMaxX, bounds.width)
+        let visibleMaxY = min(rectMaxY, bounds.height)
         
-        let clamped = CGRect(
-            x: clampedX,
-            y: clampedY,
-            width: max(0, clampedWidth),
-            height: max(0, clampedHeight)
+        // Calculate visible dimensions
+        let visibleWidth = visibleMaxX - visibleX
+        let visibleHeight = visibleMaxY - visibleY
+        
+        // If no visible portion, return zero
+        guard visibleWidth > 0 && visibleHeight > 0 else {
+            return .zero
+        }
+        
+        return CGRect(
+            x: visibleX,
+            y: visibleY,
+            width: visibleWidth,
+            height: visibleHeight
         )
-        
-        
-        return clamped
     }
     
     /// Merge overlapping mask rects to reduce rendering overhead.
@@ -1275,9 +1344,59 @@ internal class SessionReplayMasker {
         return merged
     }
     
+    /// Pre-validate mask rects against window bounds BEFORE screenshot capture.
+    /// Similar to Android's masksValid check - ensures mask rects are valid before
+    /// expensive screenshot operation. Returns false if any rects are completely invalid.
+    /// This prevents unnecessary screenshot capture if mask rects are invalid.
+    private func preValidateMaskRects(_ rects: [CGRect], windowBounds: CGRect) -> Bool {
+        // If no mask rects, validation passes (no masking needed)
+        guard !rects.isEmpty else {
+            return true
+        }
+        
+        // Validate each rect against window bounds
+        for rect in rects {
+            // Basic validity checks
+            guard rect.width > 0 && rect.height > 0 else {
+                continue // Skip invalid rects but don't fail validation
+            }
+            
+            guard rect.origin.x.isFinite && rect.origin.y.isFinite else {
+                return false // Invalid coordinates - fail validation
+            }
+            
+            guard rect.width.isFinite && rect.height.isFinite else {
+                return false // Invalid dimensions - fail validation
+            }
+            
+            // Check if rect has any overlap with window bounds (allows negative coordinates)
+            // Similar to Android's validation - only reject if completely outside
+            let rectMaxX = rect.origin.x + rect.width
+            let rectMaxY = rect.origin.y + rect.height
+            
+            let tolerance: CGFloat = 1.0 // Small tolerance for floating point rounding
+            
+            // Reject only if completely outside bounds
+            if rectMaxX <= -tolerance || rectMaxY <= -tolerance ||
+               rect.origin.x >= windowBounds.width + tolerance ||
+               rect.origin.y >= windowBounds.height + tolerance {
+                // Completely outside - this is invalid
+                return false
+            }
+            
+            // Rect has some overlap with window bounds - valid
+        }
+        
+        // All rects passed validation
+        return true
+    }
+    
     /// Validate mask rects before rendering - ensure all are within image bounds and valid.
+    /// Uses clampRectToBounds to correctly handle negative coordinates.
+    /// This is called AFTER screenshot capture to validate against actual screenshot size.
     private func validateMaskRects(_ rects: [CGRect], imageSize: CGSize) -> [CGRect] {
         var validRects: [CGRect] = []
+        let imageBounds = CGRect(origin: .zero, size: imageSize)
         
         for rect in rects {
             guard rect.width > 0 && rect.height > 0 else {
@@ -1292,13 +1411,8 @@ internal class SessionReplayMasker {
                 continue
             }
             
-            // Clamp to image bounds
-            let clamped = CGRect(
-                x: max(0, min(rect.origin.x, imageSize.width)),
-                y: max(0, min(rect.origin.y, imageSize.height)),
-                width: min(rect.width, imageSize.width - max(0, rect.origin.x)),
-                height: min(rect.height, imageSize.height - max(0, rect.origin.y))
-            )
+            // Use clampRectToBounds to correctly handle negative coordinates
+            let clamped = clampRectToBounds(rect: rect, bounds: imageBounds)
             
             guard clamped.width > 0 && clamped.height > 0 else {
                 continue
