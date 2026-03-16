@@ -9,7 +9,7 @@ public struct PulseKitConfiguration {
     public var includeScreenAttributes: Bool = true
     public var includeNetworkAttributes: Bool = true
     public var includeGlobalAttributes: Bool = true
-    
+
     public init() {}
     
     public mutating func disableScreenAttributes() {
