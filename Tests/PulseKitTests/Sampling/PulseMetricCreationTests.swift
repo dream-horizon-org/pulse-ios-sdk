@@ -116,8 +116,8 @@ final class PulseMetricCreationTests: XCTestCase {
         let config = processors.getMetricsToAddConfig(scope: .traces)
         XCTAssertEqual(config.count, 1)
         let (_, recorder) = config[0]
-        recorder("ignored_name")
-        recorder(nil as String?)
+        recorder("ignored_name", nil, [:])
+        recorder(nil as String?, nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         let counterMetric = metrics.first { $0.name == "span_count" }
@@ -148,7 +148,7 @@ final class PulseMetricCreationTests: XCTestCase {
         ])
         let config = processors.getMetricsToAddConfig(scope: .traces)
         let (_, recorder) = config[0]
-        recorder("name")
+        recorder("name", nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         let m = metrics.first { $0.name == "span_count_d" }
@@ -177,7 +177,7 @@ final class PulseMetricCreationTests: XCTestCase {
         ])
         let config = processors.getMetricsToAddConfig(scope: .traces)
         let (_, recorder) = config[0]
-        recorder("event")
+        recorder("event", nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         XCTAssertTrue(metrics.contains { $0.name == "up_down" })
@@ -200,7 +200,7 @@ final class PulseMetricCreationTests: XCTestCase {
         ])
         let config = processors.getMetricsToAddConfig(scope: .traces)
         let (_, recorder) = config[0]
-        recorder("42.5")
+        recorder("42.5", nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         let m = metrics.first { $0.name == "gauge_val" }
@@ -229,7 +229,7 @@ final class PulseMetricCreationTests: XCTestCase {
         ])
         let config = processors.getMetricsToAddConfig(scope: .traces)
         let (_, recorder) = config[0]
-        recorder("100")
+        recorder("100", nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         let m = metrics.first { $0.name == "gauge_long" }
@@ -258,7 +258,7 @@ final class PulseMetricCreationTests: XCTestCase {
         ])
         let config = processors.getMetricsToAddConfig(scope: .traces)
         let (_, recorder) = config[0]
-        recorder("3.5")
+        recorder("3.5", nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         XCTAssertTrue(metrics.contains { $0.name == "hist_buckets" })
@@ -281,7 +281,7 @@ final class PulseMetricCreationTests: XCTestCase {
         ])
         let config = processors.getMetricsToAddConfig(scope: .traces)
         let (_, recorder) = config[0]
-        recorder("7.0")
+        recorder("7.0", nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         XCTAssertTrue(metrics.contains { $0.name == "hist_no_buckets" })
@@ -304,7 +304,7 @@ final class PulseMetricCreationTests: XCTestCase {
         ])
         let config = processors.getMetricsToAddConfig(scope: .traces)
         let (_, recorder) = config[0]
-        recorder("12.5")
+        recorder("12.5", nil, [:])
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
         let m = metrics.first { $0.name == "sum_val" }
@@ -394,6 +394,167 @@ final class PulseMetricCreationTests: XCTestCase {
         let metrics = mock.exportedMetrics
         let m = metrics.first { $0.name == "only_specific_span" }
         XCTAssertNil(m, "Metric should not be recorded when condition does not match")
+    }
+
+    // MARK: - Phase 5: addPropNameAsSuffix and attributesToPick
+
+    func testAddPropNameAsSuffixCreatesSeparateMetricsPerAttrKey() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "http_method_count",
+                target: .attribute(
+                    condition: PulseSignalMatchCondition(
+                        name: ".*",
+                        props: [PulseProp(name: "http\\.method", value: nil)],
+                        scopes: [.traces],
+                        sdks: [.pulse_ios_swift]
+                    ),
+                    addPropNameAsSuffix: true
+                ),
+                condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
+                data: .counter(isMonotonic: true, isFraction: false),
+                attributesToPick: []
+            ),
+        ])
+        let mockSpanExporter = MockSpanExporter()
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
+        // Export two spans with different http.method values
+        let span1 = createTestSpan(name: "req", attributes: ["http.method": .string("GET")])
+        let span2 = createTestSpan(name: "req", attributes: ["http.method": .string("POST")])
+        _ = sampledExporter.export(spans: [span1, span2], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        let metrics = mock.exportedMetrics
+        let getMetric = metrics.first { $0.name == "http_method_count.GET" }
+        let postMetric = metrics.first { $0.name == "http_method_count.POST" }
+        XCTAssertNotNil(getMetric, "Should have metric with GET suffix")
+        XCTAssertNotNil(postMetric, "Should have metric with POST suffix")
+    }
+
+    func testAddPropNameAsSuffixFalseUsesBaseName() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "http_duration",
+                target: .attribute(
+                    condition: PulseSignalMatchCondition(
+                        name: ".*",
+                        props: [PulseProp(name: "http\\.duration", value: nil)],
+                        scopes: [.traces],
+                        sdks: [.pulse_ios_swift]
+                    ),
+                    addPropNameAsSuffix: false
+                ),
+                condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
+                data: .histogram(bucket: nil, isFraction: true),
+                attributesToPick: []
+            ),
+        ])
+        let mockSpanExporter = MockSpanExporter()
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
+        let span = createTestSpan(name: "req", attributes: ["http.duration": .double(150.0)])
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        let metrics = mock.exportedMetrics
+        let m = metrics.first { $0.name == "http_duration" }
+        XCTAssertNotNil(m, "Should use base name when addPropNameAsSuffix is false")
+    }
+
+    func testAttributesToPickAttachesAttributesToMetricPoint() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "span_with_method",
+                target: .name,
+                condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
+                data: .counter(isMonotonic: true, isFraction: false),
+                attributesToPick: [
+                    PulseSignalMatchCondition(
+                        name: ".*",
+                        props: [PulseProp(name: "http\\.method", value: nil)],
+                        scopes: [.traces],
+                        sdks: [.pulse_ios_swift]
+                    ),
+                ]
+            ),
+        ])
+        let mockSpanExporter = MockSpanExporter()
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
+        let span = createTestSpan(name: "req", attributes: ["http.method": .string("GET")])
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        let metrics = mock.exportedMetrics
+        let m = metrics.first { $0.name == "span_with_method" }
+        XCTAssertNotNil(m)
+        if let sumData = m?.data as? SumData,
+           let point = sumData.points.first as? LongPointData {
+            let methodAttr = point.attributes["http.method"]
+            XCTAssertNotNil(methodAttr, "Metric point should have http.method from attributesToPick")
+            if case .string(let s) = methodAttr {
+                XCTAssertEqual(s, "GET")
+            }
+        }
+    }
+
+    func testAttributesToPickEmptyUsesNoAttributes() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "simple_counter",
+                target: .name,
+                condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
+                data: .counter(isMonotonic: true, isFraction: false),
+                attributesToPick: []
+            ),
+        ])
+        let config = processors.getMetricsToAddConfig(scope: .traces)
+        let (_, recorder) = config[0]
+        recorder("span_name", nil, [:])
+        _ = provider.forceFlush()
+        let metrics = mock.exportedMetrics
+        let m = metrics.first { $0.name == "simple_counter" }
+        XCTAssertNotNil(m)
+        if let sumData = m?.data as? SumData,
+           let point = sumData.points.first as? LongPointData {
+            XCTAssertTrue(point.attributes.isEmpty, "Empty attributesToPick should yield no point attributes")
+        }
+    }
+
+    func testAttributesToPickMultipleMatches() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "multi_attr",
+                target: .name,
+                condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
+                data: .counter(isMonotonic: true, isFraction: false),
+                attributesToPick: [
+                    PulseSignalMatchCondition(
+                        name: ".*",
+                        props: [
+                            PulseProp(name: "http\\.method", value: nil),
+                            PulseProp(name: "http\\.status_code", value: nil),
+                        ],
+                        scopes: [.traces],
+                        sdks: [.pulse_ios_swift]
+                    ),
+                ]
+            ),
+        ])
+        let mockSpanExporter = MockSpanExporter()
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
+        let span = createTestSpan(
+            name: "req",
+            attributes: [
+                "http.method": .string("POST"),
+                "http.status_code": .int(200),
+            ]
+        )
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        let metrics = mock.exportedMetrics
+        let m = metrics.first { $0.name == "multi_attr" }
+        XCTAssertNotNil(m)
+        if let sumData = m?.data as? SumData,
+           let point = sumData.points.first as? LongPointData {
+            XCTAssertNotNil(point.attributes["http.method"])
+            XCTAssertNotNil(point.attributes["http.status_code"])
+        }
     }
 
     // MARK: - Helpers

@@ -12,9 +12,12 @@ import Security
 
 // MARK: - PulseSamplingSignalProcessors
 
-/// Closure that records a value into a metric instrument. Receives the signal name (for .name target)
-/// or attribute value (for .attribute target). For counters with .name target, the value is ignored and 1 is added.
-public typealias DataRecorder = (Any?) -> Void
+/// Closure that records a value into a metric instrument.
+/// - Parameters:
+///   - value: The signal name (for .name target) or attribute value (for .attribute target). For counters with .name target, value is ignored and 1 is added.
+///   - attributeKeyForSuffix: When addPropNameAsSuffix is true, the string representation of the attribute value to suffix to the metric name (e.g. "GET", "POST"). Nil otherwise.
+///   - pointAttributes: Attributes to attach to the metric data point (from attributesToPick).
+public typealias DataRecorder = (Any?, _ attributeKeyForSuffix: String?, _ pointAttributes: [String: AttributeValue]) -> Void
 
 /// Holds SampledSpanExporter, SampledLogExporter, SampledMetricExporter and getEnabledFeatures.
 public final class PulseSamplingSignalProcessors {
@@ -79,39 +82,73 @@ public final class PulseSamplingSignalProcessors {
     private func createMeter(entry: PulseMetricsToAddEntry) -> DataRecorder {
         let provider = meterProviderForMetricsToAdd ?? MeterProviderSdk.builder().build() as any MeterProvider
         let meter = provider.meterBuilder(name: "com.pulse.signal.processors.metric").build()
-        let sanitizedName = PulseOtelUtils.sanitizeMetricName(name: entry.name)
+        let baseSanitizedName = PulseOtelUtils.sanitizeMetricName(name: entry.name)
 
+        // For .attribute with addPropNameAsSuffix, we need a cache of recorders per metric name.
+        let useAddPropNameAsSuffix: Bool
+        if case .attribute(_, let suffix) = entry.target {
+            useAddPropNameAsSuffix = suffix
+        } else {
+            useAddPropNameAsSuffix = false
+        }
+
+        if useAddPropNameAsSuffix {
+            var cache: [String: (Any?, [String: AttributeValue]) -> Void] = [:]
+            let lock = NSLock()
+            return { value, attrKey, attrs in
+                guard let attrKey = attrKey else { return }
+                let fullName = baseSanitizedName + "." + PulseOtelUtils.sanitizeMetricName(name: attrKey)
+                let recorder: (Any?, [String: AttributeValue]) -> Void = lock.withLock {
+                    if let cached = cache[fullName] { return cached }
+                    let inner = self.createInstrumentRecorder(entry: entry, meter: meter, sanitizedName: fullName)
+                    cache[fullName] = inner
+                    return inner
+                }
+                recorder(value, attrs)
+            }
+        }
+
+        let recorder = createInstrumentRecorder(entry: entry, meter: meter, sanitizedName: baseSanitizedName)
+        return { value, _, attrs in recorder(value, attrs) }
+    }
+
+    /// Creates a closure that records (value, attrs) into an instrument with the given name.
+    private func createInstrumentRecorder(
+        entry: PulseMetricsToAddEntry,
+        meter: any Meter,
+        sanitizedName: String
+    ) -> (Any?, [String: AttributeValue]) -> Void {
         switch entry.data {
         case .counter(let isMonotonic, let isFraction):
             if isFraction, isMonotonic {
                 var counter = meter.counterBuilder(name: sanitizedName).ofDoubles().build()
-                return { _ in counter.add(value: 1.0, attributes: [:]) }
+                return { _, attrs in counter.add(value: 1.0, attributes: attrs) }
             } else if isFraction, !isMonotonic {
                 var upDown = meter.upDownCounterBuilder(name: sanitizedName).ofDoubles().build()
-                return { _ in upDown.add(value: 1.0, attributes: [:]) }
+                return { _, attrs in upDown.add(value: 1.0, attributes: attrs) }
             } else if !isFraction, isMonotonic {
                 var counter = meter.counterBuilder(name: sanitizedName).build()
-                return { _ in counter.add(value: 1, attributes: [:]) }
+                return { _, attrs in counter.add(value: 1, attributes: attrs) }
             } else {
                 var upDown = meter.upDownCounterBuilder(name: sanitizedName).build()
-                return { _ in upDown.add(value: 1, attributes: [:]) }
+                return { _, attrs in upDown.add(value: 1, attributes: attrs) }
             }
         case .gauge(let isFraction):
             if isFraction {
                 var gauge = meter.gaugeBuilder(name: sanitizedName).build()
-                return { value in
+                return { value, attrs in
                     guard let val = value else { return }
                     let s = String(describing: val)
                     guard let d = Double(s) else { return }
-                    gauge.record(value: d, attributes: [:])
+                    gauge.record(value: d, attributes: attrs)
                 }
             } else {
                 var gauge = meter.gaugeBuilder(name: sanitizedName).ofLongs().build()
-                return { value in
+                return { value, attrs in
                     guard let val = value else { return }
                     let s = String(describing: val)
                     guard let l = Int64(s) else { return }
-                    gauge.record(value: Int(l), attributes: [:])
+                    gauge.record(value: Int(l), attributes: attrs)
                 }
             }
         case .histogram(let bucket, let isFraction):
@@ -121,40 +158,70 @@ public final class PulseSamplingSignalProcessors {
             }
             if isFraction {
                 var histogram = builder.build()
-                return { value in
+                return { value, attrs in
                     guard let val = value else { return }
                     let s = String(describing: val)
                     guard let d = Double(s) else { return }
-                    histogram.record(value: d, attributes: [:])
+                    histogram.record(value: d, attributes: attrs)
                 }
             } else {
                 var histogram = builder.ofLongs().build()
-                return { value in
+                return { value, attrs in
                     guard let val = value else { return }
                     let s = String(describing: val)
                     guard let l = Int64(s) else { return }
-                    histogram.record(value: Int(l), attributes: [:])
+                    histogram.record(value: Int(l), attributes: attrs)
                 }
             }
         case .sum(let isFraction):
             if isFraction {
                 var sum = meter.upDownCounterBuilder(name: sanitizedName).ofDoubles().build()
-                return { value in
+                return { value, attrs in
                     guard let val = value else { return }
                     let s = String(describing: val)
                     guard let d = Double(s) else { return }
-                    sum.add(value: d, attributes: [:])
+                    sum.add(value: d, attributes: attrs)
                 }
             } else {
                 var sum = meter.upDownCounterBuilder(name: sanitizedName).build()
-                return { value in
+                return { value, attrs in
                     guard let val = value else { return }
                     let s = String(describing: val)
                     guard let l = Int64(s) else { return }
-                    sum.add(value: Int(l), attributes: [:])
+                    sum.add(value: Int(l), attributes: attrs)
                 }
             }
         }
+    }
+
+    private func stringFromAny(_ value: Any?) -> String {
+        guard let value = value else { return "" }
+        if let s = value as? String { return s }
+        if let b = value as? Bool { return String(b) }
+        if let i = value as? Int { return String(i) }
+        if let d = value as? Double { return String(d) }
+        if let arr = value as? [String] { return arr.joined(separator: ",") }
+        return String(describing: value)
+    }
+
+    /// Builds attributes for a metric data point from signal attributes, matching keys against attributesToPick conditions.
+    private func buildAttributesToPick(
+        from signalAttributes: [String: AttributeValue],
+        entry: PulseMetricsToAddEntry
+    ) -> [String: AttributeValue] {
+        guard !entry.attributesToPick.isEmpty else { return [:] }
+        var result: [String: AttributeValue] = [:]
+        for (key, value) in signalAttributes {
+            let keyMatches = entry.attributesToPick.contains { condition in
+                condition.props.contains { prop in
+                    regexCache.matches(string: key, pattern: prop.name)
+                }
+            }
+            if keyMatches {
+                result[key] = value
+            }
+        }
+        return result
     }
 
     /// Records metrics for signals that match metricsToAdd conditions.
@@ -162,6 +229,7 @@ public final class PulseSamplingSignalProcessors {
         scope: PulseSignalScope,
         name: String?,
         props: [String: Any?],
+        signalAttributes: [String: AttributeValue],
         metricsToAdd: [(PulseMetricsToAddEntry, DataRecorder)]
     ) {
         guard !metricsToAdd.isEmpty else { return }
@@ -173,16 +241,18 @@ public final class PulseSamplingSignalProcessors {
                 condition: entry.condition,
                 sdkName: currentSdkName
             ) else { continue }
+            let pointAttributes = buildAttributesToPick(from: signalAttributes, entry: entry)
             switch entry.target {
             case .name:
-                recorder(name ?? "")
-            case .attribute(let attrCondition, _):
+                recorder(name ?? "", nil, pointAttributes)
+            case .attribute(let attrCondition, let addPropNameAsSuffix):
                 for (attrKey, attrValue) in props {
                     let keyMatches = attrCondition.props.contains { prop in
                         regexCache.matches(string: attrKey, pattern: prop.name)
                     }
                     if keyMatches {
-                        recorder(attrValue)
+                        let suffix = addPropNameAsSuffix ? stringFromAny(attrValue) : nil
+                        recorder(attrValue, suffix, pointAttributes)
                     }
                 }
             }
@@ -253,6 +323,7 @@ public final class PulseSamplingSignalProcessors {
                     scope: .traces,
                     name: span.name,
                     props: PulseSamplingSignalProcessors.attributesToMap(result.attributes),
+                    signalAttributes: result.attributes,
                     metricsToAdd: metricsToAdd
                 )
                 return result
@@ -340,7 +411,13 @@ public final class PulseSamplingSignalProcessors {
                 }
                 if !metricsToAdd.isEmpty {
                     let finalProps = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
-                    parent.recordMetricsForSignal(scope: .logs, name: logName, props: finalProps, metricsToAdd: metricsToAdd)
+                    parent.recordMetricsForSignal(
+                        scope: .logs,
+                        name: logName,
+                        props: finalProps,
+                        signalAttributes: result.attributes,
+                        metricsToAdd: metricsToAdd
+                    )
                 }
                 return result
             }
