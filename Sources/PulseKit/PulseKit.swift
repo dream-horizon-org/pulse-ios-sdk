@@ -125,7 +125,6 @@ public class Pulse {
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)? = nil,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])? = nil
     ) {
-        var shouldShutdownAfterInit = false
         initializationQueue.sync {
             guard !_isShutdown else { return }
             guard !_isInitialized else {
@@ -133,6 +132,11 @@ public class Pulse {
                 return
             }
             PulseLogger.log("Initializing...")
+            if dataCollectionState == .denied {
+                _dataCollectionState = dataCollectionState
+                PulseLogger.log("Initialization skipped: started with DENIED consent.")
+                return
+            }
 
             _globalAttributes = globalAttributes
             var pulseKitConfig = PulseKitConfiguration()
@@ -233,11 +237,7 @@ public class Pulse {
             } else {
                 PulseLogger.log("Initialized (using defaults, no config).")
             }
-            if dataCollectionState == .denied {
-                shouldShutdownAfterInit = true  // run shutdown outside sync so "denied" is terminal at init too
-            }
         }
-        if shouldShutdownAfterInit { shutdown() }
     }
 
     // MARK: - Private Helper Methods
@@ -541,19 +541,16 @@ public class Pulse {
 
     // MARK: - Shutdown
 
-    /// Updates data collection consent. `.allowed` flushes buffered signals then exports normally. `.denied` clears buffer and shuts down pulse. 
+    /// Updates data collection consent. `.allowed` flushes buffered signals then exports normally. `.denied` clears buffer and shuts down pulse.
     public func setDataCollectionState(_ newState: PulseDataCollectionConsent) {
         var shouldShutdown = false
         var shouldFlush = false
         initializationQueue.sync {
-            let current: PulseDataCollectionConsent = {
-                consentStateLock.lock()
-                defer { consentStateLock.unlock() }
-                return _dataCollectionState
-            }()
-            if current == newState { return }
-            if current == .denied { return }
+            // Read without consentStateLock — safe, we're inside initializationQueue
+            let current = _dataCollectionState
+            guard current != newState, current != .denied else { return }
 
+            // Write under consentStateLock — so exporters on hot path see update atomically
             consentStateLock.lock()
             _dataCollectionState = newState
             consentStateLock.unlock()
