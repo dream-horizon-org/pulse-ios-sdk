@@ -241,7 +241,8 @@ public class URLSessionInstrumentation {
                     request,
                     sessionTaskId: sessionTaskId,
                     instrumentation: instrumentation,
-                    shouldInjectHeaders: true
+                    shouldInjectHeaders: true,
+                    body: data
                 )
 
                 let task = imp(session, #selector(URLSession.uploadTask(with:from:)), instrumentedRequest ?? request, data)
