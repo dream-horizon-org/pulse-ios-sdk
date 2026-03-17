@@ -46,20 +46,17 @@ public struct PulseSignalsAttrMatcher: PulseSignalMatcher {
         guard condition.scopes.contains(scope) else { return false }
         guard regexCache.matches(string: name ?? "", pattern: condition.name) else { return false }
 
-        let configPropsMap = Dictionary(uniqueKeysWithValues: condition.props.map { ($0.name, $0.value) })
-        let signalPropsFiltered = props.filter { configPropsMap.keys.contains($0.key) }
-
-        guard configPropsMap.count == signalPropsFiltered.count else { return false }
-
-        for (key, signalValue) in signalPropsFiltered {
-            guard let configPropValueOpt = configPropsMap[key] else { return false }
-            if configPropValueOpt == nil || signalValue == nil {
-                if (signalValue == nil) != (configPropValueOpt == nil) { return false }
-                continue
+        // Each condition prop has name=regex for attr key, value=optional regex for attr value (nil = match any)
+        // Config prop name is a regex pattern (e.g. "http\.method") that matches signal attr keys (e.g. "http.method")
+        for configProp in condition.props {
+            let configPropValueOpt = configProp.value
+            let hasMatchingAttr = props.contains { (signalKey, signalValue) in
+                guard regexCache.matches(string: signalKey, pattern: configProp.name) else { return false }
+                if configPropValueOpt == nil { return true }  // match any value
+                guard let signalValue = signalValue else { return false }  // config expects value, signal has nil
+                return regexCache.matches(string: stringFromAny(signalValue), pattern: configPropValueOpt!)
             }
-            if !regexCache.matches(string: stringFromAny(signalValue), pattern: configPropValueOpt!) {
-                return false
-            }
+            if !hasMatchingAttr { return false }
         }
         return true
     }

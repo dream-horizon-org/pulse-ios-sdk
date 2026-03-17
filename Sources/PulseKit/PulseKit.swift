@@ -136,8 +136,7 @@ public class Pulse {
             let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
 
             // Config: load from persistence (sync)
-            // useLocalMockConfig: internal only. Set PULSE_USE_LOCAL_MOCK_CONFIG=1 in env when needed for dev/testing.
-            let useLocalMockConfig = ProcessInfo.processInfo.environment["PULSE_USE_LOCAL_MOCK_CONFIG"] == "1"
+            let useLocalMockConfig = true
             let configCoordinator = PulseSdkConfigCoordinator(useLocalMockConfig: useLocalMockConfig)
             configStorageQueue.sync {
                 _currentSdkConfig = configCoordinator.loadCurrentConfig()
@@ -228,6 +227,7 @@ public class Pulse {
     private func applyDisabledFeatures(enabledFeatures: [PulseFeatureName], config: inout InstrumentationConfiguration) {
         for feature in PulseFeatureName.allCases {
             guard !enabledFeatures.contains(feature) else { continue }
+            print("Disabling feature: \(feature)")
             switch feature {
             case .java_crash: break
             case .js_crash: break

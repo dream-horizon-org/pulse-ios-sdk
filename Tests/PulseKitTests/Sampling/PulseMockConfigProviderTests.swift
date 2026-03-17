@@ -23,4 +23,16 @@ final class PulseMockConfigProviderTests: XCTestCase {
         XCTAssertTrue(names.contains("http_duration"))
         XCTAssertTrue(names.contains("log_count"))
     }
+
+    func testMockConfigHasAllFeaturesEnabled() {
+        let config = PulseMockConfigProvider.fullMockConfig()
+        XCTAssertFalse(config.features.isEmpty, "Mock config should have all features enabled")
+        let allNonUnknown = PulseFeatureName.allCases.filter { $0 != .unknown }
+        XCTAssertEqual(config.features.count, allNonUnknown.count)
+        for feature in config.features {
+            XCTAssertEqual(feature.sessionSampleRate, 1, "\(feature.featureName) should be enabled")
+            XCTAssertTrue(feature.sdks.contains(.pulse_ios_swift))
+            XCTAssertTrue(feature.sdks.contains(.pulse_ios_rn))
+        }
+    }
 }
