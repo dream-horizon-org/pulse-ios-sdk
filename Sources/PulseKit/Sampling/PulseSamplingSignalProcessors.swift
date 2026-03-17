@@ -26,6 +26,7 @@ public final class PulseSamplingSignalProcessors {
     private let signalMatcher: PulseSignalMatcher
     private let sessionParser: PulseSessionParser
     private let sessionSamplingDecision: PulseSessionSamplingDecision
+    private let randomGenerator: () -> Float
     private let regexCache = SamplingRegexCache()
     private var meterProviderForMetricsToAdd: (any MeterProvider)?
 
@@ -48,13 +49,14 @@ public final class PulseSamplingSignalProcessors {
         self.currentSdkName = currentSdkName
         self.signalMatcher = signalMatcher
         self.sessionParser = sessionParser
+        self.randomGenerator = randomGenerator ?? { Float.random(in: 0...1) }
         self.meterProviderForMetricsToAdd = meterProviderForMetricsToAdd
         sessionSamplingDecision = PulseSessionSamplingDecision(
             deviceContext: deviceContext,
             samplingConfig: sdkConfig.sampling,
             currentSdkName: currentSdkName,
             parser: sessionParser,
-            randomGenerator: randomGenerator
+            randomGenerator: self.randomGenerator
         )
     }
 
@@ -295,15 +297,29 @@ public final class PulseSamplingSignalProcessors {
             let sampledSpans = parent.sampleSpansInSession(spans)
             guard !sampledSpans.isEmpty else { return .success }
             let filtered = sampledSpans.compactMap { span -> SpanData? in
-                let propsMap = PulseSamplingSignalProcessors.attributesToMap(span.attributes)
-                guard parent.shouldExportSignal(
-                    scope: .traces,
-                    name: span.name,
-                    props: propsMap,
-                    filters: parent.sdkConfig.signals.filters
-                ) else { return nil }
                 var currentAttrs = span.attributes
                 var result = span
+                // 1. Add attributes (enrich)
+                if !attributesToAdd.isEmpty {
+                    if let added = parent.addAttributes(
+                        signalName: span.name,
+                        signalAttributes: currentAttrs,
+                        scope: .traces,
+                        attributesToAdd: attributesToAdd
+                    ) {
+                        result = spanWithAttributes(result, added)
+                        currentAttrs = added
+                    }
+                }
+                // 2. Emit metrics (observe signal before attribute drops)
+                parent.recordMetricsForSignal(
+                    scope: .traces,
+                    name: span.name,
+                    props: PulseSamplingSignalProcessors.attributesToMap(result.attributes),
+                    signalAttributes: result.attributes,
+                    metricsToAdd: metricsToAdd
+                )
+                // 3. Drop attributes
                 if !attributesToDrop.isEmpty {
                     if let dropped = parent.filterAttributes(
                         signalName: span.name,
@@ -316,24 +332,13 @@ public final class PulseSamplingSignalProcessors {
                         currentAttrs = dropped
                     }
                 }
-                if !attributesToAdd.isEmpty {
-                    if let added = parent.addAttributes(
-                        signalName: span.name,
-                        signalAttributes: currentAttrs,
-                        scope: .traces,
-                        attributesToAdd: attributesToAdd
-                    ) {
-                        result = spanWithAttributes(result, added)
-                        currentAttrs = added
-                    }
-                }
-                parent.recordMetricsForSignal(
+                // 4. Targeted signal sampling / filter (decide export)
+                let propsMap = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
+                guard parent.shouldExportSignal(
                     scope: .traces,
                     name: span.name,
-                    props: PulseSamplingSignalProcessors.attributesToMap(result.attributes),
-                    signalAttributes: result.attributes,
-                    metricsToAdd: metricsToAdd
-                )
+                    props: propsMap
+                ) else { return nil }
                 return result
             }
             return delegateExporter.export(spans: filtered, explicitTimeout: explicitTimeout)
@@ -386,15 +391,32 @@ public final class PulseSamplingSignalProcessors {
             guard !sampledLogs.isEmpty else { return .success }
             let filtered = sampledLogs.compactMap { record -> ReadableLogRecord? in
                 let logName = logNameFromRecord(record)
-                let propsMap = PulseSamplingSignalProcessors.attributesToMap(record.attributes)
-                guard parent.shouldExportSignal(
-                    scope: .logs,
-                    name: logName,
-                    props: propsMap,
-                    filters: parent.sdkConfig.signals.filters
-                ) else { return nil }
                 var currentAttrs = record.attributes
                 var result = record
+                // 1. Add attributes (enrich)
+                if !attributesToAdd.isEmpty {
+                    if let added = parent.addAttributes(
+                        signalName: logName,
+                        signalAttributes: currentAttrs,
+                        scope: .logs,
+                        attributesToAdd: attributesToAdd
+                    ) {
+                        result = logRecordWithAttributes(record, added)
+                        currentAttrs = added
+                    }
+                }
+                // 2. Emit metrics (observe signal before attribute drops)
+                if !metricsToAdd.isEmpty {
+                    let propsMap = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
+                    parent.recordMetricsForSignal(
+                        scope: .logs,
+                        name: logName,
+                        props: propsMap,
+                        signalAttributes: result.attributes,
+                        metricsToAdd: metricsToAdd
+                    )
+                }
+                // 3. Drop attributes
                 if !attributesToDrop.isEmpty {
                     if let dropped = parent.filterAttributes(
                         signalName: logName,
@@ -407,26 +429,13 @@ public final class PulseSamplingSignalProcessors {
                         currentAttrs = dropped
                     }
                 }
-                if !attributesToAdd.isEmpty {
-                    if let added = parent.addAttributes(
-                        signalName: logName,
-                        signalAttributes: currentAttrs,
-                        scope: .logs,
-                        attributesToAdd: attributesToAdd
-                    ) {
-                        result = logRecordWithAttributes(result, added)
-                    }
-                }
-                if !metricsToAdd.isEmpty {
-                    let finalProps = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
-                    parent.recordMetricsForSignal(
-                        scope: .logs,
-                        name: logName,
-                        props: finalProps,
-                        signalAttributes: result.attributes,
-                        metricsToAdd: metricsToAdd
-                    )
-                }
+                // 4. Targeted signal sampling / filter (decide export)
+                let propsMap = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
+                guard parent.shouldExportSignal(
+                    scope: .logs,
+                    name: logName,
+                    props: propsMap
+                ) else { return nil }
                 return result
             }
             return delegateExporter.export(logRecords: filtered, explicitTimeout: explicitTimeout)
@@ -480,8 +489,7 @@ public final class PulseSamplingSignalProcessors {
                 parent.shouldExportSignal(
                     scope: .metrics,
                     name: metric.name,
-                    props: [:],
-                    filters: parent.sdkConfig.signals.filters
+                    props: [:]
                 )
             }
             return delegateExporter.export(metrics: filtered)
@@ -559,14 +567,16 @@ public final class PulseSamplingSignalProcessors {
         if sessionSamplingDecision.shouldSampleThisSession {
             return signals
         }
-        let policies = sdkConfig.sampling.criticalEventPolicies ?? sdkConfig.sampling.criticalSessionPolicies
-        guard let alwaysSend = policies?.alwaysSend, !alwaysSend.isEmpty else {
+        let alwaysSendConditions = sdkConfig.sampling.signalsToSample
+            .filter { $0.sampleRate >= 1 }
+            .map(\.condition)
+        guard !alwaysSendConditions.isEmpty else {
             return []
         }
         return signals.filter { signal in
             let (name, props) = signalValues(signal)
             let scope = scopeForM(signal)
-            return alwaysSend.contains { condition in
+            return alwaysSendConditions.contains { condition in
                 signalMatcher.matches(
                     scope: scope,
                     name: name.isEmpty ? nil : name,
@@ -584,38 +594,39 @@ public final class PulseSamplingSignalProcessors {
         return .metrics
     }
 
-    // MARK: - Filter (whitelist/blacklist)
+    // MARK: - Targeted signal sampling (signalsToSample)
 
+    /// Returns true if the signal should be exported based on signalsToSample.
+    /// When signalsToSample is non-empty: first matching entry's sampleRate decides (random vs sampleRate).
+    /// When signalsToSample is empty: pass through (no targeted filtering).
     private func shouldExportSignal(
         scope: PulseSignalScope,
         name: String?,
-        props: [String: Any?],
-        filters: PulseSignalFilter
+        props: [String: Any?]
     ) -> Bool {
-        if name == nil || (name?.isEmpty == true) {
-            return true
+        let signalsToSample = sdkConfig.sampling.signalsToSample
+        if signalsToSample.isEmpty { return true }
+        return shouldExportBySignalsToSample(scope: scope, name: name, props: props)
+    }
+
+    private func shouldExportBySignalsToSample(
+        scope: PulseSignalScope,
+        name: String?,
+        props: [String: Any?]
+    ) -> Bool {
+        for entry in sdkConfig.sampling.signalsToSample {
+            guard signalMatcher.matches(
+                scope: scope,
+                name: name,
+                props: props,
+                condition: entry.condition,
+                sdkName: currentSdkName
+            ) else { continue }
+            if entry.sampleRate <= 0 { return false }
+            if entry.sampleRate >= 1 { return true }
+            return randomGenerator() < entry.sampleRate
         }
-        let values = filters.values
-        let shouldMatchAny = filters.mode == .whitelist
-        if shouldMatchAny {
-            var passed = false
-            for condition in values {
-                if signalMatcher.matches(scope: scope, name: name, props: props, condition: condition, sdkName: currentSdkName) {
-                    passed = true
-                    break
-                }
-            }
-            return passed
-        } else {
-            var passed = true
-            for condition in values {
-                if signalMatcher.matches(scope: scope, name: name, props: props, condition: condition, sdkName: currentSdkName) {
-                    passed = false
-                    break
-                }
-            }
-            return passed
-        }
+        return true // No match: pass through (session sampling already applied at batch level)
     }
 
     // MARK: - Attribute drop

@@ -65,37 +65,34 @@ public struct PulseSdkConfig: Codable, Equatable {
 public struct PulseSamplingConfig: Codable, Equatable {
     public let `default`: PulseDefaultSamplingConfig
     public let rules: [PulseSessionSamplingRule]
-    public let criticalEventPolicies: PulseCriticalEventPolicies?
-    public let criticalSessionPolicies: PulseCriticalEventPolicies?
+    public let signalsToSample: [PulseSignalsToSampleEntry]
 
     enum CodingKeys: String, CodingKey {
         case `default` = "default"
         case rules
-        case criticalEventPolicies
-        case criticalSessionPolicies
+        case signalsToSample
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         `default` = try c.decode(PulseDefaultSamplingConfig.self, forKey: .default)
         rules = (try? c.decode([PulseSessionSamplingRule].self, forKey: .rules)) ?? []
-        criticalEventPolicies = try? c.decodeIfPresent(PulseCriticalEventPolicies.self, forKey: .criticalEventPolicies)
-        criticalSessionPolicies = try? c.decodeIfPresent(PulseCriticalEventPolicies.self, forKey: .criticalSessionPolicies)
+        signalsToSample = (try? c.decode([PulseSignalsToSampleEntry].self, forKey: .signalsToSample)) ?? []
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(`default`, forKey: .default)
         try c.encode(rules, forKey: .rules)
-        try c.encodeIfPresent(criticalEventPolicies, forKey: .criticalEventPolicies)
-        try c.encodeIfPresent(criticalSessionPolicies, forKey: .criticalSessionPolicies)
+        if !signalsToSample.isEmpty {
+            try c.encode(signalsToSample, forKey: .signalsToSample)
+        }
     }
 
-    public init(default: PulseDefaultSamplingConfig, rules: [PulseSessionSamplingRule], criticalEventPolicies: PulseCriticalEventPolicies?, criticalSessionPolicies: PulseCriticalEventPolicies?) {
+    public init(default: PulseDefaultSamplingConfig, rules: [PulseSessionSamplingRule], signalsToSample: [PulseSignalsToSampleEntry] = []) {
         self.default = `default`
         self.rules = rules
-        self.criticalEventPolicies = criticalEventPolicies
-        self.criticalSessionPolicies = criticalSessionPolicies
+        self.signalsToSample = signalsToSample
     }
 }
 
@@ -121,11 +118,14 @@ public struct PulseSessionSamplingRule: Codable, Equatable {
     }
 }
 
-public struct PulseCriticalEventPolicies: Codable, Equatable {
-    public let alwaysSend: [PulseSignalMatchCondition]
+/// Targeted signal sampling rule — per-signal sample rate override (evaluated before session sampling).
+public struct PulseSignalsToSampleEntry: Codable, Equatable {
+    public let condition: PulseSignalMatchCondition
+    public let sampleRate: Float // 0.0–1.0
 
-    public init(alwaysSend: [PulseSignalMatchCondition]) {
-        self.alwaysSend = alwaysSend
+    public init(condition: PulseSignalMatchCondition, sampleRate: Float) {
+        self.condition = condition
+        self.sampleRate = sampleRate
     }
 }
 
@@ -141,7 +141,6 @@ public struct PulseSignalConfig: Codable, Equatable {
     public let attributesToAdd: [PulseAttributesToAddEntry]
     /// Metrics to derive based on signal matching and target. Confluence spec includes attributesToPick, addPropNameAsSuffix.
     public let metricsToAdd: [PulseMetricsToAddEntry]
-    public let filters: PulseSignalFilter
 
     enum CodingKeys: String, CodingKey {
         case scheduleDurationMs
@@ -152,7 +151,6 @@ public struct PulseSignalConfig: Codable, Equatable {
         case attributesToDrop
         case attributesToAdd
         case metricsToAdd
-        case filters
     }
 
     public init(from decoder: Decoder) throws {
@@ -165,7 +163,6 @@ public struct PulseSignalConfig: Codable, Equatable {
         attributesToDrop = (try? c.decode([PulseAttributesToDropEntry].self, forKey: .attributesToDrop)) ?? []
         attributesToAdd = (try? c.decode([PulseAttributesToAddEntry].self, forKey: .attributesToAdd)) ?? []
         metricsToAdd = (try? c.decode([PulseMetricsToAddEntry].self, forKey: .metricsToAdd)) ?? []
-        filters = try c.decode(PulseSignalFilter.self, forKey: .filters)
     }
 
     public init(
@@ -176,8 +173,7 @@ public struct PulseSignalConfig: Codable, Equatable {
         customEventCollectorUrl: String,
         attributesToDrop: [PulseAttributesToDropEntry],
         attributesToAdd: [PulseAttributesToAddEntry],
-        metricsToAdd: [PulseMetricsToAddEntry] = [],
-        filters: PulseSignalFilter
+        metricsToAdd: [PulseMetricsToAddEntry] = []
     ) {
         self.scheduleDurationMs = scheduleDurationMs
         self.logsCollectorUrl = logsCollectorUrl
@@ -187,17 +183,6 @@ public struct PulseSignalConfig: Codable, Equatable {
         self.attributesToDrop = attributesToDrop
         self.attributesToAdd = attributesToAdd
         self.metricsToAdd = metricsToAdd
-        self.filters = filters
-    }
-}
-
-public struct PulseSignalFilter: Codable, Equatable {
-    public let mode: PulseSignalFilterMode
-    public let values: [PulseSignalMatchCondition]
-
-    public init(mode: PulseSignalFilterMode, values: [PulseSignalMatchCondition]) {
-        self.mode = mode
-        self.values = values
     }
 }
 
@@ -344,11 +329,6 @@ public enum PulseDeviceAttributeName: String, Codable, CaseIterable {
     case state
     case platform
     case unknown
-}
-
-public enum PulseSignalFilterMode: String, Codable {
-    case blacklist
-    case whitelist
 }
 
 public enum PulseAttributeType: String, Codable {

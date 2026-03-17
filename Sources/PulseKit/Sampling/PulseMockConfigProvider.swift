@@ -19,23 +19,21 @@ public enum PulseMockConfigProvider {
             sampling: PulseSamplingConfig(
                 default: PulseDefaultSamplingConfig(sessionSampleRate: 1.0),
                 rules: [],
-                criticalEventPolicies: nil,
-                criticalSessionPolicies: nil
+                signalsToSample: []
             ),
             signals: PulseSignalConfig(
                 scheduleDurationMs: 60_000,
-                logsCollectorUrl: "http://127.0.0.1:4318/v1/logs",
-                metricCollectorUrl: "http://127.0.0.1:4318/v1/metrics",
-                spanCollectorUrl: "http://127.0.0.1:4318/v1/traces",
-                customEventCollectorUrl: "http://127.0.0.1:4318/v1/logs",
+                logsCollectorUrl: "https://mock.example.com/v1/logs",
+                metricCollectorUrl: "https://mock.example.com/v1/metrics",
+                spanCollectorUrl: "https://mock.example.com/v1/spans",
+                customEventCollectorUrl: "https://mock.example.com/v1/custom-event",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                metricsToAdd: makeMockMetricsToAdd(),
-                filters: PulseSignalFilter(mode: .whitelist, values: [.allMatchLogCondition])
+                metricsToAdd: makeMockMetricsToAdd()
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "https://mock.example.com",
-                configUrl: "http://127.0.0.1:8080/v1/interaction-configs/",
+                configUrl: "https://mock.example.com/v1/configs/active",
                 beforeInitQueueSize: 100
             ),
             features: makeMockFeaturesAllEnabled()
