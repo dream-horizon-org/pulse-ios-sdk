@@ -139,7 +139,7 @@ final class PulseSdkConfigModelsTests: XCTestCase {
                             "sdks": ["pulse_ios_swift", "pulse_ios_rn"]
                         },
                         "type": {
-                            "counter": { "isMonotonic": true, "isFraction": false }
+                            "counter": {}
                         }
                     }
                 ],
@@ -160,9 +160,8 @@ final class PulseSdkConfigModelsTests: XCTestCase {
         XCTAssertEqual(entry.name, "pulse.screen.load.count")
         if case .name = entry.target { } else { XCTFail("Expected target .name") }
         XCTAssertEqual(entry.condition.name, "Created")
-        if case .counter(let isMonotonic, let isFraction) = entry.data {
-            XCTAssertTrue(isMonotonic)
-            XCTAssertFalse(isFraction)
+        if case .counter = entry.data {
+            // OK - Counter has no params
         } else { XCTFail("Expected .counter") }
     }
 }

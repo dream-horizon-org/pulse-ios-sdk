@@ -56,7 +56,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 scopes: [.traces],
                 sdks: [.pulse_ios_swift]
             ),
-            data: .counter(isMonotonic: true, isFraction: false),
+            data: .counter,
             attributesToPick: []
         )
         let config = makeSdkConfig(metricsToAdd: [entry])
@@ -82,7 +82,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 scopes: [.traces],
                 sdks: [.pulse_android_java]
             ),
-            data: .counter(isMonotonic: true, isFraction: false),
+            data: .counter,
             attributesToPick: []
         )
         let config = makeSdkConfig(metricsToAdd: [entry])
@@ -109,7 +109,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
@@ -131,7 +131,8 @@ final class PulseMetricCreationTests: XCTestCase {
         }
     }
 
-    func testCreateMeterCounterMonotonicDouble() {
+    func testCreateMeterCounterRecordsLong() {
+        // Counter always uses LongCounter (add 1 per occurrence)
         let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
             PulseMetricsToAddEntry(
                 name: "span_count_d",
@@ -142,7 +143,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter(isMonotonic: true, isFraction: true),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
@@ -154,9 +155,9 @@ final class PulseMetricCreationTests: XCTestCase {
         let m = metrics.first { $0.name == "span_count_d" }
         XCTAssertNotNil(m)
         if let sumData = m?.data as? SumData,
-           let point = sumData.points.first as? DoublePointData {
+           let point = sumData.points.first as? LongPointData {
             XCTAssertEqual(sumData.points.count, 1)
-            XCTAssertEqual(point.value, 1.0)
+            XCTAssertEqual(point.value, 1)
         }
     }
 
@@ -171,7 +172,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter(isMonotonic: false, isFraction: false),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
@@ -298,7 +299,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .sum(isFraction: true),
+                data: .sum(isFraction: true, isMonotonic: false),
                 attributesToPick: []
             ),
         ])
@@ -329,7 +330,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
@@ -355,7 +356,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.logs],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
@@ -381,7 +382,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
@@ -398,7 +399,7 @@ final class PulseMetricCreationTests: XCTestCase {
 
     // MARK: - Phase 5: addPropNameAsSuffix and attributesToPick
 
-    func testAddPropNameAsSuffixCreatesSeparateMetricsPerAttrKey() {
+    func testAddPropNameAsSuffixUsesAttrKeyAsSuffixSingleMatchedKey() {
         let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
             PulseMetricsToAddEntry(
                 name: "http_method_count",
@@ -412,22 +413,63 @@ final class PulseMetricCreationTests: XCTestCase {
                     addPropNameAsSuffix: true
                 ),
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
         let mockSpanExporter = MockSpanExporter()
         let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
-        // Export two spans with different http.method values
+        // Export two spans with different http.method values (GET, POST) - both aggregate into same metric
         let span1 = createTestSpan(name: "req", attributes: ["http.method": .string("GET")])
         let span2 = createTestSpan(name: "req", attributes: ["http.method": .string("POST")])
         _ = sampledExporter.export(spans: [span1, span2], explicitTimeout: nil as TimeInterval?)
         _ = provider.forceFlush()
         let metrics = mock.exportedMetrics
-        let getMetric = metrics.first { $0.name == "http_method_count.GET" }
-        let postMetric = metrics.first { $0.name == "http_method_count.POST" }
-        XCTAssertNotNil(getMetric, "Should have metric with GET suffix")
-        XCTAssertNotNil(postMetric, "Should have metric with POST suffix")
+        // Suffix = attr KEY (http.method), not value. One metric for the key, value 2 (both spans).
+        let m = metrics.first { $0.name == "http_method_count.http.method" }
+        XCTAssertNotNil(m, "Should have metric with http.method suffix (attr key, not value)")
+        if let sumData = m?.data as? SumData, let point = sumData.points.first as? LongPointData {
+            XCTAssertEqual(point.value, 2, "GET + POST both contribute to same metric")
+        }
+    }
+
+    func testAddPropNameAsSuffixCreatesSeparateMetricsPerAttrKey() {
+        let (processors, mock, provider) = makeProcessorsWithMockExporter(metricsToAdd: [
+            PulseMetricsToAddEntry(
+                name: "http_count",
+                target: .attribute(
+                    condition: PulseSignalMatchCondition(
+                        name: ".*",
+                        props: [
+                            PulseProp(name: "http\\.method", value: nil),
+                            PulseProp(name: "http\\.status_code", value: nil),
+                        ],
+                        scopes: [.traces],
+                        sdks: [.pulse_ios_swift]
+                    ),
+                    addPropNameAsSuffix: true
+                ),
+                condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
+                data: .counter,
+                attributesToPick: []
+            ),
+        ])
+        let mockSpanExporter = MockSpanExporter()
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockSpanExporter)
+        let span = createTestSpan(name: "req", attributes: [
+            "http.method": .string("GET"),
+            "http.status_code": .string("200"),
+        ])
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil as TimeInterval?)
+        _ = provider.forceFlush()
+        let metrics = mock.exportedMetrics
+        let names = metrics.map { $0.name }.sorted()
+        XCTAssertEqual(names, ["http_count.http.method", "http_count.http.status_code"], "One metric per attr key")
+        metrics.forEach { metric in
+            if let sumData = metric.data as? SumData, let point = sumData.points.first as? LongPointData {
+                XCTAssertEqual(point.value, 1)
+            }
+        }
     }
 
     func testAddPropNameAsSuffixFalseUsesBaseName() {
@@ -464,7 +506,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "span_with_method",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: [
                     PulseSignalMatchCondition(
                         name: ".*",
@@ -499,7 +541,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "simple_counter",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: []
             ),
         ])
@@ -522,7 +564,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "multi_attr",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter(isMonotonic: true, isFraction: false),
+                data: .counter,
                 attributesToPick: [
                     PulseSignalMatchCondition(
                         name: ".*",

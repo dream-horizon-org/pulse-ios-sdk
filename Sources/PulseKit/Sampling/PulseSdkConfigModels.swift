@@ -139,6 +139,7 @@ public struct PulseSignalConfig: Codable, Equatable {
     public let customEventCollectorUrl: String
     public let attributesToDrop: [PulseAttributesToDropEntry]
     public let attributesToAdd: [PulseAttributesToAddEntry]
+    /// Metrics to derive based on signal matching and target. Confluence spec includes attributesToPick, addPropNameAsSuffix.
     public let metricsToAdd: [PulseMetricsToAddEntry]
     public let filters: PulseSignalFilter
 

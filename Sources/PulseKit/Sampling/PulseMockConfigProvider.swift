@@ -24,18 +24,18 @@ public enum PulseMockConfigProvider {
             ),
             signals: PulseSignalConfig(
                 scheduleDurationMs: 60_000,
-                logsCollectorUrl: "http://127.0.0.1:4318/v1/logs",
-                metricCollectorUrl: "http://127.0.0.1:4318v1/metrics",
-                spanCollectorUrl: "http://127.0.0.1:4318/v1/traces",
-                customEventCollectorUrl: "http://127.0.0.1:4318/v1/logs",
+                logsCollectorUrl: "https://mock.example.com/v1/logs",
+                metricCollectorUrl: "https://mock.example.com/v1/metrics",
+                spanCollectorUrl: "https://mock.example.com/v1/spans",
+                customEventCollectorUrl: "https://mock.example.com/v1/custom-event",
                 attributesToDrop: [],
                 attributesToAdd: [],
                 metricsToAdd: makeMockMetricsToAdd(),
                 filters: PulseSignalFilter(mode: .whitelist, values: [.allMatchLogCondition])
             ),
             interaction: PulseInteractionConfig(
-                collectorUrl: "http://127.0.0.1:4318/v1/interaction-configs/",
-                configUrl: "http://127.0.0.1:4318/v1/interaction-configs/",
+                collectorUrl: "https://mock.example.com",
+                configUrl: "https://mock.example.com/v1/configs/active",
                 beforeInitQueueSize: 100
             ),
             features: []
@@ -54,7 +54,7 @@ public enum PulseMockConfigProvider {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift, .pulse_ios_rn]
                 ),
-                data: .counter(isMonotonic: true, isFraction: false)
+                data: .counter
             ),
             // Histogram on http.duration attribute
             PulseMetricsToAddEntry(
@@ -86,7 +86,7 @@ public enum PulseMockConfigProvider {
                     scopes: [.logs],
                     sdks: [.pulse_ios_swift, .pulse_ios_rn]
                 ),
-                data: .counter(isMonotonic: true, isFraction: false)
+                data: .counter
             ),
         ]
     }

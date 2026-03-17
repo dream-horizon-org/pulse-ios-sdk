@@ -15,7 +15,7 @@ import Security
 /// Closure that records a value into a metric instrument.
 /// - Parameters:
 ///   - value: The signal name (for .name target) or attribute value (for .attribute target). For counters with .name target, value is ignored and 1 is added.
-///   - attributeKeyForSuffix: When addPropNameAsSuffix is true, the string representation of the attribute value to suffix to the metric name (e.g. "GET", "POST"). Nil otherwise.
+///   - attributeKeyForSuffix: When addPropNameAsSuffix is true, the attribute key to suffix to the metric name (e.g. "http.method"). Nil otherwise.
 ///   - pointAttributes: Attributes to attach to the metric data point (from attributesToPick).
 public typealias DataRecorder = (Any?, _ attributeKeyForSuffix: String?, _ pointAttributes: [String: AttributeValue]) -> Void
 
@@ -119,20 +119,9 @@ public final class PulseSamplingSignalProcessors {
         sanitizedName: String
     ) -> (Any?, [String: AttributeValue]) -> Void {
         switch entry.data {
-        case .counter(let isMonotonic, let isFraction):
-            if isFraction, isMonotonic {
-                var counter = meter.counterBuilder(name: sanitizedName).ofDoubles().build()
-                return { _, attrs in counter.add(value: 1.0, attributes: attrs) }
-            } else if isFraction, !isMonotonic {
-                var upDown = meter.upDownCounterBuilder(name: sanitizedName).ofDoubles().build()
-                return { _, attrs in upDown.add(value: 1.0, attributes: attrs) }
-            } else if !isFraction, isMonotonic {
-                var counter = meter.counterBuilder(name: sanitizedName).build()
-                return { _, attrs in counter.add(value: 1, attributes: attrs) }
-            } else {
-                var upDown = meter.upDownCounterBuilder(name: sanitizedName).build()
-                return { _, attrs in upDown.add(value: 1, attributes: attrs) }
-            }
+        case .counter:
+            var counter = meter.counterBuilder(name: sanitizedName).build()
+            return { _, attrs in counter.add(value: 1, attributes: attrs) }
         case .gauge(let isFraction):
             if isFraction {
                 var gauge = meter.gaugeBuilder(name: sanitizedName).build()
@@ -173,7 +162,26 @@ public final class PulseSamplingSignalProcessors {
                     histogram.record(value: Int(l), attributes: attrs)
                 }
             }
-        case .sum(let isFraction):
+        case .sum(let isFraction, let isMonotonic):
+            if isMonotonic {
+                if isFraction {
+                    var counter = meter.counterBuilder(name: sanitizedName).ofDoubles().build()
+                    return { value, attrs in
+                        guard let val = value else { return }
+                        let s = String(describing: val)
+                        guard let d = Double(s) else { return }
+                        counter.add(value: d, attributes: attrs)
+                    }
+                } else {
+                    var counter = meter.counterBuilder(name: sanitizedName).build()
+                    return { value, attrs in
+                        guard let val = value else { return }
+                        let s = String(describing: val)
+                        guard let l = Int64(s) else { return }
+                        counter.add(value: Int(l), attributes: attrs)
+                    }
+                }
+            }
             if isFraction {
                 var sum = meter.upDownCounterBuilder(name: sanitizedName).ofDoubles().build()
                 return { value, attrs in
@@ -251,7 +259,7 @@ public final class PulseSamplingSignalProcessors {
                         regexCache.matches(string: attrKey, pattern: prop.name)
                     }
                     if keyMatches {
-                        let suffix = addPropNameAsSuffix ? stringFromAny(attrValue) : nil
+                        let suffix = addPropNameAsSuffix ? attrKey : nil
                         recorder(attrValue, suffix, pointAttributes)
                     }
                 }

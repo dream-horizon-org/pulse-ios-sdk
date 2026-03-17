@@ -4,6 +4,7 @@
  *
  * Config models for metricsToAdd: what metrics to derive from spans/logs.
  * JSON structure matches API/Confluence spec.
+ * Includes Confluence additions: attributesToPick, addPropNameAsSuffix.
  */
 
 import Foundation
@@ -72,25 +73,28 @@ public struct PulseMetricsToAddEntry: Codable, Equatable {
 /// Controls what value is fed into the metric instrument when a signal matches.
 public enum PulseMetricsToAddTarget: Codable, Equatable {
     /// The name of the signal (span name or log body) is used as the data point.
-    /// JSON: `"target": "name"`
+    /// JSON: `"target": "name"` or `"target": { "type": "name" }`
     case name
 
     /// A specific attribute value on the signal is used. The attribute is identified by the condition.
     /// When `addPropNameAsSuffix` is true, final metric name = `<name>.<key_name_of_the_prop_matched>`.
-    /// JSON: `"target": { "attribute": { "condition": {...}, "addPropNameAsSuffix": true } }`
+    /// JSON: `"target": { "attribute": {...} }` or `"target": { "type": "attribute", "attribute": {...} }`
+    /// Supports both `addPropNameAsSuffix` and `shouldAddPropNameAsSuffix` keys.
     case attribute(condition: PulseSignalMatchCondition, addPropNameAsSuffix: Bool)
 
-    private enum AttributeCodingKeys: String, CodingKey {
+    private enum TargetObjectKeys: String, CodingKey {
+        case type
         case attribute
     }
 
     private enum AttributeInnerKeys: String, CodingKey {
         case condition
         case addPropNameAsSuffix
+        case shouldAddPropNameAsSuffix
     }
 
     public init(from decoder: Decoder) throws {
-        // Can be string "name" or object { "attribute": { "condition": ..., "addPropNameAsSuffix": ... } }
+        // Legacy: string "name"
         if let stringValue = try? decoder.singleValueContainer().decode(String.self) {
             if stringValue == "name" {
                 self = .name
@@ -101,11 +105,38 @@ public enum PulseMetricsToAddTarget: Codable, Equatable {
             )
         }
 
-        let c = try decoder.container(keyedBy: AttributeCodingKeys.self)
-        let inner = try c.nestedContainer(keyedBy: AttributeInnerKeys.self, forKey: .attribute)
-        let condition = try inner.decode(PulseSignalMatchCondition.self, forKey: .condition)
-        let addPropNameAsSuffix = (try? inner.decode(Bool.self, forKey: .addPropNameAsSuffix)) ?? false
-        self = .attribute(condition: condition, addPropNameAsSuffix: addPropNameAsSuffix)
+        // Object: { "type": "name" } or { "type": "attribute", "attribute": {...} } or { "attribute": {...} }
+        let c = try decoder.container(keyedBy: TargetObjectKeys.self)
+        if let typeStr = try? c.decode(String.self, forKey: .type) {
+            if typeStr == "name" {
+                self = .name
+                return
+            }
+            if typeStr == "attribute" {
+                let inner = try c.nestedContainer(keyedBy: AttributeInnerKeys.self, forKey: .attribute)
+                let condition = try inner.decode(PulseSignalMatchCondition.self, forKey: .condition)
+                let addPropNameAsSuffix = (try? inner.decode(Bool.self, forKey: .addPropNameAsSuffix))
+                    ?? (try? inner.decode(Bool.self, forKey: .shouldAddPropNameAsSuffix))
+                    ?? false
+                self = .attribute(condition: condition, addPropNameAsSuffix: addPropNameAsSuffix)
+                return
+            }
+        }
+
+        // Legacy: { "attribute": { "condition": ..., "addPropNameAsSuffix": ... } } without top-level type
+        if c.contains(.attribute) {
+            let inner = try c.nestedContainer(keyedBy: AttributeInnerKeys.self, forKey: .attribute)
+            let condition = try inner.decode(PulseSignalMatchCondition.self, forKey: .condition)
+            let addPropNameAsSuffix = (try? inner.decode(Bool.self, forKey: .addPropNameAsSuffix))
+                ?? (try? inner.decode(Bool.self, forKey: .shouldAddPropNameAsSuffix))
+                ?? false
+            self = .attribute(condition: condition, addPropNameAsSuffix: addPropNameAsSuffix)
+            return
+        }
+
+        throw DecodingError.dataCorrupted(
+            DecodingError.Context(codingPath: decoder.codingPath, debugDescription: "target must be \"name\", { \"type\": \"name\" }, or { \"attribute\": {...} }")
+        )
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -114,7 +145,7 @@ public enum PulseMetricsToAddTarget: Codable, Equatable {
             var container = encoder.singleValueContainer()
             try container.encode("name")
         case .attribute(let condition, let addPropNameAsSuffix):
-            var c = encoder.container(keyedBy: AttributeCodingKeys.self)
+            var c = encoder.container(keyedBy: TargetObjectKeys.self)
             var inner = c.nestedContainer(keyedBy: AttributeInnerKeys.self, forKey: .attribute)
             try inner.encode(condition, forKey: .condition)
             try inner.encode(addPropNameAsSuffix, forKey: .addPropNameAsSuffix)
@@ -125,11 +156,12 @@ public enum PulseMetricsToAddTarget: Codable, Equatable {
 // MARK: - Metrics Data (Instrument Type)
 
 /// The kind of OTel instrument to create. Maps to Counter, Gauge, Histogram, Sum.
+/// Counter always counts occurrences (add 1 per match); no isMonotonic/isFraction in payload.
 public enum PulseMetricsData: Codable, Equatable {
-    case counter(isMonotonic: Bool, isFraction: Bool)
+    case counter
     case gauge(isFraction: Bool)
     case histogram(bucket: [Double]?, isFraction: Bool)
-    case sum(isFraction: Bool)
+    case sum(isFraction: Bool, isMonotonic: Bool)
 
     private enum CodingKeys: String, CodingKey {
         case counter
@@ -139,8 +171,7 @@ public enum PulseMetricsData: Codable, Equatable {
     }
 
     private enum CounterKeys: String, CodingKey {
-        case isMonotonic
-        case isFraction
+        case type
     }
 
     private enum GaugeKeys: String, CodingKey {
@@ -154,15 +185,14 @@ public enum PulseMetricsData: Codable, Equatable {
 
     private enum SumKeys: String, CodingKey {
         case isFraction
+        case isMonotonic
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
 
-        if let inner = try? c.nestedContainer(keyedBy: CounterKeys.self, forKey: .counter) {
-            let isMonotonic = (try? inner.decode(Bool.self, forKey: .isMonotonic)) ?? true
-            let isFraction = (try? inner.decode(Bool.self, forKey: .isFraction)) ?? false
-            self = .counter(isMonotonic: isMonotonic, isFraction: isFraction)
+        if (try? c.nestedContainer(keyedBy: CounterKeys.self, forKey: .counter)) != nil {
+            self = .counter
             return
         }
 
@@ -181,7 +211,8 @@ public enum PulseMetricsData: Codable, Equatable {
 
         if let inner = try? c.nestedContainer(keyedBy: SumKeys.self, forKey: .sum) {
             let isFraction = (try? inner.decode(Bool.self, forKey: .isFraction)) ?? false
-            self = .sum(isFraction: isFraction)
+            let isMonotonic = (try? inner.decode(Bool.self, forKey: .isMonotonic)) ?? true
+            self = .sum(isFraction: isFraction, isMonotonic: isMonotonic)
             return
         }
 
@@ -194,10 +225,8 @@ public enum PulseMetricsData: Codable, Equatable {
         var c = encoder.container(keyedBy: CodingKeys.self)
 
         switch self {
-        case .counter(let isMonotonic, let isFraction):
-            var inner = c.nestedContainer(keyedBy: CounterKeys.self, forKey: .counter)
-            try inner.encode(isMonotonic, forKey: .isMonotonic)
-            try inner.encode(isFraction, forKey: .isFraction)
+        case .counter:
+            _ = c.nestedContainer(keyedBy: CounterKeys.self, forKey: .counter)
         case .gauge(let isFraction):
             var inner = c.nestedContainer(keyedBy: GaugeKeys.self, forKey: .gauge)
             try inner.encode(isFraction, forKey: .isFraction)
@@ -205,9 +234,10 @@ public enum PulseMetricsData: Codable, Equatable {
             var inner = c.nestedContainer(keyedBy: HistogramKeys.self, forKey: .histogram)
             try inner.encodeIfPresent(bucket, forKey: .bucket)
             try inner.encode(isFraction, forKey: .isFraction)
-        case .sum(let isFraction):
+        case .sum(let isFraction, let isMonotonic):
             var inner = c.nestedContainer(keyedBy: SumKeys.self, forKey: .sum)
             try inner.encode(isFraction, forKey: .isFraction)
+            try inner.encode(isMonotonic, forKey: .isMonotonic)
         }
     }
 }
