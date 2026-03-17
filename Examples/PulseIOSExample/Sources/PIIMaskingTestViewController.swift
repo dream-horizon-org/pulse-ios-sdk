@@ -1,8 +1,5 @@
 import UIKit
 import WebKit
-#if canImport(SessionReplay)
-import SessionReplay
-#endif
 
 // MARK: - Custom View Classes for Class-Level Override Testing
 
@@ -156,9 +153,8 @@ class PIIMaskingTestViewController: UIViewController {
         alwaysVisibleLabel.font = .systemFont(ofSize: 16, weight: .bold)
         alwaysVisibleLabel.textColor = .systemGreen
         alwaysVisibleLabel.numberOfLines = 0
-        #if canImport(SessionReplay)
+        // SessionReplay is compiled into PulseKit when using CocoaPods
         alwaysVisibleLabel.pulseReplayUnmask()
-        #endif
         stackView.addArrangedSubview(alwaysVisibleLabel)
         
         // Email label
@@ -196,9 +192,8 @@ class PIIMaskingTestViewController: UIViewController {
         alwaysVisibleTextField.text = "This should be visible"
         alwaysVisibleTextField.backgroundColor = .systemGreen.withAlphaComponent(0.1)
         alwaysVisibleTextField.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        #if canImport(SessionReplay)
+        // SessionReplay is compiled into PulseKit when using CocoaPods
         alwaysVisibleTextField.pulseReplayUnmask()
-        #endif
         stackView.addArrangedSubview(alwaysVisibleTextField)
         
         // Password field - should always be masked
@@ -454,9 +449,8 @@ class PIIMaskingTestViewController: UIViewController {
         unmaskedLabel.backgroundColor = .systemGreen.withAlphaComponent(0.1)
         unmaskedLabel.layer.cornerRadius = 8
         unmaskedLabel.layer.masksToBounds = true
-        #if canImport(SessionReplay)
+        // SessionReplay is compiled into PulseKit when using CocoaPods
         unmaskedLabel.pulseReplayUnmask()
-        #endif
         stackView.addArrangedSubview(unmaskedLabel)
         
         // Text field with force mask (should be masked even if config says maskSensitiveInputs)
@@ -466,9 +460,8 @@ class PIIMaskingTestViewController: UIViewController {
         maskedTextField.text = "Force masked content"
         maskedTextField.backgroundColor = .systemRed.withAlphaComponent(0.1)
         maskedTextField.heightAnchor.constraint(equalToConstant: 44).isActive = true
-        #if canImport(SessionReplay)
+        // SessionReplay is compiled into PulseKit when using CocoaPods
         maskedTextField.pulseReplayMask()
-        #endif
         stackView.addArrangedSubview(maskedTextField)
         
         // Image with force mask (should be masked even if imagePrivacy == .maskNone)
@@ -500,9 +493,8 @@ class PIIMaskingTestViewController: UIViewController {
         }
         
         maskedImageView.heightAnchor.constraint(equalToConstant: 100).isActive = true
-        #if canImport(SessionReplay)
+        // SessionReplay is compiled into PulseKit when using CocoaPods
         maskedImageView.pulseReplayMask()
-        #endif
         stackView.addArrangedSubview(maskedImageView)
         
         // Alternative: Using accessibility label

@@ -32,26 +32,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                 config.sessionReplay { replayConfig in
                     replayConfig.enabled(true)
                     replayConfig.configure { localConfig in
-                        localConfig.textAndInputPrivacy = .maskSensitiveInputs
-                        localConfig.imagePrivacy = .maskAll
-                        localConfig.captureIntervalMs = 1000
-                        localConfig.screenshotScale = 1.0
+                        localConfig.textAndInputPrivacy = .maskAllInputs
+                        localConfig.imagePrivacy = .maskNone
                         
                         // Register custom classes for class-level overrides
                         localConfig.maskViewClasses = Set([
                             "PulseIOSExample.PrivateSecureView",
                             "PulseIOSExample.PrivateDataLabel",
-                            "PulseIOSExample.PublicInfoView",
-                            "PulseIOSExample.SafePublicLabel"
                         ])
                         localConfig.replayEndpointBaseUrl = "http://127.0.0.1:3400"
                     }
                 }
             }
         )
-        
-        // Set user ID so the session capture service accepts the payload
-        PulseKit.shared.setUserId("test-user-ios-simulator")
         
         // Create window and root view controller
         window = UIWindow(frame: UIScreen.main.bounds)

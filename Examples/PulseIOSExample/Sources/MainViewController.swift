@@ -1,9 +1,7 @@
 import UIKit
 import PulseKit
 import OpenTelemetryApi
-#if canImport(SessionReplay)
-import SessionReplay
-#endif
+
 
 class MainViewController: UIViewController {
     
@@ -58,9 +56,8 @@ class MainViewController: UIViewController {
         stackView.addArrangedSubview(headerLabel)
         
         // Add test UI elements for PII masking verification
-        #if canImport(SessionReplay)
+        // SessionReplay is compiled into PulseKit when using CocoaPods
         addTestMaskingElements(to: stackView)
-        #endif
         
         stackView.addArrangedSubview(createSeparator())
         
@@ -242,13 +239,8 @@ class MainViewController: UIViewController {
             color: .systemPurple
         ))
         stackView.addArrangedSubview(createButton(
-            title: "Start / Stop Recording",
-            action: #selector(toggleRecordingTapped),
-            color: .systemPurple
-        ))
-        stackView.addArrangedSubview(createButton(
-            title: "WebP vs JPEG Comparison",
-            action: #selector(compressionComparisonTapped),
+            title: "Trigger Network Failure",
+            action: #selector(networkFailureTapped),
             color: .systemPurple
         ))
         
@@ -265,7 +257,7 @@ class MainViewController: UIViewController {
     
     // MARK: - UI Helpers
     
-    #if canImport(SessionReplay)
+    // SessionReplay is compiled into PulseKit when using CocoaPods
     private func addTestMaskingElements(to stackView: UIStackView) {
         // Add some test UI elements that should be masked
         let testSectionLabel = UILabel()
@@ -323,7 +315,6 @@ class MainViewController: UIViewController {
         infoLabel.numberOfLines = 0
         stackView.addArrangedSubview(infoLabel)
     }
-    #endif
     
     private func createButton(title: String, action: Selector, color: UIColor = .systemBlue) -> UIButton {
         let button = UIButton(type: .system)
@@ -814,111 +805,54 @@ class MainViewController: UIViewController {
     
     @objc private func testPIIMaskingTapped() {
         print("━━━ testPIIMaskingTapped ━━━")
-        #if canImport(SessionReplay)
-        let testVC = PIIMaskingTestViewController()
-        navigationController?.pushViewController(testVC, animated: true)
-        #else
-        showAlert(title: "Not Available", message: "SessionReplay module is not available")
-        #endif
-    }
-    
-    @objc private func toggleRecordingTapped() {
-        print("━━━ toggleRecordingTapped ━━━")
-        #if canImport(SessionReplay)
-        if let recorder = SessionReplayInstrumentation.getInstance()?.recorderInstance {
-            if recorder.isRecording {
-                recorder.stop()
-                print("  Recording stopped")
-                showAlert(title: "Recording Stopped", message: "Session replay recording has been stopped")
-            } else {
-                recorder.start()
-                print("  Recording started")
-                showAlert(title: "Recording Started", message: "Session replay recording has been started")
-            }
+        // Runtime check: SessionReplay is compiled into PulseKit when using CocoaPods
+        // Check if SessionReplayInstrumentation is available
+        if SessionReplayInstrumentation.getInstance() != nil {
+            let testVC = PIIMaskingTestViewController()
+            navigationController?.pushViewController(testVC, animated: true)
         } else {
-            print("  ERROR: SessionReplayInstrumentation not initialized")
-            showAlert(title: "Not Initialized", message: "Session replay recorder is not available. Make sure session replay is enabled in SDK configuration.")
+            showAlert(title: "Not Available", message: "Session Replay is not initialized. Please ensure Session Replay is enabled in your PulseKit configuration.")
         }
-        #else
-        showAlert(title: "Not Available", message: "SessionReplay module is not available")
-        #endif
     }
     
-    // MARK: - Debug Masking
-    
-    
-    // MARK: - Compression Comparison
-    
-    @objc private func compressionComparisonTapped() {
-        print("━━━ compressionComparisonTapped ━━━")
-        #if canImport(SessionReplay)
-        // Capture a screenshot of the current window and compare WebP vs JPEG at multiple quality levels
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-            guard let self = self else { return }
-            guard let window = self.view.window else {
-                self.showAlert(title: "Error", message: "No window available for capture")
-                return
-            }
-            
-            // Capture full-resolution screenshot
-            let bounds = window.bounds
-            guard bounds.width > 0 && bounds.height > 0 else {
-                self.showAlert(title: "Error", message: "Invalid window bounds")
-                return
-            }
-            
-            let renderer = UIGraphicsImageRenderer(bounds: bounds)
-            let fullImage = renderer.image { _ in
-                window.drawHierarchy(in: bounds, afterScreenUpdates: false)
-            }
-            
-            // Also capture at 0.5x scale (what Session Replay actually uses)
-            let halfSize = CGSize(width: fullImage.size.width * 0.5, height: fullImage.size.height * 0.5)
-            let halfRenderer = UIGraphicsImageRenderer(size: halfSize)
-            let halfImage = halfRenderer.image { _ in
-                fullImage.draw(in: CGRect(origin: .zero, size: halfSize))
-            }
-            
-            let qualities: [CGFloat] = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9]
-            var report = "📊 Compression Report\n"
-            report += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            report += "Image: \(Int(halfImage.size.width))×\(Int(halfImage.size.height)) (0.5x scale)\n"
-            report += "Original: \(Int(fullImage.size.width))×\(Int(fullImage.size.height))\n\n"
-            
-            var alertMessage = ""
-            
-            for quality in qualities {
-                guard let result = SessionReplayCompressor.compress(
-                    image: halfImage,
-                    quality: quality
-                ) else {
-                    report += "Quality \(Int(quality * 100))%: FAILED\n"
-                    continue
-                }
-                
-                let qualityPct = Int(quality * 100)
-                let sizeKB = String(format: "%.1f", Double(result.data.count) / 1024.0)
-                report += "Quality \(qualityPct)%: \(result.format.rawValue.uppercased()) — \(result.data.count) bytes (\(sizeKB) KB)\n"
-                
-                if quality == 0.3 {
-                    alertMessage = "At quality 30% (SDK default):\n"
-                    alertMessage += "\(result.format.rawValue.uppercased()): \(sizeKB) KB"
-                }
-            }
-            
-            print(report)
-            
-            if alertMessage.isEmpty {
-                alertMessage = "Compression failed for all quality levels."
-            } else {
-                alertMessage += "\n\nSee console for all quality levels."
-            }
-            
-            self.showAlert(title: "Compression Report", message: alertMessage)
+    @objc private func networkFailureTapped() {
+        print("━━━ networkFailureTapped ━━━")
+        // Use an invalid URL that will definitely fail to test network error handling in session replay
+        guard let url = URL(string: "https://invalid-url-that-does-not-exist-12345.com/api/fail") else {
+            showAlert(title: "Error", message: "Failed to create URL")
+            return
         }
-        #else
-        showAlert(title: "Not Available", message: "SessionReplay module is not available")
-        #endif
+        
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 5.0
+        request.httpMethod = "GET"
+        
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if let error = error {
+                    print("  Network error: \(error.localizedDescription)")
+                    print("  Error domain: \((error as NSError).domain)")
+                    print("  Error code: \((error as NSError).code)")
+                    self.showAlert(
+                        title: "Network Failure",
+                        message: "Network request failed as expected.\n\nError: \(error.localizedDescription)\n\nThis failure should be captured in session replay for E2E testing."
+                    )
+                } else if let httpResponse = response as? HTTPURLResponse {
+                    print("  HTTP \(httpResponse.statusCode)")
+                    self.showAlert(
+                        title: "Unexpected Success",
+                        message: "Request succeeded with status: \(httpResponse.statusCode)\n\nThis was unexpected - the URL should have failed."
+                    )
+                } else {
+                    self.showAlert(
+                        title: "Network Failure",
+                        message: "Network request failed (no response).\n\nThis failure should be captured in session replay for E2E testing."
+                    )
+                }
+            }
+        }
+        task.resume()
     }
     
     // MARK: - Helpers
@@ -948,9 +882,7 @@ class MainViewController: UIViewController {
     }
 }
 
-#if canImport(SessionReplay)
 // MARK: - Session Replay Frame Viewer
-
 /// View controller that displays captured session replay frames in a scrollable grid.
 class SessionReplayFrameViewerViewController: UIViewController {
     private let frames: [SessionReplayFrame]
@@ -1243,4 +1175,3 @@ class SessionReplayFrameDetailViewController: UIViewController {
         return container
     }
 }
-#endif
