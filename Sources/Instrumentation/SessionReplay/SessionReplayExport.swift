@@ -186,7 +186,7 @@ class SessionReplayEventTransformer {
     }
 
     private func base64Encode(frame: SessionReplayFrame) -> String {
-        return frame.imageData.base64EncodedString()
+        frame.imageData.base64EncodedString()
     }
 
     private func unixMs(from date: Date) -> Int64 {

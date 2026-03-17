@@ -114,7 +114,6 @@ internal final class SessionReplayPersistingEmitter {
                 let maxBatchesPerChunk = 5
                 
                 var remainingFiles = files
-                var totalSent = 0
                 var chunkNumber = 0
                 
                 while !remainingFiles.isEmpty {
@@ -183,7 +182,6 @@ internal final class SessionReplayPersistingEmitter {
                             try? fm.removeItem(at: file)
                         }
                         self.dequeLock.unlock()
-                        totalSent += fileToContent.count
                     } else {
                         break
                     }

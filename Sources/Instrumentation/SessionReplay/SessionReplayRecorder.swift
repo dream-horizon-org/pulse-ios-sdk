@@ -130,9 +130,7 @@ public class SessionReplayRecorder {
         let session = SessionManagerProvider.getInstance().getSession()
         let frameSessionId = session.id
         
-        if self.currentSessionId == nil {
-            self.currentSessionId = frameSessionId
-        } else if self.currentSessionId != frameSessionId {
+        if self.currentSessionId != frameSessionId {
             self.currentSessionId = frameSessionId
         }
         
@@ -177,7 +175,7 @@ public class SessionReplayRecorder {
                 capturedFrames.append(frame)
                 framesLock.unlock()
                 
-                if let _ = self.persistingEmitter, let pid = self.projectId {
+                if self.persistingEmitter != nil, let pid = self.projectId {
                     var windowStatus = self.getWindowStatus(window: window)
                     let events = self.transformer.transformFrame(
                         frame: frame,
@@ -433,8 +431,7 @@ public class SessionReplayRecorder {
             self.drawOccurredLock.unlock()
             
             if shouldCapture {
-                self.captureFrame { _ in
-                }
+                self.captureFrame { _ in }
             }
         }
     }
@@ -453,7 +450,7 @@ public class SessionReplayRecorder {
     }
     
     public var isRecording: Bool {
-        return queue.sync { _isRecording }
+        queue.sync { _isRecording }
     }
 }
 #else

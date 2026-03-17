@@ -15,7 +15,7 @@ public class SessionReplayInstrumentation {
     private static var sharedInstance: SessionReplayInstrumentation?
     
     public static func getInstance() -> SessionReplayInstrumentation? {
-        return sharedInstance
+        sharedInstance
     }
     
     private var recorder: SessionReplayRecorder?
@@ -49,6 +49,6 @@ public class SessionReplayInstrumentation {
     }
     
     public var recorderInstance: SessionReplayRecorder? {
-        return recorder
+        recorder
     }
 }

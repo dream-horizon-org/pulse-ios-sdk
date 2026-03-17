@@ -45,7 +45,6 @@ class SessionReplayTransport {
         sendDataWithRetry(jsonData: jsonData, attempt: 0, completion: completion)
     }
 
-
     private func sendDataWithRetry(jsonData: Data, attempt: Int, completion: @escaping (Bool) -> Void) {
         var request = URLRequest(url: endpointUrl)
         request.httpMethod = "POST"

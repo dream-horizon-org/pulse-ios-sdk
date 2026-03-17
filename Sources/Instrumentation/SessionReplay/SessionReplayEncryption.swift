@@ -90,10 +90,10 @@ internal final class DefaultSessionReplayEncryption: SessionReplayStorageEncrypt
 
 internal final class NoOpSessionReplayEncryption: SessionReplayStorageEncryption {
     func encrypt(_ plaintext: Data) -> Data? {
-        return plaintext
+        plaintext
     }
 
     func decrypt(_ ciphertext: Data) throws -> Data {
-        return ciphertext
+        ciphertext
     }
 }

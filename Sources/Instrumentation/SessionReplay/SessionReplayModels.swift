@@ -176,15 +176,15 @@ extension UIView {
     }
     
     internal func getPrivacyTagValue() -> String? {
-        return self.getTag(Self.pulseReplayPrivacyTagKey) as? String
+        self.getTag(Self.pulseReplayPrivacyTagKey) as? String
     }
     
     internal var hasPulseReplayMaskTag: Bool {
-        return getPrivacyTagValue() == Self.pulseReplayMaskTagValue
+        getPrivacyTagValue() == Self.pulseReplayMaskTagValue
     }
     
     internal var hasPulseReplayUnmaskTag: Bool {
-        return getPrivacyTagValue() == Self.pulseReplayUnmaskTagValue
+        getPrivacyTagValue() == Self.pulseReplayUnmaskTagValue
     }
     
     internal var hasInstanceMaskOverride: Bool? {

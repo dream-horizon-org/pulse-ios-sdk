@@ -42,9 +42,8 @@ private struct ViewSnapshot {
     let tag: Int?
     let accessibilityLabel: String?
     let accessibilityIdentifier: String?
-    let privacyTagValue: String?  // Captured from associated object (pulseReplayMask/unmask)
-    let placeholder: String?  // Placeholder text for UITextField (used for sensitive field detection)
-    // Type-specific data
+    let privacyTagValue: String?
+    let placeholder: String?
     let isTextField: Bool
     let isTextView: Bool
     let isLabel: Bool
@@ -56,12 +55,10 @@ private struct ViewSnapshot {
     let keyboardType: UIKeyboardType?
     let hasText: Bool
     let hasImage: Bool
-    // Padding information for text area masking (similar to Android's compoundPadding)
     let paddingLeft: CGFloat
     let paddingTop: CGFloat
     let paddingRight: CGFloat
     let paddingBottom: CGFloat
-    // For coordinate conversion
     let superviewId: ObjectIdentifier?
 }
 
@@ -151,8 +148,6 @@ internal class SessionReplayMasker {
                 return
             }
             
-            // Collect mask rects on main thread (fast - just coordinate calculations)
-            // Similar to Android: collect mask rects BEFORE screenshot to avoid timing races
             var maskRects = self.processMaskingFromSnapshot(
                 snapshots: snapshots,
                 rootViewId: ObjectIdentifier(window),
@@ -161,23 +156,16 @@ internal class SessionReplayMasker {
             )
             
             maskRects = self.mergeOverlappingRects(maskRects)
-            
-            // Pre-validate mask rects against window bounds BEFORE screenshot (like Android's masksValid)
-            // This ensures we don't capture screenshot if mask rects are invalid
             let masksValid = self.preValidateMaskRects(maskRects, windowBounds: windowBounds)
-            
             let viewsNeedingMaskCount = viewsNeedingMask.count
             
-            // FAST PATH: If no masking needed, skip to background immediately
             if maskRects.isEmpty && viewsNeedingMaskCount == 0 {
-                // No masking required - move heavy operations to background
                 DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                     guard let self = self else {
                         completion(nil)
                         return
                     }
                     
-                    // Capture screenshot on background (but must be called from main thread)
                     DispatchQueue.main.async {
                         let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
                         
@@ -186,7 +174,6 @@ internal class SessionReplayMasker {
                             return
                         }
                         
-                        // Process on background
                         DispatchQueue.global(qos: .userInitiated).async {
                             let clampedScale = max(0.01, min(1.0, scale))
                             if clampedScale < 1.0 {
@@ -210,22 +197,16 @@ internal class SessionReplayMasker {
                 return
             }
             
-            // MASKING PATH: Only capture screenshot if mask rects are valid (like Android's masksValid check)
-            // This prevents unnecessary screenshot capture if mask rects are invalid
             guard masksValid else {
-                // Mask rects are invalid - reject before screenshot (early rejection like Android)
                 completion(nil)
                 return
             }
             
-            // Check for draw flag (similar to Android's onDrawFlag check)
             if let drawFlagChecker = self.drawFlagChecker, drawFlagChecker() {
-                // Screen changed during mask collection - reject before screenshot
                 completion(nil)
                 return
             }
             
-            // Capture screenshot only after validation passes (matching Android's flow)
             let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
             
             guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
@@ -233,7 +214,6 @@ internal class SessionReplayMasker {
                 return
             }
             
-            // Check for scroll changes between snapshot and screenshot
             var scrollPositionAtScreenshot: CGFloat = 0
             if let scrollView = self.findScrollView(in: window) {
                 scrollPositionAtScreenshot = scrollView.contentOffset.y
@@ -245,15 +225,11 @@ internal class SessionReplayMasker {
                 return
             }
             
-            // Check draw flag after screenshot (similar to Android's onDrawFlag check inside PixelCopy callback)
-            // This ensures screen didn't change during screenshot capture
             if let drawFlagChecker = self.drawFlagChecker, drawFlagChecker() {
-                // Screen changed during screenshot capture - reject
                 completion(nil)
                 return
             }
             
-            // Move heavy operations (mask rendering, encoding) to background thread
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
                     completion(nil)
@@ -261,10 +237,6 @@ internal class SessionReplayMasker {
                 }
                 
                 let capturedScreenshot = screenshot
-                
-                // Final validation: verify mask rects against actual screenshot size
-                // This ensures coordinate space matches (window bounds vs screenshot bitmap)
-                // Similar to Android's validation inside PixelCopy callback (line 93: if (!onDrawFlag() && masksValid))
                 let validatedRects = self.validateMaskRects(maskRects, imageSize: capturedScreenshot.size)
                
                 
@@ -282,7 +254,6 @@ internal class SessionReplayMasker {
                     return
                 }
                 
-                // Scale if needed
                 let clampedScale = max(0.01, min(1.0, scale))
                 if clampedScale < 1.0 {
                     let finalSize = CGSize(
@@ -524,8 +495,7 @@ internal class SessionReplayMasker {
         window: UIWindow,
         snapshots: inout [ObjectIdentifier: ViewSnapshot],
         visited: inout Set<ObjectIdentifier>,
-        parentId: ObjectIdentifier? = nil,
-        screenToWindowOffset: CGPoint? = nil
+        parentId: ObjectIdentifier? = nil
     ) {
         let viewId = ObjectIdentifier(view)
         if visited.contains(viewId) { return }
@@ -538,56 +508,38 @@ internal class SessionReplayMasker {
         let className = String(describing: type(of: view))
         let frame = view.frame
         
-        // CRITICAL FIX: Use direct window coordinate conversion (not screen->window offset)
-        // view.convert(view.bounds, to: window) gives us coordinates in window space,
-        // which directly matches the screenshot bitmap coordinate space.
-        // This is simpler and more accurate than screen->window offset conversion.
         var windowFrame: CGRect?
         if view == window {
             windowFrame = window.bounds
         } else {
-            // Direct conversion to window coordinates - this matches screenshot bitmap space
-            // Try multiple conversion methods for robustness
             if let superview = view.superview {
-                // Method 1: Convert via superview (most accurate for views in hierarchy)
                 let convertedFrame = superview.convert(view.frame, to: window)
                 if convertedFrame.width > 0 && convertedFrame.height > 0 &&
                    convertedFrame.origin.x.isFinite && convertedFrame.origin.y.isFinite &&
                    convertedFrame.width.isFinite && convertedFrame.height.isFinite {
-                    // Accept reasonable coordinate conversions (allow negative Y for status bar area)
-                    // clampRectToBounds will handle the masking correctly
-                    let tolerance: CGFloat = 1000 // Large tolerance - let clampRectToBounds decide
+                    let tolerance: CGFloat = 1000
                     if convertedFrame.origin.x >= -tolerance && convertedFrame.origin.y >= -tolerance &&
                        convertedFrame.origin.x < window.bounds.width + tolerance &&
                        convertedFrame.origin.y < window.bounds.height + tolerance {
                         windowFrame = convertedFrame
                     } else {
-                        // Way outside - try fallback
                         windowFrame = view.convert(view.bounds, to: window)
                     }
                 } else {
-                    // Method 2: Direct conversion (fallback)
                     windowFrame = view.convert(view.bounds, to: window)
                 }
             } else if let viewWindow = view.window, viewWindow == window {
-                // Method 3: Direct conversion when view is in target window
                 windowFrame = view.convert(view.bounds, to: window)
             } else {
-                // View is not in the target window - cannot convert
                 windowFrame = nil
             }
             
-            // Validate the converted frame
             if let frame = windowFrame {
-                // Ensure frame is valid (basic checks only)
-                // Don't reject based on coordinates - let clampRectToBounds handle masking correctly
                 if frame.width <= 0 || frame.height <= 0 ||
                    !frame.origin.x.isFinite || !frame.origin.y.isFinite ||
                    !frame.width.isFinite || !frame.height.isFinite {
                     windowFrame = nil
                 }
-                // Keep all valid frames - clampRectToBounds will correctly handle negative Y coordinates
-                // and only mask the visible portion
             }
         }
         
@@ -633,26 +585,21 @@ internal class SessionReplayMasker {
         
         let privacyTagValue = view.getPrivacyTagValue()
         
-        // Capture padding information for text area masking (similar to Android's compoundPadding)
         var paddingLeft: CGFloat = 0
         var paddingTop: CGFloat = 0
         var paddingRight: CGFloat = 0
         var paddingBottom: CGFloat = 0
         
         if let textField = textField {
-            // UITextField padding: leftView, rightView, and border style affect content area
             paddingLeft = textField.leftView?.frame.width ?? 0
             paddingRight = textField.rightView?.frame.width ?? 0
-            
-            // Account for border insets (similar to Android's compoundPadding)
             if textField.borderStyle != .none {
-                paddingLeft += 8 // Approximate border padding
+                paddingLeft += 8
                 paddingRight += 8
                 paddingTop += 4
                 paddingBottom += 4
             }
         } else if let textView = textView {
-            // UITextView: use text container insets (similar to Android's compoundPadding)
             paddingLeft = textView.textContainerInset.left
             paddingTop = textView.textContainerInset.top
             paddingRight = textView.textContainerInset.right
@@ -699,8 +646,7 @@ internal class SessionReplayMasker {
                 window: window,
                 snapshots: &snapshots,
                 visited: &visited,
-                parentId: viewId,
-                screenToWindowOffset: nil // Not needed with direct conversion
+                parentId: viewId
             )
         }
     }
@@ -731,18 +677,7 @@ internal class SessionReplayMasker {
             return maskableRects
         }
         
-        // CRITICAL FIX: Never mask the window itself - it's just a container
-        // Only process its children for masking. The window itself should never be masked
-        // unless explicitly requested via pulseReplayMask() (which would be unusual).
         if isWindow {
-            // For window, skip masking decision and just process children
-            // The window itself should never be masked by default
-            #if DEBUG
-            let instanceDecision = resolveInstanceDecisionFromSnapshot(snapshot: snapshot)
-            let classDecision = resolveClassDecisionFromSnapshot(snapshot: snapshot)
-            #endif
-            
-            // Process children with parent's forced mask state
             for childId in snapshot.subviewIds {
                 let childRects = processMaskingFromSnapshot(
                     snapshots: snapshots,
@@ -976,9 +911,7 @@ internal class SessionReplayMasker {
         return viewsNeedingMask
     }
     
-    /// Get text area window rect for text fields/views, accounting for padding.
-    /// Similar to Android's getTextAreaWindowRect - masks only the text content area, not the full view frame.
-    /// Uses padding information stored in ViewSnapshot (captured during snapshot phase).
+    /// Returns text area window rect for text fields/views, accounting for padding.
     private func getTextAreaWindowRect(
         snapshot: ViewSnapshot,
         windowBounds: CGRect
@@ -987,15 +920,12 @@ internal class SessionReplayMasker {
             return nil
         }
         
-        // For text fields and text views, adjust for padding/insets (similar to Android's compoundPadding)
         if snapshot.isTextField || snapshot.isTextView {
-            // Use padding information captured during snapshot phase
             let leftPadding = snapshot.paddingLeft
             let topPadding = snapshot.paddingTop
             let rightPadding = snapshot.paddingRight
             let bottomPadding = snapshot.paddingBottom
             
-            // Calculate text area rect (only the content area, excluding padding)
             let textAreaRect = CGRect(
                 x: windowFrame.origin.x + leftPadding,
                 y: windowFrame.origin.y + topPadding,
@@ -1003,21 +933,17 @@ internal class SessionReplayMasker {
                 height: max(0, windowFrame.height - topPadding - bottomPadding)
             )
             
-            // Ensure valid rect
             guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
-                // Fallback to full frame if text area is invalid
                 return clampRectToBounds(rect: windowFrame, bounds: windowBounds)
             }
             
             return clampRectToBounds(rect: textAreaRect, bounds: windowBounds)
         }
         
-        // For other view types, use full frame
         return clampRectToBounds(rect: windowFrame, bounds: windowBounds)
     }
     
     private func applyTypeSpecificMaskingFromSnapshot(snapshot: ViewSnapshot, windowBounds: CGRect) -> CGRect? {
-        // Never mask the window itself via type-specific logic
         let isWindow = snapshot.className.contains("Window")
         guard !isWindow else {
             return nil
@@ -1030,15 +956,12 @@ internal class SessionReplayMasker {
         if snapshot.isTextField {
             let shouldMask = shouldMaskTextFieldFromSnapshot(snapshot: snapshot)
             if shouldMask {
-                // Use padding-aware text area masking (similar to Android's getTextAreaWindowRect)
-                // This masks only the text content area, not the full view frame
                 if let textAreaRect = getTextAreaWindowRect(snapshot: snapshot, windowBounds: windowBounds) {
                     guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
                         return nil
                     }
                     return textAreaRect
                 }
-                // Fallback to full frame if text area calculation fails
                 let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
                 guard clamped.width > 0 && clamped.height > 0 else {
                     return nil
@@ -1048,15 +971,12 @@ internal class SessionReplayMasker {
         } else if snapshot.isTextView {
             let shouldMask = shouldMaskTextViewFromSnapshot(snapshot: snapshot)
             if shouldMask {
-                // Use padding-aware text area masking (similar to Android's getTextAreaWindowRect)
-                // This masks only the text content area, not the full view frame
                 if let textAreaRect = getTextAreaWindowRect(snapshot: snapshot, windowBounds: windowBounds) {
                     guard textAreaRect.width > 0 && textAreaRect.height > 0 else {
                         return nil
                     }
                     return textAreaRect
                 }
-                // Fallback to full frame if text area calculation fails
                 let clamped = clampRectToBounds(rect: windowFrame, bounds: windowBounds)
                 guard clamped.width > 0 && clamped.height > 0 else {
                     return nil
@@ -1127,8 +1047,6 @@ internal class SessionReplayMasker {
     private func isSensitiveInputTypeFromSnapshot(snapshot: ViewSnapshot) -> Bool {
         if snapshot.isSecureTextEntry { return true }
         
-        // Check textContentType rawValue (works for UITextField, but UITextView doesn't have this property)
-        // rawValue format: "emailAddress", "telephoneNumber", "password", "newPassword", etc.
         if let textContentType = snapshot.textContentType?.lowercased() {
             if textContentType.contains("password") {
                 return true
@@ -1141,14 +1059,12 @@ internal class SessionReplayMasker {
             }
         }
         
-        // Check keyboardType (works for both UITextField and UITextView)
         if let keyboardType = snapshot.keyboardType {
             if keyboardType == .emailAddress || keyboardType == .phonePad {
                 return true
             }
         }
         
-        // Check placeholder text (for UITextField only)
         if let placeholder = snapshot.placeholder?.lowercased() {
             if placeholder.contains("password") || placeholder.contains("email") || 
                placeholder.contains("phone") || placeholder.contains("mobile") {
@@ -1156,14 +1072,12 @@ internal class SessionReplayMasker {
             }
         }
         
-        // Check accessibility label (works for both UITextField and UITextView)
         if let label = snapshot.accessibilityLabel?.lowercased() {
             if label.contains("password") || label.contains("email") || label.contains("phone") {
                 return true
             }
         }
         
-        // Check accessibility identifier (works for both UITextField and UITextView)
         if let identifier = snapshot.accessibilityIdentifier?.lowercased() {
             if identifier.contains("password") || identifier.contains("email") || identifier.contains("phone") {
                 return true
@@ -1173,120 +1087,30 @@ internal class SessionReplayMasker {
         return false
     }
     
-    /// Compute the delta between screen coordinates and window coordinates.
-    /// Similar to Android's computeScreenToWindowOffset - converts screen coords to window (bitmap) coordinates.
-    private func computeScreenToWindowOffset(view: UIView, window: UIWindow) -> CGPoint {
-        // Get location in screen coordinates
-        let screenFrame = view.convert(view.bounds, to: nil)
-        let screenOrigin = screenFrame.origin
-        
-        // Get location in window coordinates
-        let windowFrame = view.convert(view.bounds, to: window)
-        let windowOrigin = windowFrame.origin
-        
-        // Calculate offset: screen - window
-        return CGPoint(
-            x: screenOrigin.x - windowOrigin.x,
-            y: screenOrigin.y - windowOrigin.y
-        )
-    }
-    
-    /// Returns the visible rect of this view in window coordinates (matching the screenshot bitmap's coordinate space).
-    /// Similar to Android's windowVisibleRectSafe - validates view state and converts coordinates safely.
-    private func windowVisibleRectSafe(
-        view: UIView,
-        window: UIWindow,
-        offset: CGPoint,
-        logger: ((String) -> Void)? = nil
-    ) -> CGRect? {
-        guard isViewStateStableForCoordinateConversion(view: view) else {
-            logger?("[SessionReplay] View state not stable for coordinate conversion: \(type(of: view))")
-            return nil
-        }
-        
-        // Get global visible rect (screen coordinates)
-        guard let screenRect = globalVisibleRect(view: view) else {
-            return nil
-        }
-        
-        // Convert to window coordinates by applying offset
-        let windowRect = CGRect(
-            x: screenRect.origin.x - offset.x,
-            y: screenRect.origin.y - offset.y,
-            width: screenRect.width,
-            height: screenRect.height
-        )
-        
-        return windowRect
-    }
-    
-    /// Check if view state is stable for coordinate conversion operations.
-    /// Similar to Android's isViewStateStableForMatrixOperations.
-    private func isViewStateStableForCoordinateConversion(view: UIView) -> Bool {
-        guard view.isHidden == false else { return false }
-        guard view.alpha > 0 else { return false }
-        guard view.window != nil else { return false }
-        guard view.bounds.width > 0 && view.bounds.height > 0 else { return false }
-        
-        // Check for active animations
-        if let animationKeys = view.layer.animationKeys(), !animationKeys.isEmpty {
-            return false
-        }
-        
-        return true
-    }
-    
-    /// Get global visible rect (screen coordinates) for a view.
-    /// Equivalent to Android's getGlobalVisibleRect.
-    /// Uses convert(_:to:) with nil to get screen coordinates.
-    private func globalVisibleRect(view: UIView) -> CGRect? {
-        guard view.window != nil else { return nil }
-        
-        // Convert view bounds to screen coordinates (nil = screen coordinate space)
-        let screenRect = view.convert(view.bounds, to: nil)
-        
-        // Ensure valid rect
-        guard screenRect.width > 0 && screenRect.height > 0 else { return nil }
-        guard screenRect.origin.x.isFinite && screenRect.origin.y.isFinite else { return nil }
-        guard screenRect.width.isFinite && screenRect.height.isFinite else { return nil }
-        
-        return screenRect
-    }
-    
-    /// Clamp a rectangle to window bounds, correctly handling negative coordinates.
-    /// For views with negative Y (e.g., status bar area), only the visible portion is returned.
-    /// Only rejects frames that are COMPLETELY outside bounds (with reasonable tolerance).
+    /// Clamps a rectangle to window bounds, handling negative coordinates.
     private func clampRectToBounds(rect: CGRect, bounds: CGRect) -> CGRect {
         guard rect.width > 0 && rect.height > 0 else { return .zero }
         guard rect.origin.x.isFinite && rect.origin.y.isFinite else { return .zero }
         guard rect.width.isFinite && rect.height.isFinite else { return .zero }
         
-        // Calculate the actual bounds of the rect
         let rectMaxX = rect.origin.x + rect.width
         let rectMaxY = rect.origin.y + rect.height
         
-        // Only reject if COMPLETELY outside bounds (with small tolerance for rounding)
-        // This prevents incorrect masks while keeping all valid frames
-        let tolerance: CGFloat = 1.0 // Small tolerance for floating point rounding
+        let tolerance: CGFloat = 1.0
         if rectMaxX <= -tolerance || rectMaxY <= -tolerance ||
            rect.origin.x >= bounds.width + tolerance ||
            rect.origin.y >= bounds.height + tolerance {
-            // Completely outside - return zero (this is rare and indicates invalid coordinates)
             return .zero
         }
         
-        // Calculate visible portion (handle negative origins correctly)
-        // For views with negative Y, only the visible part below Y=0 will be masked
         let visibleX = max(0, rect.origin.x)
         let visibleY = max(0, rect.origin.y)
         let visibleMaxX = min(rectMaxX, bounds.width)
         let visibleMaxY = min(rectMaxY, bounds.height)
         
-        // Calculate visible dimensions
         let visibleWidth = visibleMaxX - visibleX
         let visibleHeight = visibleMaxY - visibleY
         
-        // If no visible portion, return zero
         guard visibleWidth > 0 && visibleHeight > 0 else {
             return .zero
         }
@@ -1299,8 +1123,7 @@ internal class SessionReplayMasker {
         )
     }
     
-    /// Merge overlapping mask rects to reduce rendering overhead.
-    /// Similar to Android's approach - combines adjacent/overlapping rects.
+    /// Merges overlapping mask rects to reduce rendering overhead.
     private func mergeOverlappingRects(_ rects: [CGRect]) -> [CGRect] {
         guard rects.count > 1 else { return rects }
         
@@ -1318,7 +1141,6 @@ internal class SessionReplayMasker {
                 while i < remaining.count {
                     let other = remaining[i]
                     
-                    // Check if rects overlap or are adjacent (within 2px)
                     let tolerance: CGFloat = 2.0
                     let overlaps = current.intersects(other) ||
                         (abs(current.maxX - other.minX) <= tolerance && abs(current.minY - other.minY) <= tolerance && abs(current.maxY - other.maxY) <= tolerance) ||
@@ -1327,7 +1149,6 @@ internal class SessionReplayMasker {
                         (abs(current.minY - other.maxY) <= tolerance && abs(current.minX - other.minX) <= tolerance && abs(current.maxX - other.maxX) <= tolerance)
                     
                     if overlaps {
-                        // Merge rects
                         current = current.union(other)
                         remaining.remove(at: i)
                         mergedAny = true
@@ -1340,60 +1161,44 @@ internal class SessionReplayMasker {
             merged.append(current)
         }
         
-        
         return merged
     }
     
-    /// Pre-validate mask rects against window bounds BEFORE screenshot capture.
-    /// Similar to Android's masksValid check - ensures mask rects are valid before
-    /// expensive screenshot operation. Returns false if any rects are completely invalid.
-    /// This prevents unnecessary screenshot capture if mask rects are invalid.
+    /// Pre-validates mask rects against window bounds before screenshot capture.
     private func preValidateMaskRects(_ rects: [CGRect], windowBounds: CGRect) -> Bool {
-        // If no mask rects, validation passes (no masking needed)
         guard !rects.isEmpty else {
             return true
         }
         
-        // Validate each rect against window bounds
         for rect in rects {
-            // Basic validity checks
             guard rect.width > 0 && rect.height > 0 else {
-                continue // Skip invalid rects but don't fail validation
+                continue
             }
             
             guard rect.origin.x.isFinite && rect.origin.y.isFinite else {
-                return false // Invalid coordinates - fail validation
-            }
-            
-            guard rect.width.isFinite && rect.height.isFinite else {
-                return false // Invalid dimensions - fail validation
-            }
-            
-            // Check if rect has any overlap with window bounds (allows negative coordinates)
-            // Similar to Android's validation - only reject if completely outside
-            let rectMaxX = rect.origin.x + rect.width
-            let rectMaxY = rect.origin.y + rect.height
-            
-            let tolerance: CGFloat = 1.0 // Small tolerance for floating point rounding
-            
-            // Reject only if completely outside bounds
-            if rectMaxX <= -tolerance || rectMaxY <= -tolerance ||
-               rect.origin.x >= windowBounds.width + tolerance ||
-               rect.origin.y >= windowBounds.height + tolerance {
-                // Completely outside - this is invalid
                 return false
             }
             
-            // Rect has some overlap with window bounds - valid
+            guard rect.width.isFinite && rect.height.isFinite else {
+                return false
+            }
+            
+            let rectMaxX = rect.origin.x + rect.width
+            let rectMaxY = rect.origin.y + rect.height
+            
+            let tolerance: CGFloat = 1.0
+            
+            if rectMaxX <= -tolerance || rectMaxY <= -tolerance ||
+               rect.origin.x >= windowBounds.width + tolerance ||
+               rect.origin.y >= windowBounds.height + tolerance {
+                return false
+            }
         }
         
-        // All rects passed validation
         return true
     }
     
-    /// Validate mask rects before rendering - ensure all are within image bounds and valid.
-    /// Uses clampRectToBounds to correctly handle negative coordinates.
-    /// This is called AFTER screenshot capture to validate against actual screenshot size.
+    /// Validates mask rects before rendering against actual screenshot size.
     private func validateMaskRects(_ rects: [CGRect], imageSize: CGSize) -> [CGRect] {
         var validRects: [CGRect] = []
         let imageBounds = CGRect(origin: .zero, size: imageSize)
@@ -1411,7 +1216,6 @@ internal class SessionReplayMasker {
                 continue
             }
             
-            // Use clampRectToBounds to correctly handle negative coordinates
             let clamped = clampRectToBounds(rect: rect, bounds: imageBounds)
             
             guard clamped.width > 0 && clamped.height > 0 else {
@@ -1474,7 +1278,6 @@ internal class SessionReplayMasker {
             cgContext.setAlpha(1.0)
         
             for rect in maskRects {
-                // Clamp rect to image bounds (screenshot coordinate space)
                 let clampedRect = CGRect(
                     x: max(0, min(rect.origin.x, image.size.width)),
                     y: max(0, min(rect.origin.y, image.size.height)),
@@ -1495,13 +1298,6 @@ internal class SessionReplayMasker {
         }
         
         return maskedImage
-    }
-    
-    private func machTimeToMilliseconds(_ machTime: UInt64) -> Double {
-        var timebase = mach_timebase_info_data_t()
-        mach_timebase_info(&timebase)
-        let nanoseconds = Double(machTime) * Double(timebase.numer) / Double(timebase.denom)
-        return nanoseconds / 1_000_000.0 // Convert to milliseconds
     }
     
     private func findScrollView(in window: UIWindow) -> UIScrollView? {
