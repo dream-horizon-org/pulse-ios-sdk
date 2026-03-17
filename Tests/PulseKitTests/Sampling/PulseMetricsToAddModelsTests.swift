@@ -222,8 +222,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
             "customEventCollectorUrl":"https://custom",
             "attributesToDrop":[],
             "attributesToAdd":[],
-            "metricsToAdd":[{"name":"test_counter","target":"name","condition":{"name":".*","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"type":{"counter":{}}}],
-            "filters":{"mode":"blacklist","values":[]}
+            "metricsToAdd":[{"name":"test_counter","target":"name","condition":{"name":".*","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"type":{"counter":{}}}]
         }
         """
         let data = json.data(using: .utf8)!
@@ -241,8 +240,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
             "spanCollectorUrl":"https://spans",
             "customEventCollectorUrl":"https://custom",
             "attributesToDrop":[],
-            "attributesToAdd":[],
-            "filters":{"mode":"blacklist","values":[]}
+            "attributesToAdd":[]
         }
         """
         let data = json.data(using: .utf8)!

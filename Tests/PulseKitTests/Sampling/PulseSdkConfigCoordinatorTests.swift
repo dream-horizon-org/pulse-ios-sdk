@@ -74,8 +74,7 @@ final class PulseSdkConfigCoordinatorTests: XCTestCase {
             sampling: PulseSamplingConfig(
                 default: PulseDefaultSamplingConfig(sessionSampleRate: 0.5),
                 rules: [],
-                criticalEventPolicies: nil,
-                criticalSessionPolicies: nil
+                signalsToSample: []
             ),
             signals: PulseSignalConfig(
                 scheduleDurationMs: 60_000,
@@ -85,8 +84,7 @@ final class PulseSdkConfigCoordinatorTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                metricsToAdd: [],
-                filters: PulseSignalFilter(mode: .blacklist, values: [])
+                metricsToAdd: []
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "https://coll",

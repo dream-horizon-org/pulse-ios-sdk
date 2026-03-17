@@ -138,8 +138,7 @@ final class PulseSdkConfigRestProviderTests: XCTestCase {
                 "spanCollectorUrl": "https://spans",
                 "customEventCollectorUrl": "https://custom",
                 "attributesToDrop": [],
-                "attributesToAdd": [],
-                "filters": { "mode": "blacklist", "values": [] }
+                "attributesToAdd": []
             },
             "interaction": {
                 "collectorUrl": "https://coll",

@@ -23,8 +23,7 @@ final class PulseSdkConfigModelsTests: XCTestCase {
                 "spanCollectorUrl": "https://spans",
                 "customEventCollectorUrl": "https://custom",
                 "attributesToDrop": [],
-                "attributesToAdd": [],
-                "filters": { "mode": "blacklist", "values": [] }
+                "attributesToAdd": []
             },
             "interaction": {
                 "collectorUrl": "https://coll",
@@ -64,8 +63,7 @@ final class PulseSdkConfigModelsTests: XCTestCase {
                         }
                     }
                 ],
-                "attributesToAdd": [],
-                "filters": { "mode": "blacklist", "values": [] }
+                "attributesToAdd": []
             },
             "interaction": {
                 "collectorUrl": "https://coll",
@@ -98,8 +96,7 @@ final class PulseSdkConfigModelsTests: XCTestCase {
                 "spanCollectorUrl": "https://spans",
                 "customEventCollectorUrl": "https://custom",
                 "attributesToDrop": [],
-                "attributesToAdd": [],
-                "filters": { "mode": "blacklist", "values": [] }
+                "attributesToAdd": []
             },
             "interaction": {
                 "collectorUrl": "https://coll",
@@ -143,7 +140,6 @@ final class PulseSdkConfigModelsTests: XCTestCase {
                         }
                     }
                 ],
-                "filters": { "mode": "blacklist", "values": [] }
             },
             "interaction": {
                 "collectorUrl": "https://coll",
@@ -163,5 +159,78 @@ final class PulseSdkConfigModelsTests: XCTestCase {
         if case .counter = entry.data {
             // OK - Counter has no params
         } else { XCTFail("Expected .counter") }
+    }
+
+    func testDecodeSignalsToSample() throws {
+        let json = """
+        {
+            "version": 1,
+            "description": "test",
+            "sampling": {
+                "default": { "sessionSampleRate": 0.5 },
+                "rules": [],
+                "signalsToSample": [
+                    {
+                        "condition": {
+                            "name": "checkout_flow",
+                            "props": [],
+                            "scopes": ["traces"],
+                            "sdks": ["pulse_ios_swift"]
+                        },
+                        "sampleRate": 0.2
+                    }
+                ]
+            },
+            "signals": {
+                "scheduleDurationMs": 60000,
+                "logsCollectorUrl": "https://logs",
+                "metricCollectorUrl": "https://metrics",
+                "spanCollectorUrl": "https://spans",
+                "customEventCollectorUrl": "https://custom",
+                "attributesToDrop": [],
+                "attributesToAdd": []
+            },
+            "interaction": {
+                "collectorUrl": "https://coll",
+                "configUrl": "https://config",
+                "beforeInitQueueSize": 100
+            },
+            "features": []
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let config = try JSONDecoder().decode(PulseSdkConfig.self, from: data)
+        XCTAssertEqual(config.sampling.signalsToSample.count, 1)
+        let entry = config.sampling.signalsToSample[0]
+        XCTAssertEqual(entry.condition.name, "checkout_flow")
+        XCTAssertEqual(entry.sampleRate, 0.2)
+    }
+
+    func testDecodeWithoutSignalsToSampleDefaultsToEmpty() throws {
+        let json = """
+        {
+            "version": 1,
+            "description": "test",
+            "sampling": { "default": { "sessionSampleRate": 0.5 }, "rules": [] },
+            "signals": {
+                "scheduleDurationMs": 60000,
+                "logsCollectorUrl": "https://logs",
+                "metricCollectorUrl": "https://metrics",
+                "spanCollectorUrl": "https://spans",
+                "customEventCollectorUrl": "https://custom",
+                "attributesToDrop": [],
+                "attributesToAdd": []
+            },
+            "interaction": {
+                "collectorUrl": "https://coll",
+                "configUrl": "https://config",
+                "beforeInitQueueSize": 100
+            },
+            "features": []
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let config = try JSONDecoder().decode(PulseSdkConfig.self, from: data)
+        XCTAssertTrue(config.sampling.signalsToSample.isEmpty)
     }
 }

@@ -136,8 +136,7 @@ final class PulseSessionParserTests: XCTestCase {
         PulseSamplingConfig(
             default: PulseDefaultSamplingConfig(sessionSampleRate: defaultRate),
             rules: rules,
-            criticalEventPolicies: nil,
-            criticalSessionPolicies: nil
+            signalsToSample: []
         )
     }
 }

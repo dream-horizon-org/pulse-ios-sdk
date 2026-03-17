@@ -125,8 +125,7 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
             sampling: PulseSamplingConfig(
                 default: PulseDefaultSamplingConfig(sessionSampleRate: 0.5),
                 rules: [],
-                criticalEventPolicies: nil,
-                criticalSessionPolicies: nil
+                signalsToSample: []
             ),
             signals: PulseSignalConfig(
                 scheduleDurationMs: 60_000,
@@ -136,11 +135,7 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                metricsToAdd: [],
-                filters: PulseSignalFilter(
-                    mode: .blacklist,
-                    values: []
-                )
+                metricsToAdd: []
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "https://interaction",
@@ -158,8 +153,7 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
             sampling: PulseSamplingConfig(
                 default: PulseDefaultSamplingConfig(sessionSampleRate: 0.5),
                 rules: [],
-                criticalEventPolicies: nil,
-                criticalSessionPolicies: nil
+                signalsToSample: []
             ),
             signals: PulseSignalConfig(
                 scheduleDurationMs: 60_000,
@@ -169,8 +163,7 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: attributesToDrop,
                 attributesToAdd: [],
-                metricsToAdd: [],
-                filters: PulseSignalFilter(mode: .blacklist, values: [])
+                metricsToAdd: []
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "https://interaction",
