@@ -2,7 +2,7 @@
  * Copyright The OpenTelemetry Authors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Sampling exporters: session sampling, critical events, filters, attribute drop/add (Batch 4, LLD §8).
+ * Sampling exporters: add → metrics → drop → targeted sampling (signalsToSample) → session sampling (Batch 4, LLD §8).
  */
 
 import Foundation
@@ -294,9 +294,8 @@ public final class PulseSamplingSignalProcessors {
 
         public func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
             guard let parent = parent else { return delegateExporter.export(spans: spans, explicitTimeout: explicitTimeout) }
-            let sampledSpans = parent.sampleSpansInSession(spans)
-            guard !sampledSpans.isEmpty else { return .success }
-            let filtered = sampledSpans.compactMap { span -> SpanData? in
+            // Pipeline order per spec: add → metrics → drop → targeted sampling → session sampling
+            let filtered = spans.compactMap { span -> SpanData? in
                 var currentAttrs = span.attributes
                 var result = span
                 // 1. Add attributes (enrich)
@@ -387,9 +386,8 @@ public final class PulseSamplingSignalProcessors {
             guard let parent = parent else {
                 return delegateExporter.export(logRecords: logRecords, explicitTimeout: explicitTimeout)
             }
-            let sampledLogs = parent.sampleLogsInSession(logRecords)
-            guard !sampledLogs.isEmpty else { return .success }
-            let filtered = sampledLogs.compactMap { record -> ReadableLogRecord? in
+            // Pipeline order per spec: add → metrics → drop → targeted sampling → session sampling
+            let filtered = logRecords.compactMap { record -> ReadableLogRecord? in
                 let logName = logNameFromRecord(record)
                 var currentAttrs = record.attributes
                 var result = record
@@ -596,16 +594,19 @@ public final class PulseSamplingSignalProcessors {
 
     // MARK: - Targeted signal sampling (signalsToSample)
 
-    /// Returns true if the signal should be exported based on signalsToSample.
-    /// When signalsToSample is non-empty: first matching entry's sampleRate decides (random vs sampleRate).
-    /// When signalsToSample is empty: pass through (no targeted filtering).
+    /// Returns true if the signal should be exported.
+    /// Order: targeted (signalsToSample) first, then session sampling as fallback.
+    /// When signalsToSample has a matching entry: use its sampleRate.
+    /// When no match (or signalsToSample empty): session sampling decides (keep all if sampled, else drop).
     private func shouldExportSignal(
         scope: PulseSignalScope,
         name: String?,
         props: [String: Any?]
     ) -> Bool {
         let signalsToSample = sdkConfig.sampling.signalsToSample
-        if signalsToSample.isEmpty { return true }
+        if signalsToSample.isEmpty {
+            return sessionSamplingDecision.shouldSampleThisSession
+        }
         return shouldExportBySignalsToSample(scope: scope, name: name, props: props)
     }
 
@@ -626,7 +627,8 @@ public final class PulseSamplingSignalProcessors {
             if entry.sampleRate >= 1 { return true }
             return randomGenerator() < entry.sampleRate
         }
-        return true // No match: pass through (session sampling already applied at batch level)
+        // No match: session sampling applies (step 5)
+        return sessionSamplingDecision.shouldSampleThisSession
     }
 
     // MARK: - Attribute drop

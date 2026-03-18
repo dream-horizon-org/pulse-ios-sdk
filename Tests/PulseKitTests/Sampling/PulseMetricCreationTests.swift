@@ -670,8 +670,9 @@ final class PulseMetricCreationTests: XCTestCase {
         XCTAssertNotNil(m, "Metric should record when condition matches by props (http.method=GET)")
     }
 
-    func testMetricsNotDerivedWhenSessionNotSampled() {
-        // When session sampling drops all spans, metrics are not derived (metrics run on sampled span batch).
+    func testMetricsDerivedBeforeSessionSampling() {
+        // Per spec: add → metrics → drop → targeted → session. Metrics run before session filtering,
+        // so metrics are derived from all spans even when session sampling drops the span for export.
         let mock = MetricExporterMock()
         let provider = MeterProviderSdk.builder()
             .registerMetricReader(
@@ -705,9 +706,9 @@ final class PulseMetricCreationTests: XCTestCase {
         let span = createTestSpan(name: "test.span")
         _ = sampledExporter.export(spans: [span], explicitTimeout: nil as TimeInterval?)
         _ = provider.forceFlush()
-        XCTAssertEqual(mockSpanExporter.exportedSpans.count, 0, "Span should be dropped when randomValue > samplingRate")
+        XCTAssertEqual(mockSpanExporter.exportedSpans.count, 0, "Span should be dropped when session not sampled")
         let m = mock.exportedMetrics.first { $0.name == "metric_when_sampled" }
-        XCTAssertNil(m, "Metric is not derived when span is dropped by session sampling")
+        XCTAssertNotNil(m, "Metric is derived before session filtering (add → metrics → drop → targeted → session)")
     }
 
     // MARK: - Phase 5: addPropNameAsSuffix and attributesToPick
