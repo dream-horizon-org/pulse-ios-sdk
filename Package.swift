@@ -382,6 +382,7 @@ extension Package {
           dependencies: [
             "PulseKit",
             "SharedTestUtils",
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
           ],
           path: "Tests/InstrumentationTests/URLSessionTests"
         ),
