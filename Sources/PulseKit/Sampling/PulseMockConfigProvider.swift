@@ -25,13 +25,14 @@ public enum PulseMockMetricsTestCase: CaseIterable {
 
 /// Static factory for a complete PulseSdkConfig with realistic metricsToAdd entries for dev/testing.
 public enum PulseMockConfigProvider {
-    /// Change this to test one scenario at a time. Nil = all scenarios.
-    public static var activeMetricsTestCase: PulseMockMetricsTestCase? = .counterTargetNameSpan
+    /// Change this to test one scenario at a time. Nil = all scenarios (default for fullMockConfig).
+    public static var activeMetricsTestCase: PulseMockMetricsTestCase? = nil
 
     /// Returns a full PulseSdkConfig with metricsToAdd. Uses activeMetricsTestCase when case is nil.
     /// Used when useLocalMockConfig is true in PulseSdkConfigCoordinator.
     public static func fullMockConfig(metricsCase: PulseMockMetricsTestCase? = nil) -> PulseSdkConfig {
-        let active = metricsCase ?? activeMetricsTestCase
+        // metricsCase nil (default) → all scenarios. metricsCase set → single case for focused testing.
+        let active = metricsCase
         return PulseSdkConfig(
             version: 999,
             description: "Local mock config for dev/testing",
@@ -48,7 +49,7 @@ public enum PulseMockConfigProvider {
                 customEventCollectorUrl: "http://127.0.0.1:4318/v1/logs",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                metricsToAdd: makeMockMetricsToAdd(activeCase: .sumAttrSuffixTrue),
+                metricsToAdd: makeMockMetricsToAdd(activeCase: active),
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "http://127.0.0.1:8080/v1/interaction-configs/",
