@@ -23,17 +23,17 @@ public enum PulseMockConfigProvider {
             ),
             signals: PulseSignalConfig(
                 scheduleDurationMs: 60_000,
-                logsCollectorUrl: "https://mock.example.com/v1/logs",
-                metricCollectorUrl: "https://mock.example.com/v1/metrics",
-                spanCollectorUrl: "https://mock.example.com/v1/spans",
-                customEventCollectorUrl: "https://mock.example.com/v1/custom-event",
+                logsCollectorUrl: "http://127.0.0.1:4318/v1/logs",
+                metricCollectorUrl: "http://127.0.0.1:4318/v1/metrics",
+                spanCollectorUrl: "http://127.0.0.1:4318/v1/traces",
+                customEventCollectorUrl: "http://127.0.0.1:4318/v1/logs",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                metricsToAdd: makeMockMetricsToAdd()
+                metricsToAdd: [],
             ),
             interaction: PulseInteractionConfig(
-                collectorUrl: "https://mock.example.com",
-                configUrl: "https://mock.example.com/v1/configs/active",
+                collectorUrl: "http://127.0.0.1:8080/v1/interaction-configs/",
+                configUrl: "http://127.0.0.1:8080/v1/interaction-configs/",
                 beforeInitQueueSize: 100
             ),
             features: makeMockFeaturesAllEnabled()

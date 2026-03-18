@@ -469,28 +469,15 @@ public final class PulseSamplingSignalProcessors {
     // MARK: - SampledMetricExporter
 
     public final class SampledMetricExporter: MetricExporter {
-        private weak var parent: PulseSamplingSignalProcessors?
         private let delegateExporter: MetricExporter
 
         init(parent: PulseSamplingSignalProcessors, delegateExporter: MetricExporter) {
-            self.parent = parent
             self.delegateExporter = delegateExporter
         }
 
         public func export(metrics: [MetricData]) -> ExportResult {
-            guard let parent = parent else {
-                return delegateExporter.export(metrics: metrics)
-            }
-            let sampledMetrics = parent.sampleMetricsInSession(metrics)
-            guard !sampledMetrics.isEmpty else { return .success }
-            let filtered = sampledMetrics.filter { metric in
-                parent.shouldExportSignal(
-                    scope: .metrics,
-                    name: metric.name,
-                    props: [:]
-                )
-            }
-            return delegateExporter.export(metrics: filtered)
+            // Metrics are only derived (metricsToAdd) currently — no sampling, pass through
+            return delegateExporter.export(metrics: metrics)
         }
 
         public func flush() -> ExportResult {
