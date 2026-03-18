@@ -81,6 +81,142 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
         XCTAssertEqual(mockExporter.exportedLogs.count, 1)
     }
 
+    // MARK: - signalsToSample (targeted sampling)
+
+    func testSignalsToSampleSampleRateZeroAlwaysDrops() {
+        let config = makeSdkConfigWithSignalsToSample([
+            PulseSignalsToSampleEntry(
+                condition: PulseSignalMatchCondition(
+                    name: "noise_span",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                sampleRate: 0
+            )
+        ])
+        let mockExporter = MockSpanExporter()
+        let processors = PulseSamplingSignalProcessors(
+            sdkConfig: config,
+            currentSdkName: .pulse_ios_swift,
+            sessionParser: AlwaysOnSessionParser(),
+            randomGenerator: { 0.5 }
+        )
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockExporter)
+        let span = createTestSpan(name: "noise_span")
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil)
+        XCTAssertEqual(mockExporter.exportedSpans.count, 0, "sampleRate 0 should always drop")
+    }
+
+    func testSignalsToSampleSampleRateOneAlwaysKeeps() {
+        let config = makeSdkConfigWithSignalsToSample([
+            PulseSignalsToSampleEntry(
+                condition: PulseSignalMatchCondition(
+                    name: "checkout_complete",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                sampleRate: 1.0
+            )
+        ])
+        let mockExporter = MockSpanExporter()
+        let processors = PulseSamplingSignalProcessors(
+            sdkConfig: config,
+            currentSdkName: .pulse_ios_swift,
+            sessionParser: AlwaysOffSessionParser(),
+            randomGenerator: { 0 }
+        )
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockExporter)
+        let span = createTestSpan(name: "checkout_complete")
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil)
+        XCTAssertEqual(mockExporter.exportedSpans.count, 1, "sampleRate 1.0 should always keep even when session not sampled")
+    }
+
+    func testSignalsToSampleFirstMatchWins() {
+        let config = makeSdkConfigWithSignalsToSample([
+            PulseSignalsToSampleEntry(
+                condition: PulseSignalMatchCondition(
+                    name: "checkout_complete",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                sampleRate: 1.0
+            ),
+            PulseSignalsToSampleEntry(
+                condition: PulseSignalMatchCondition(
+                    name: ".*",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                sampleRate: 0.0
+            )
+        ])
+        let mockExporter = MockSpanExporter()
+        let processors = PulseSamplingSignalProcessors(
+            sdkConfig: config,
+            currentSdkName: .pulse_ios_swift,
+            sessionParser: AlwaysOffSessionParser(),
+            randomGenerator: { 0 }
+        )
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockExporter)
+        let span = createTestSpan(name: "checkout_complete")
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil)
+        XCTAssertEqual(mockExporter.exportedSpans.count, 1, "First match (checkout_complete rate 1) wins over later .* rate 0")
+    }
+
+    func testSignalsToSampleNoMatchUsesSessionSampling() {
+        let config = makeSdkConfigWithSignalsToSample([
+            PulseSignalsToSampleEntry(
+                condition: PulseSignalMatchCondition(
+                    name: "only_this",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                sampleRate: 1.0
+            )
+        ])
+        let mockExporter = MockSpanExporter()
+        let processors = PulseSamplingSignalProcessors(
+            sdkConfig: config,
+            currentSdkName: .pulse_ios_swift,
+            sessionParser: AlwaysOnSessionParser(),
+            randomGenerator: { 0 }
+        )
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockExporter)
+        let span = createTestSpan(name: "other_span")
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil)
+        XCTAssertEqual(mockExporter.exportedSpans.count, 1, "No match → session sampling; AlwaysOn keeps it")
+    }
+
+    func testSignalsToSampleNoMatchWhenSessionNotSampledDrops() {
+        let config = makeSdkConfigWithSignalsToSample([
+            PulseSignalsToSampleEntry(
+                condition: PulseSignalMatchCondition(
+                    name: "only_this",
+                    props: [],
+                    scopes: [.traces],
+                    sdks: [.pulse_ios_swift]
+                ),
+                sampleRate: 1.0
+            )
+        ])
+        let mockExporter = MockSpanExporter()
+        let processors = PulseSamplingSignalProcessors(
+            sdkConfig: config,
+            currentSdkName: .pulse_ios_swift,
+            sessionParser: AlwaysOffSessionParser(),
+            randomGenerator: { 0.5 }
+        )
+        let sampledExporter = processors.makeSampledSpanExporter(delegateExporter: mockExporter)
+        let span = createTestSpan(name: "other_span")
+        _ = sampledExporter.export(spans: [span], explicitTimeout: nil)
+        XCTAssertEqual(mockExporter.exportedSpans.count, 0, "No match + session not sampled (random 0.5 > rate 0) → drop")
+    }
+
     func testSampledSpanExporterDropsAttributesWhenAttributesToDropMatches() {
         let dropCondition = PulseSignalMatchCondition(
             name: ".*",
@@ -143,6 +279,34 @@ final class PulseSamplingSignalProcessorsTests: XCTestCase {
                 beforeInitQueueSize: 100
             ),
             features: features
+        )
+    }
+
+    private func makeSdkConfigWithSignalsToSample(_ signalsToSample: [PulseSignalsToSampleEntry]) -> PulseSdkConfig {
+        PulseSdkConfig(
+            version: 1,
+            description: "test",
+            sampling: PulseSamplingConfig(
+                default: PulseDefaultSamplingConfig(sessionSampleRate: 0.3),
+                rules: [],
+                signalsToSample: signalsToSample
+            ),
+            signals: PulseSignalConfig(
+                scheduleDurationMs: 60_000,
+                logsCollectorUrl: "https://logs",
+                metricCollectorUrl: "https://metrics",
+                spanCollectorUrl: "https://spans",
+                customEventCollectorUrl: "https://custom",
+                attributesToDrop: [],
+                attributesToAdd: [],
+                metricsToAdd: []
+            ),
+            interaction: PulseInteractionConfig(
+                collectorUrl: "https://interaction",
+                configUrl: "https://config",
+                beforeInitQueueSize: 100
+            ),
+            features: []
         )
     }
 
