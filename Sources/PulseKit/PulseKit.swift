@@ -34,8 +34,8 @@ public class Pulse {
     }
 
     private var openTelemetry: OpenTelemetry?
-    private var batchSpanProcessor: BatchSpanProcessor?
-    private var batchLogProcessor: BatchLogRecordProcessor?
+    private var _consentSpanProcessor: ConsentSpanProcessor?
+    private var _consentLogProcessor: ConsentLogProcessor?
     private var instrumentationConfig: InstrumentationConfiguration?
     
     // User session emitter
@@ -88,9 +88,6 @@ public class Pulse {
         defer { consentStateLock.unlock() }
         return _dataCollectionState
     }
-
-    private var _consentSpanExporter: ConsentSpanExporter?
-    private var _consentLogExporter: ConsentLogExporter?
 
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
@@ -212,7 +209,7 @@ public class Pulse {
                 endpointBaseUrl: endpointBaseUrl,
                 endpointHeaders: endpointHeadersWithProject,
                 flushLogProcessor: { [weak self] in
-                    self?.batchLogProcessor?.forceFlush()
+                    _ = self?._consentLogProcessor?.forceFlush()
                 }
             )
             self.instrumentationConfig = config
@@ -376,38 +373,35 @@ public class Pulse {
             logExporter: finalLogExporter
         )
 
-        let consentSpanExporter = ConsentSpanExporter(
-            delegate: persistentSpanExporter,
-            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
-        )
-        let consentLogExporter = ConsentLogExporter(
-            delegate: persistentLogExporter,
-            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
-        )
-        self._consentSpanExporter = consentSpanExporter
-        self._consentLogExporter = consentLogExporter
-
-        let spanProcessor = BatchSpanProcessor(
-            spanExporter: consentSpanExporter,
+        let innerBatchSpanProcessor = BatchSpanProcessor(
+            spanExporter: persistentSpanExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
-        let baseLogProcessor = BatchLogRecordProcessor(
-            logRecordExporter: consentLogExporter,
+        let consentSpanProcessor = ConsentSpanProcessor(
+            delegate: innerBatchSpanProcessor,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentSpanProcessor = consentSpanProcessor
+
+        let innerBatchLogProcessor = BatchLogRecordProcessor(
+            logRecordExporter: persistentLogExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
-
-        self.batchSpanProcessor = spanProcessor
-        self.batchLogProcessor = baseLogProcessor
+        let consentLogProcessor = ConsentLogProcessor(
+            delegate: innerBatchLogProcessor,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentLogProcessor = consentLogProcessor
 
         let (spanProcessors, logProcessors) = buildProcessors(
-            baseSpanProcessor: spanProcessor,
-            baseLogProcessor: baseLogProcessor,
+            baseSpanProcessor: consentSpanProcessor,
+            baseLogProcessor: consentLogProcessor,
             config: config,
             meteredConfig: meteredConfig,
             meteredManager: meteredManager,
@@ -559,16 +553,16 @@ public class Pulse {
             case .allowed:
                 shouldFlush = true
             case .denied:
-                _consentSpanExporter?.clearBuffer()
-                _consentLogExporter?.clearBuffer()
+                _consentSpanProcessor?.clearBuffer()
+                _consentLogProcessor?.clearBuffer()
                 shouldShutdown = true
             case .pending:
                 break
             }
         }
         if shouldFlush {
-            _consentSpanExporter?.flushBuffer()
-            _consentLogExporter?.flushBuffer()
+            _consentSpanProcessor?.flushBuffer()
+            _consentLogProcessor?.flushBuffer()
         }
         if shouldShutdown { shutdown() }
     }
@@ -584,8 +578,8 @@ public class Pulse {
             defaults.removeObject(forKey: "pulse_installation_id")
             defaults.removeObject(forKey: "user_id")
 
-            batchSpanProcessor?.shutdown()
-            _ = batchLogProcessor?.shutdown()
+            _consentSpanProcessor?.shutdown(explicitTimeout: nil)
+            _ = _consentLogProcessor?.shutdown()
             PersistenceUtils.clearStorage()
 
             openTelemetry = nil
