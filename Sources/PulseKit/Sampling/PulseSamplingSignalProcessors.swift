@@ -625,7 +625,7 @@ public final class PulseSamplingSignalProcessors {
             ) else { continue }
             if entry.sampleRate <= 0 { return false }
             if entry.sampleRate >= 1 { return true }
-            return randomGenerator() < entry.sampleRate
+            return sessionSamplingDecision.sessionRandomValue < entry.sampleRate
         }
         // No match: session sampling applies (step 5)
         return sessionSamplingDecision.shouldSampleThisSession
