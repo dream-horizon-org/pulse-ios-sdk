@@ -491,6 +491,8 @@ class MainViewController: UIViewController {
             .setAttribute(key: "http.method", value: "GET")
             .setAttribute(key: "http.url", value: "https://api.example.com/data")
             .setAttribute(key: "custom.user_id", value: "user-12345")
+            .setAttribute(key: "http.request_content_length", value: 0)
+            .setAttribute(key: "http.response_content_length", value: 4096)
             .startSpan()
         
         print("  Span started: example.operation")
@@ -512,6 +514,7 @@ class MainViewController: UIViewController {
         print("  Event added: response.received")
         
         span.setAttribute(key: "http.status_code", value: 200)
+        span.setAttribute(key: "http.duration", value: 150.0)
         span.end()
         print("  Span ended: example.operation")
         
@@ -545,6 +548,7 @@ class MainViewController: UIViewController {
         
         print("  Child span 1: spanId=\(childSpan1.context.spanId) parent=\(parentSpan.context.spanId)")
         Thread.sleep(forTimeInterval: 0.1)
+        childSpan1.setAttribute(key: "db.duration", value: 45.0)
         childSpan1.end()
         print("  Child span 1 ended: child.db_query")
         

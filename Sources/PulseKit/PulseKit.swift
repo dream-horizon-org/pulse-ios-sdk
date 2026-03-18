@@ -136,7 +136,7 @@ public class Pulse {
             let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
 
             // Config: load from persistence (sync)
-            let useLocalMockConfig = true
+            let useLocalMockConfig = false
             let configCoordinator = PulseSdkConfigCoordinator(useLocalMockConfig: useLocalMockConfig)
             configStorageQueue.sync {
                 _currentSdkConfig = configCoordinator.loadCurrentConfig()

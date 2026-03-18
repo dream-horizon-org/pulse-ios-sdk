@@ -252,8 +252,11 @@ public final class PulseSamplingSignalProcessors {
                 sdkName: currentSdkName
             ) else { continue }
             let pointAttributes = buildAttributesToPick(from: signalAttributes, entry: entry)
+            let signalKind = scope == .traces ? "span" : "log"
+            let signalName = name ?? "?"
             switch entry.target {
             case .name:
+                PulseLogger.log("Metric derived: \(entry.name) <- \(signalKind) \"\(signalName)\"")
                 recorder(name ?? "", nil, pointAttributes)
             case .attribute(let attrCondition, let addPropNameAsSuffix):
                 for (attrKey, attrValue) in props {
@@ -262,6 +265,8 @@ public final class PulseSamplingSignalProcessors {
                     }
                     if keyMatches {
                         let suffix = addPropNameAsSuffix ? attrKey : nil
+                        let metricName = suffix.map { "\(entry.name).\($0)" } ?? entry.name
+                        PulseLogger.log("Metric derived: \(metricName) <- \(signalKind) \"\(signalName)\" (attr: \(attrKey))")
                         recorder(attrValue, suffix, pointAttributes)
                     }
                 }

@@ -8,12 +8,31 @@
 
 import Foundation
 
+/// Which metricsToAdd scenario to include. Use one at a time for focused testing.
+public enum PulseMockMetricsTestCase: CaseIterable {
+    case counterTargetNameSpan
+    case counterTargetNameLog
+    case counterAttrSuffixFalse
+    case counterAttrSuffixFalseButMutlipleAttr
+    case counterAttrSuffixTrue
+    case gaugeAttrSuffixFalse
+    case gaugeAttrSuffixTrue
+    case histogramAttrSuffixFalse
+    case histogramAttrSuffixTrue
+    case sumAttrSuffixFalse
+    case sumAttrSuffixTrue
+}
+
 /// Static factory for a complete PulseSdkConfig with realistic metricsToAdd entries for dev/testing.
 public enum PulseMockConfigProvider {
-    /// Returns a full PulseSdkConfig with metricsToAdd: counter for span names, histogram for http.duration, etc.
+    /// Change this to test one scenario at a time. Nil = all scenarios.
+    public static var activeMetricsTestCase: PulseMockMetricsTestCase? = .counterTargetNameSpan
+
+    /// Returns a full PulseSdkConfig with metricsToAdd. Uses activeMetricsTestCase when case is nil.
     /// Used when useLocalMockConfig is true in PulseSdkConfigCoordinator.
-    public static func fullMockConfig() -> PulseSdkConfig {
-        PulseSdkConfig(
+    public static func fullMockConfig(metricsCase: PulseMockMetricsTestCase? = nil) -> PulseSdkConfig {
+        let active = metricsCase ?? activeMetricsTestCase
+        return PulseSdkConfig(
             version: 999,
             description: "Local mock config for dev/testing",
             sampling: PulseSamplingConfig(
@@ -29,7 +48,7 @@ public enum PulseMockConfigProvider {
                 customEventCollectorUrl: "http://127.0.0.1:4318/v1/logs",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                metricsToAdd: [],
+                metricsToAdd: makeMockMetricsToAdd(activeCase: .sumAttrSuffixTrue),
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "http://127.0.0.1:8080/v1/interaction-configs/",
@@ -48,52 +67,210 @@ public enum PulseMockConfigProvider {
             .map { PulseFeatureConfig(featureName: $0, sessionSampleRate: 1, sdks: sdks) }
     }
 
-    private static func makeMockMetricsToAdd() -> [PulseMetricsToAddEntry] {
-        [
-            // Counter on span name - counts all spans matching .*
-            PulseMetricsToAddEntry(
-                name: "span_count",
-                target: .name,
-                condition: PulseSignalMatchCondition(
-                    name: ".*",
-                    props: [],
-                    scopes: [.traces],
-                    sdks: [.pulse_ios_swift, .pulse_ios_rn]
-                ),
-                data: .counter
-            ),
-            // Histogram on http.duration attribute
-            PulseMetricsToAddEntry(
-                name: "http_duration",
-                target: .attribute(
-                    condition: PulseSignalMatchCondition(
-                        name: ".*",
-                        props: [PulseProp(name: "http.duration", value: ".*")],
-                        scopes: [.traces],
-                        sdks: [.pulse_ios_swift, .pulse_ios_rn]
-                    ),
-                    addPropNameAsSuffix: false
-                ),
-                condition: PulseSignalMatchCondition(
-                    name: ".*",
-                    props: [],
-                    scopes: [.traces],
-                    sdks: [.pulse_ios_swift, .pulse_ios_rn]
-                ),
-                data: .histogram(bucket: [50, 100, 250, 500, 1000], isFraction: true)
-            ),
-            // Counter on log body - counts logs
-            PulseMetricsToAddEntry(
-                name: "log_count",
-                target: .name,
-                condition: PulseSignalMatchCondition(
-                    name: ".*",
-                    props: [],
-                    scopes: [.logs],
-                    sdks: [.pulse_ios_swift, .pulse_ios_rn]
-                ),
-                data: .counter
-            ),
-        ]
+    /// Returns metricsToAdd for the given case, or all when activeCase is nil.
+    static func makeMockMetricsToAdd(activeCase: PulseMockMetricsTestCase?) -> [PulseMetricsToAddEntry] {
+        let baseCondition = PulseSignalMatchCondition(
+            name: ".*",
+            props: [],
+            scopes: [.traces],
+            sdks: [.pulse_ios_swift, .pulse_ios_rn]
+        )
+        let logCondition = PulseSignalMatchCondition(
+            name: ".*",
+            props: [],
+            scopes: [.logs],
+            sdks: [.pulse_ios_swift, .pulse_ios_rn]
+        )
+
+        func entries(for case: PulseMockMetricsTestCase) -> [PulseMetricsToAddEntry] {
+            switch `case` {
+            case .counterTargetNameSpan:
+                return [
+                    PulseMetricsToAddEntry(name: "span_count", target: .name, condition: baseCondition, data: .counter)
+                ]
+            case .counterTargetNameLog:
+                return [
+                    PulseMetricsToAddEntry(name: "log_count", target: .name, condition: logCondition, data: .counter)
+                ]
+            case .counterAttrSuffixFalse:
+                // Uses http.status_code – span must have this attribute (e.g. example spans with status 200)
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "http_req_count",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [PulseProp(name: "http\\.status_code", value: ".*")],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: false
+                        ),
+                        condition: baseCondition,
+                        data: .counter
+                    )
+                ]
+            case .counterAttrSuffixTrue:
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "http_count",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [
+                                    PulseProp(name: "http\\.method", value: ".*"),
+                                    PulseProp(name: "http\\.status_code", value: ".*")
+                                ],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: true
+                        ),
+                        condition: baseCondition,
+                        data: .counter
+                    )
+                ]
+            case .counterAttrSuffixFalseButMutlipleAttr:
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "http_count",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [
+                                    PulseProp(name: "http\\.method", value: ".*"),
+                                    PulseProp(name: "http\\.status_code", value: ".*")
+                                ],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: false
+                        ),
+                        condition: baseCondition,
+                        data: .counter
+                    )
+                ]
+            case .gaugeAttrSuffixFalse:
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "http_status_code_gauge",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [PulseProp(name: "http\\.status_code", value: ".*")],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: false
+                        ),
+                        condition: baseCondition,
+                        data: .gauge(isFraction: true)
+                    )
+                ]
+            case .gaugeAttrSuffixTrue:
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "latency_gauge",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [
+                                    PulseProp(name: "http\\.status_code", value: ".*"),
+                                    PulseProp(name: "http\\.method", value: ".*")
+                                ],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: true
+                        ),
+                        condition: baseCondition,
+                        data: .gauge(isFraction: true)
+                    )
+                ]
+            case .histogramAttrSuffixFalse:
+                // Uses http.duration – "Span with Events + Attributes" button sets this (150.0)
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "http_duration",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [PulseProp(name: "http\\.duration", value: ".*")],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: false
+                        ),
+                        condition: baseCondition,
+                        data: .histogram(bucket: [50, 100, 250, 500, 1000], isFraction: true)
+                    )
+                ]
+            case .histogramAttrSuffixTrue:
+                // http.duration from "Span with Events + Attributes", db.duration from "Nested Spans" child.db_query
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "latency_histogram",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [
+                                    PulseProp(name: "http\\.duration", value: ".*"),
+                                    PulseProp(name: "db\\.duration", value: ".*")
+                                ],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: true
+                        ),
+                        condition: baseCondition,
+                        data: .histogram(bucket: [10, 50, 100], isFraction: true)
+                    )
+                ]
+            case .sumAttrSuffixFalse:
+                // Uses http.response_content_length – "Span with Events + Attributes" sets 4096
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "bytes_sent",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [PulseProp(name: "http\\.response_content_length", value: ".*")],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: false
+                        ),
+                        condition: baseCondition,
+                        data: .sum(isFraction: false, isMonotonic: true)
+                    )
+                ]
+            case .sumAttrSuffixTrue:
+                // Both from "Span with Events + Attributes" (0 and 4096) → bytes.http.request_content_length, bytes.http.response_content_length
+                return [
+                    PulseMetricsToAddEntry(
+                        name: "bytes",
+                        target: .attribute(
+                            condition: PulseSignalMatchCondition(
+                                name: ".*",
+                                props: [
+                                    PulseProp(name: "http\\.request_content_length", value: ".*"),
+                                    PulseProp(name: "http\\.response_content_length", value: ".*")
+                                ],
+                                scopes: [.traces],
+                                sdks: [.pulse_ios_swift, .pulse_ios_rn]
+                            ),
+                            addPropNameAsSuffix: true
+                        ),
+                        condition: baseCondition,
+                        data: .sum(isFraction: false, isMonotonic: true)
+                    )
+                ]
+            }
+        }
+
+        if let active = activeCase {
+            return entries(for: active)
+        }
+        return PulseMockMetricsTestCase.allCases.flatMap { entries(for: $0) }
     }
 }

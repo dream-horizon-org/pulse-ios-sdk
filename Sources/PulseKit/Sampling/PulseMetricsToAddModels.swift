@@ -77,9 +77,9 @@ public enum PulseMetricsToAddTarget: Codable, Equatable {
     case name
 
     /// A specific attribute value on the signal is used. The attribute is identified by the condition.
-    /// When `addPropNameAsSuffix` is true, final metric name = `<name>.<key_name_of_the_prop_matched>`.
-    /// JSON: `"target": { "attribute": {...} }` or `"target": { "type": "attribute", "attribute": {...} }`
-    /// Supports both `addPropNameAsSuffix` and `shouldAddPropNameAsSuffix` keys.
+    /// When true, different metrics are emitted per matched attribute key; final metric name = `<name>.<key_name_of_the_prop_matched>`.
+    /// When false, all matching values are aggregated into one metric.
+    /// JSON: `"target": { "attribute": {...} }` — canonical key is `shouldAddPropNameAsSuffix`; `addPropNameAsSuffix` accepted for backwards compatibility.
     case attribute(condition: PulseSignalMatchCondition, addPropNameAsSuffix: Bool)
 
     private enum TargetObjectKeys: String, CodingKey {
@@ -115,20 +115,21 @@ public enum PulseMetricsToAddTarget: Codable, Equatable {
             if typeStr == "attribute" {
                 let inner = try c.nestedContainer(keyedBy: AttributeInnerKeys.self, forKey: .attribute)
                 let condition = try inner.decode(PulseSignalMatchCondition.self, forKey: .condition)
-                let addPropNameAsSuffix = (try? inner.decode(Bool.self, forKey: .addPropNameAsSuffix))
-                    ?? (try? inner.decode(Bool.self, forKey: .shouldAddPropNameAsSuffix))
+                // Canonical: shouldAddPropNameAsSuffix; addPropNameAsSuffix supported for backwards compatibility
+                let addPropNameAsSuffix = (try? inner.decode(Bool.self, forKey: .shouldAddPropNameAsSuffix))
+                    ?? (try? inner.decode(Bool.self, forKey: .addPropNameAsSuffix))
                     ?? false
                 self = .attribute(condition: condition, addPropNameAsSuffix: addPropNameAsSuffix)
                 return
             }
         }
 
-        // Legacy: { "attribute": { "condition": ..., "addPropNameAsSuffix": ... } } without top-level type
+        // Legacy: { "attribute": { "condition": ..., "shouldAddPropNameAsSuffix" / "addPropNameAsSuffix": ... } } without top-level type
         if c.contains(.attribute) {
             let inner = try c.nestedContainer(keyedBy: AttributeInnerKeys.self, forKey: .attribute)
             let condition = try inner.decode(PulseSignalMatchCondition.self, forKey: .condition)
-            let addPropNameAsSuffix = (try? inner.decode(Bool.self, forKey: .addPropNameAsSuffix))
-                ?? (try? inner.decode(Bool.self, forKey: .shouldAddPropNameAsSuffix))
+            let addPropNameAsSuffix = (try? inner.decode(Bool.self, forKey: .shouldAddPropNameAsSuffix))
+                ?? (try? inner.decode(Bool.self, forKey: .addPropNameAsSuffix))
                 ?? false
             self = .attribute(condition: condition, addPropNameAsSuffix: addPropNameAsSuffix)
             return
@@ -148,7 +149,7 @@ public enum PulseMetricsToAddTarget: Codable, Equatable {
             var c = encoder.container(keyedBy: TargetObjectKeys.self)
             var inner = c.nestedContainer(keyedBy: AttributeInnerKeys.self, forKey: .attribute)
             try inner.encode(condition, forKey: .condition)
-            try inner.encode(addPropNameAsSuffix, forKey: .addPropNameAsSuffix)
+            try inner.encode(addPropNameAsSuffix, forKey: .shouldAddPropNameAsSuffix)
         }
     }
 }
