@@ -20,6 +20,9 @@ internal final class SessionReplayPersistingEmitter {
     private var isFlushing = false
     private let flushLock = NSLock()
     private var flushTimer: DispatchSourceTimer?
+    
+    private var isShutDown: Bool = false
+    private let shutdownLock: NSLock = NSLock()
 
     private static let fileExtension = "replay"
 
@@ -61,8 +64,34 @@ internal final class SessionReplayPersistingEmitter {
     deinit {
         flushTimer?.cancel()
     }
+    
+    // MARK: - Shutdown Management
+    
+    func shutdown() {
+        shutdownLock.lock()
+        guard !isShutDown else {
+            shutdownLock.unlock()
+            return
+        }
+        isShutDown = true
+        shutdownLock.unlock()
+        
+        queue.async { [weak self] in
+            guard let self: SessionReplayPersistingEmitter = self else { return }
+            self.flushTimer?.cancel()
+            self.flushTimer = nil
+            self.flushIfNeeded(ignoringShutdown: true)  // Final flush bypasses guard
+        }
+    }
 
     func emit(payloadJson: String) {
+        shutdownLock.lock()
+        guard !isShutDown else {
+            shutdownLock.unlock()
+            return
+        }
+        shutdownLock.unlock()
+        
         queue.async { [weak self] in
             guard let self = self else {
                 return
@@ -197,7 +226,16 @@ internal final class SessionReplayPersistingEmitter {
         }
     }
 
-    private func flushIfNeeded() {
+    private func flushIfNeeded(ignoringShutdown: Bool = false) {
+        if !ignoringShutdown {
+            shutdownLock.lock()
+            guard !isShutDown else {
+                shutdownLock.unlock()
+                return
+            }
+            shutdownLock.unlock()
+        }
+        
         flushLock.lock()
         guard !isFlushing else {
             flushLock.unlock()

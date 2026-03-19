@@ -62,7 +62,7 @@ struct WireframeUpdate: Encodable {
 struct SessionReplayPayload: Encodable {
     let event: String = "snapshot"
     let projectId: String
-    let userId: String?
+    let userId: String
     let properties: SessionReplayProperties
 
     enum CodingKeys: String, CodingKey {
@@ -118,7 +118,7 @@ class SessionReplayEventTransformer {
         frame: SessionReplayFrame,
         windowStatus: inout WindowSnapshotStatus,
         projectId: String,
-        userId: String?
+        userId: String
     ) -> [SessionReplayEvent] {
         var events: [SessionReplayEvent] = []
         

@@ -67,6 +67,38 @@ public struct SessionReplayConfig {
     /// Set of view class names (fully-qualified) that should always be unmasked.
     /// Applies to the registered class and all its subclasses.
     public var unmaskViewClasses: Set<String> = []
+    
+    // MARK: - Effective (Clamped) Properties
+    
+    /// Capture interval clamped to minimum 100ms to prevent excessive frame capture.
+    public var effectiveCaptureIntervalMs: Int {
+        max(100, captureIntervalMs)
+    }
+    
+    /// Compression quality clamped to 0.0–1.0 range for valid UIGraphicsImageRenderer output.
+    public var effectiveCompressionQuality: CGFloat {
+        max(0.0, min(1.0, compressionQuality))
+    }
+    
+    /// Screenshot scale clamped to 0.01–1.0 range for valid capture dimensions.
+    public var effectiveScreenshotScale: CGFloat {
+        max(0.01, min(1.0, screenshotScale))
+    }
+    
+    /// Flush interval clamped to minimum 1.0 second to prevent excessive flushing.
+    public var effectiveFlushIntervalSeconds: TimeInterval {
+        max(1.0, flushIntervalSeconds)
+    }
+    
+    /// Flush threshold clamped to minimum 1 to ensure at least one payload per flush.
+    public var effectiveFlushAt: Int {
+        max(1, flushAt)
+    }
+    
+    /// Batch size clamped to minimum 1 to ensure non-empty batches.
+    public var effectiveMaxBatchSize: Int {
+        max(1, maxBatchSize)
+    }
 
     public init(
         captureIntervalMs: Int = 1000,

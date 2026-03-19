@@ -59,8 +59,11 @@ extension SessionReplayConfig {
             return CGFloat(clamped) / 100.0
         }
         
-        // Convert screenshotScale from Float to CGFloat
-        let screenshotScale: CGFloat? = remote.screenshotScale.map { CGFloat($0) }
+        // Convert screenshotScale from Float to CGFloat and clamp to valid range
+        let screenshotScale: CGFloat? = remote.screenshotScale.map { scale in
+            let clamped = max(0.01, min(1.0, CGFloat($0)))
+            return clamped
+        }
         
         // Convert flushIntervalSeconds from Int to TimeInterval
         let flushIntervalSeconds: TimeInterval? = remote.flushIntervalSeconds.map { TimeInterval($0) }

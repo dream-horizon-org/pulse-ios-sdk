@@ -39,9 +39,9 @@ public class SessionReplayRecorder {
         if let exporter = exporter {
             self.persistingEmitter = SessionReplayPersistingEmitter(
                 transport: exporter.transport,
-                flushIntervalSeconds: config.flushIntervalSeconds,
-                flushAt: config.flushAt,
-                maxBatchSize: config.maxBatchSize
+                flushIntervalSeconds: config.effectiveFlushIntervalSeconds,
+                flushAt: config.effectiveFlushAt,
+                maxBatchSize: config.effectiveMaxBatchSize
             )
             self.persistingEmitter?.sendCachedEvents()
         }
@@ -54,6 +54,12 @@ public class SessionReplayRecorder {
         removeLifecycleObservers()
     }
     
+    // MARK: - User ID Resolution
+    
+    private func resolvedUserId() -> String {
+        userIdProvider?() ?? "anonymous"
+    }
+    
     public func start(resetState: Bool = true) {
         queue.async { [weak self] in
             guard let self = self, !self._isRecording else { return }
@@ -63,7 +69,7 @@ public class SessionReplayRecorder {
                 self.currentSessionId = nil
             }
             self._isRecording = true
-            self.throttler = SessionReplayThrottler(throttleDelayMs: self.config.captureIntervalMs, queue: self.queue)
+            self.throttler = SessionReplayThrottler(throttleDelayMs: self.config.effectiveCaptureIntervalMs, queue: self.queue)
             self.resetDrawOccurredFlag()
             self.startDisplayLink()
         }
@@ -80,7 +86,7 @@ public class SessionReplayRecorder {
             self.throttler?.cancel()
             self.throttler = nil
             self.stopDisplayLink()
-            self.persistingEmitter?.flush()
+            self.persistingEmitter?.shutdown()
         }
     }
     
@@ -143,7 +149,7 @@ public class SessionReplayRecorder {
         for window in windowsToCapture {
             dispatchGroup.enter()
             
-            capturer.capture(window: window, scale: config.screenshotScale) { [weak self] capturedImage in
+            capturer.capture(window: window, scale: config.effectiveScreenshotScale) { [weak self] capturedImage in
                 defer { dispatchGroup.leave() }
                 
                 guard let self = self, let capturedImage = capturedImage else {
@@ -152,7 +158,7 @@ public class SessionReplayRecorder {
                 
                 guard let compressed = SessionReplayCompressor.compress(
                     image: capturedImage,
-                    quality: self.config.compressionQuality
+                    quality: self.config.effectiveCompressionQuality
                 ) else {
                     return
                 }
@@ -181,7 +187,7 @@ public class SessionReplayRecorder {
                         frame: frame,
                         windowStatus: &windowStatus,
                         projectId: pid,
-                        userId: self.userIdProvider?()
+                        userId: self.resolvedUserId()
                     )
                     self.updateWindowStatus(window: window, status: windowStatus)
                     
@@ -206,7 +212,7 @@ public class SessionReplayRecorder {
             if let emitter = self.persistingEmitter, let pid = self.projectId, !allEvents.isEmpty, let sessionId = self.currentSessionId {
                 let payload = SessionReplayPayload(
                     projectId: pid,
-                    userId: self.userIdProvider?(),
+                    userId: self.resolvedUserId(),
                     properties: SessionReplayProperties(
                         sessionId: sessionId,
                         snapshotSource: "ios",
