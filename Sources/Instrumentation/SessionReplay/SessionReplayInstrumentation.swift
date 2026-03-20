@@ -12,10 +12,13 @@ import UIKit
 #endif
 
 public class SessionReplayInstrumentation {
+    private static let singletonLock: NSLock = NSLock()
     private static var sharedInstance: SessionReplayInstrumentation?
     
     public static func getInstance() -> SessionReplayInstrumentation? {
-        sharedInstance
+        singletonLock.lock()
+        defer { singletonLock.unlock() }
+        return sharedInstance
     }
     
     private var recorder: SessionReplayRecorder?
@@ -25,7 +28,11 @@ public class SessionReplayInstrumentation {
     public init(config: SessionReplayConfig, exporter: SessionReplayExporter? = nil) {
         self.config = config
         self.exporter = exporter
+        
+        // Thread-safe singleton assignment
+        SessionReplayInstrumentation.singletonLock.lock()
         SessionReplayInstrumentation.sharedInstance = self
+        SessionReplayInstrumentation.singletonLock.unlock()
     }
     
     public func install() {
@@ -46,6 +53,11 @@ public class SessionReplayInstrumentation {
     public func uninstall() {
         recorder?.stop()
         recorder = nil
+        
+        // Thread-safe singleton cleanup
+        SessionReplayInstrumentation.singletonLock.lock()
+        SessionReplayInstrumentation.sharedInstance = nil
+        SessionReplayInstrumentation.singletonLock.unlock()
     }
     
     public var recorderInstance: SessionReplayRecorder? {

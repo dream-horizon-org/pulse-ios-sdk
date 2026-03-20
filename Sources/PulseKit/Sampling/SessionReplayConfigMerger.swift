@@ -61,7 +61,7 @@ extension SessionReplayConfig {
         
         // Convert screenshotScale from Float to CGFloat and clamp to valid range
         let screenshotScale: CGFloat? = remote.screenshotScale.map { scale in
-            let clamped = max(0.01, min(1.0, CGFloat($0)))
+            let clamped = max(0.01, min(1.0, CGFloat(scale)))
             return clamped
         }
         

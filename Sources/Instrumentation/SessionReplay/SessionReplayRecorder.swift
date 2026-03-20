@@ -14,12 +14,14 @@ public class SessionReplayRecorder {
     private let config: SessionReplayConfig
     private let capturer: SessionReplayCapturer
     private var _isRecording: Bool = false
+    private let recordingStateLock = NSLock()  // Protects recording state without blocking
     private let queue = DispatchQueue(label: "com.pulse.ios.sdk.sessionreplay", qos: .utility)
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var onDrawFlag: Bool = false
     private var displayLink: CADisplayLink?
     private let drawFlagLock = NSLock()
-    private var throttler: SessionReplayThrottler?
+    private var _throttler: SessionReplayThrottler?
+    private let throttlerLock = NSLock()  // Synchronizes throttler access across threads
     private var drawOccurredSinceLastCapture: Bool = false
     private let drawOccurredLock = NSLock()
     private var windowStatuses: [UIWindow: WindowSnapshotStatus] = [:]
@@ -54,6 +56,29 @@ public class SessionReplayRecorder {
         removeLifecycleObservers()
     }
     
+    // MARK: - Recording State (Non-blocking Access)
+    
+    /// Returns recording state without blocking. Uses lock instead of queue.sync to prevent deadlock.
+    public var isRecording: Bool {
+        recordingStateLock.lock()
+        defer { recordingStateLock.unlock() }
+        return _isRecording
+    }
+    
+    /// Thread-safe throttler access to prevent data races between main thread and recorder queue.
+    private var throttler: SessionReplayThrottler? {
+        get {
+            throttlerLock.lock()
+            defer { throttlerLock.unlock() }
+            return _throttler
+        }
+        set {
+            throttlerLock.lock()
+            defer { throttlerLock.unlock() }
+            _throttler = newValue
+        }
+    }
+    
     // MARK: - User ID Resolution
     
     private func resolvedUserId() -> String {
@@ -62,13 +87,24 @@ public class SessionReplayRecorder {
     
     public func start(resetState: Bool = true) {
         queue.async { [weak self] in
-            guard let self = self, !self._isRecording else { return }
+            guard let self = self else { return }
+            
+            // Update recording state safely
+            self.recordingStateLock.lock()
+            guard !self._isRecording else {
+                self.recordingStateLock.unlock()
+                return
+            }
+            self._isRecording = true
+            self.recordingStateLock.unlock()
+            
             if resetState {
                 self.transformer.reset()
                 self.resetWindowStatuses()
                 self.currentSessionId = nil
             }
-            self._isRecording = true
+            
+            // Set throttler safely
             self.throttler = SessionReplayThrottler(throttleDelayMs: self.config.effectiveCaptureIntervalMs, queue: self.queue)
             self.resetDrawOccurredFlag()
             self.startDisplayLink()
@@ -82,7 +118,12 @@ public class SessionReplayRecorder {
     public func stop() {
         queue.async { [weak self] in
             guard let self = self else { return }
+            
+            // Update recording state safely
+            self.recordingStateLock.lock()
             self._isRecording = false
+            self.recordingStateLock.unlock()
+            
             self.throttler?.cancel()
             self.throttler = nil
             self.stopDisplayLink()
@@ -410,7 +451,8 @@ public class SessionReplayRecorder {
     
     private func stopDisplayLink() {
         #if os(iOS) || os(tvOS)
-        DispatchQueue.main.async { [weak self] in
+        // Synchronous invalidation on main thread to close the post-stop firing window
+        DispatchQueue.main.sync { [weak self] in
             self?.displayLink?.invalidate()
             self?.displayLink = nil
         }
@@ -418,6 +460,10 @@ public class SessionReplayRecorder {
     }
     
     @objc private func displayLinkFired() {
+        // Early guard: don't process if we've stopped recording
+        // This closes the race window between stop() and display link invalidation
+        guard isRecording else { return }
+        
         drawFlagLock.lock()
         onDrawFlag = true
         drawFlagLock.unlock()
@@ -453,10 +499,6 @@ public class SessionReplayRecorder {
         let flag = onDrawFlag
         drawFlagLock.unlock()
         return flag
-    }
-    
-    public var isRecording: Bool {
-        queue.sync { _isRecording }
     }
 }
 #else

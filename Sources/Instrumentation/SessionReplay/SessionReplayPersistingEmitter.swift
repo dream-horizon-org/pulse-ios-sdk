@@ -58,6 +58,10 @@ internal final class SessionReplayPersistingEmitter {
         self.maxBatchSize = maxBatchSize
 
         try? FileManager.default.createDirectory(at: self.storageDir, withIntermediateDirectories: true)
+        
+        // Trim stray files from earlier runs
+        trimDiskFiles()
+        
         scheduleFlushTimer()
     }
 
@@ -114,6 +118,10 @@ internal final class SessionReplayPersistingEmitter {
 
                 self.dequeLock.lock()
                 self.deque.append(fileURL)
+                
+                // Apply eviction if total files exceed maxBatchSize
+                self.evictOldestFilesIfNeeded()
+                
                 let currentCount = self.deque.count
                 self.dequeLock.unlock()
                 if currentCount >= self.flushAt {
@@ -138,9 +146,15 @@ internal final class SessionReplayPersistingEmitter {
                     }
 
                 guard !files.isEmpty else { return }
+                
+                // Sync deque with disk files and apply eviction
+                self.dequeLock.lock()
+                self.deque = files
+                self.dequeLock.unlock()
+                self.evictOldestFilesIfNeeded()
 
                 let maxUncompressedSizeBytes = 1 * 1024 * 1024
-                let maxBatchesPerChunk = 5
+                let maxBatchesPerChunk = self.flushAt
                 
                 var remainingFiles = files
                 var chunkNumber = 0
@@ -244,19 +258,19 @@ internal final class SessionReplayPersistingEmitter {
         isFlushing = true
         flushLock.unlock()
 
-        defer {
-            flushLock.lock()
-            isFlushing = false
-            flushLock.unlock()
-        }
-
         dequeLock.lock()
-        let n = min(maxBatchSize, deque.count)
+        let n = min(flushAt, deque.count)
         let toSend = Array(deque.prefix(n))
         deque.removeFirst(n)
         dequeLock.unlock()
 
-        guard !toSend.isEmpty else { return }
+        guard !toSend.isEmpty else { 
+            // If no files to send, mark flush as complete
+            flushLock.lock()
+            isFlushing = false
+            flushLock.unlock()
+            return 
+        }
 
         var fileToContent: [(URL, String)] = []
         let fm = FileManager.default
@@ -270,7 +284,13 @@ internal final class SessionReplayPersistingEmitter {
             }
         }
 
-        guard !fileToContent.isEmpty else { return }
+        guard !fileToContent.isEmpty else { 
+            // If no content to send, mark flush as complete
+            flushLock.lock()
+            isFlushing = false
+            flushLock.unlock()
+            return 
+        }
 
         let contents = fileToContent.map { $0.1 }
         let payload: String
@@ -280,6 +300,7 @@ internal final class SessionReplayPersistingEmitter {
             payload = "[" + contents.joined(separator: ",") + "]"
         }
 
+        // Completion handler moves isFlushing reset to after send completes
         transport.sendRaw(jsonString: payload) { [weak self] success in
             guard let self = self else { return }
             if success {
@@ -295,6 +316,11 @@ internal final class SessionReplayPersistingEmitter {
                 }
                 self.dequeLock.unlock()
             }
+            
+            // Mark flush as complete only after send completes
+            self.flushLock.lock()
+            self.isFlushing = false
+            self.flushLock.unlock()
         }
     }
 
@@ -337,6 +363,43 @@ internal final class SessionReplayPersistingEmitter {
             code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Failed to read replay file: \(file.lastPathComponent)"]
         )
+    }
+    
+    private func trimDiskFiles() {
+        queue.async { [weak self] in
+            guard let self: SessionReplayPersistingEmitter = self else { return }
+            do {
+                let fm: FileManager = FileManager.default
+                let files: [URL] = try fm.contentsOfDirectory(at: self.storageDir, includingPropertiesForKeys: [.contentModificationDateKey])
+                    .filter { $0.pathExtension == Self.fileExtension }
+                    .sorted { url1, url2 in
+                        let date1: Date = (try? url1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+                        let date2: Date = (try? url2.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? Date.distantPast
+                        return date1 < date2
+                    }
+                
+                self.dequeLock.lock()
+                self.deque = files
+                self.dequeLock.unlock()
+                
+                self.evictOldestFilesIfNeeded()
+            } catch {
+            }
+        }
+    }
+    
+    private func evictOldestFilesIfNeeded() {
+        let totalFiles: Int = deque.count
+        if totalFiles > maxBatchSize {
+            let filesToEvict: Int = totalFiles - maxBatchSize
+            let filesToRemove: [URL] = Array(deque.prefix(filesToEvict))
+            deque.removeFirst(filesToEvict)
+            
+            let fm: FileManager = FileManager.default
+            for file: URL in filesToRemove {
+                try? fm.removeItem(at: file)
+            }
+        }
     }
     
 }
