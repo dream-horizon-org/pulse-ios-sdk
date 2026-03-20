@@ -35,7 +35,6 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-log.git", from: "1.6.4"),
     .package(url: "https://github.com/apple/swift-metrics.git", from: "2.7.1"),
     .package(url: "https://github.com/kstenerud/KSCrash.git", .upToNextMajor(from: "2.5.1")),
-    .package(url: "https://github.com/the-swift-collective/libwebp.git", from: "1.3.0")
   ],
   targets: [
     .target(
@@ -325,6 +324,42 @@ extension Package {
           path: "Tests/InstrumentationTests/MetricKitTests"
         ),
         .target(
+          name: "phlibwebp",
+          path: "vendor/libwebp",
+          exclude: [
+            // Decoder-only files not needed by encoder
+            "quant_levels_dec_utils.c",
+            // Mux (animated WebP — not needed for single-frame encoding)
+            "muxedit.c",
+            "muxinternal.c",
+            "muxread.c",
+            // SSE2/SSE41 (x86-only SIMD — compiles to stubs on arm64 iOS)
+            "dec_sse2.c",
+            "dec_sse41.c",
+            "upsampling_sse2.c",
+            "upsampling_sse41.c",
+            "ssim_sse2.c",
+            "alpha_processing_sse2.c",
+            "alpha_processing_sse41.c",
+            "cost_sse2.c",
+            "enc_sse2.c",
+            "enc_sse41.c",
+            "filters_sse2.c",
+            "lossless_enc_sse2.c",
+            "lossless_enc_sse41.c",
+            "lossless_sse2.c",
+            "lossless_sse41.c",
+            "rescaler_sse2.c",
+            "sharpyuv_sse2.c",
+            "yuv_sse2.c",
+            "yuv_sse41.c"
+          ],
+          publicHeadersPath: ".",
+          cSettings: [
+            .headerSearchPath(".")
+          ]
+        ),
+        .target(
           name: "PulseKit",
           dependencies: [
             .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
@@ -334,7 +369,7 @@ extension Package {
             .product(name: "Filters", package: "KSCrash"),
             "OpenTelemetryProtocolExporterHttp",
             "PersistenceExporter",
-            .product(name: "WebP", package: "libwebp")
+            "phlibwebp"
           ],
           path: "Sources",
           exclude: [
