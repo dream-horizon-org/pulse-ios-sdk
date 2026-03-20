@@ -30,8 +30,9 @@ class URLSessionLogger {
     }()
   #endif // os(iOS) && !targetEnvironment(macCatalyst)
 
-  /// This methods creates a Span for a request, and optionally injects tracing headers, returns a  new request if it was needed to create a new one to add the tracing headers
-  @discardableResult static func processAndLogRequest(_ request: URLRequest, sessionTaskId: String, instrumentation: URLSessionInstrumentation, shouldInjectHeaders: Bool) -> URLRequest? {
+  /// This methods creates a Span for a request, and optionally injects tracing headers, returns a  new request if it was needed to create a new one to add the tracing headers.
+  /// When provided, `body` is used for GraphQL attribute parsing (e.g. from uploadTask(with:from:)); otherwise `request.httpBody` is used.
+  @discardableResult static func processAndLogRequest(_ request: URLRequest, sessionTaskId: String, instrumentation: URLSessionInstrumentation, shouldInjectHeaders: Bool, body: Data? = nil) -> URLRequest? {
     if request.value(forHTTPHeaderField: RN_TRACKED_HEADER) != nil {
       return nil
     }
@@ -66,6 +67,13 @@ class URLSessionLogger {
 
     if let bodySize = request.httpBody?.count {
       attributes[SemanticAttributes.httpRequestBodySize.rawValue] = AttributeValue.int(bodySize)
+    }
+
+    if GraphQLHelper.isGraphQLRequest(url: request.url) {
+      let gql = GraphQLHelper.graphQLAttributes(url: request.url, body: body ?? request.httpBody)
+      if !gql.isEmpty {
+        for (k, v) in gql { attributes[k] = v }
+      }
     }
 
     var spanName = "HTTP " + (request.httpMethod ?? "")

@@ -109,6 +109,9 @@ public class Pulse {
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
         configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
         instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil,
+        beforeSendSpan: BeforeSendSpanCallback? = nil,
+        beforeSendLog: BeforeSendLogCallback? = nil,
+        beforeSendMetric: BeforeSendMetricCallback? = nil,
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)? = nil,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])? = nil
     ) {
@@ -212,6 +215,9 @@ public class Pulse {
                 config: config,
                 currentSdkConfig: configStorageQueue.sync { _currentSdkConfig },
                 currentSdkName: currentSdkName,
+                beforeSendSpan: beforeSendSpan,
+                beforeSendLog: beforeSendLog,
+                beforeSendMetric: beforeSendMetric,
                 tracerProviderCustomizer: tracerProviderCustomizer,
                 loggerProviderCustomizer: loggerProviderCustomizer
             )
@@ -332,6 +338,9 @@ public class Pulse {
         config: InstrumentationConfiguration,
         currentSdkConfig: PulseSdkConfig?,
         currentSdkName: PulseSdkName,
+        beforeSendSpan: BeforeSendSpanCallback?,
+        beforeSendLog: BeforeSendLogCallback?,
+        beforeSendMetric: BeforeSendMetricCallback?,
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
@@ -350,13 +359,23 @@ public class Pulse {
             ?? URL(string: "\(base)/v1/logs")!
         let customEventUrl = currentSdkConfig.map { URL(string: $0.signals.customEventCollectorUrl)! }
             ?? (customEventCollectorUrl.flatMap { URL(string: $0) } ?? URL(string: "\(base)/v1/logs")!)
+        //TODO: wrap with beforeSendMetric: beforeSendMetric.map { BeforeSendMetricExporter(callback: $0, delegate: otlpMetricExporter) } ?? otlpMetricExporter when metrics is added
         let otlpSpanExporter = OtlpHttpTraceExporter(endpoint: tracesUrl, envVarHeaders: envVarHeaders)
-        let filteredSpanExporter = FilteringSpanExporter(delegate: otlpSpanExporter)
+        let spanExporterAfterBeforeSend: SpanExporter = beforeSendSpan.map {
+            BeforeSendSpanExporter(callback: $0, delegate: otlpSpanExporter)
+        } ?? otlpSpanExporter
+        let filteredSpanExporter = FilteringSpanExporter(delegate: spanExporterAfterBeforeSend)
 
         // Always use SelectedLogExporter: route custom events to customEventUrl, others to logsUrl.
         // When config is nil: customEventUrl = customEventCollectorUrl from init ?? logsUrl.
-        let defaultLogsExporter = OtlpHttpLogExporter(endpoint: logsUrl, envVarHeaders: envVarHeaders)
-        let customEventExporter = OtlpHttpLogExporter(endpoint: customEventUrl, envVarHeaders: envVarHeaders)
+        let rawDefaultLogsExporter = OtlpHttpLogExporter(endpoint: logsUrl, envVarHeaders: envVarHeaders)
+        let rawCustomEventExporter = OtlpHttpLogExporter(endpoint: customEventUrl, envVarHeaders: envVarHeaders)
+        let defaultLogsExporter: LogRecordExporter = beforeSendLog.map {
+            BeforeSendLogExporter(callback: $0, delegate: rawDefaultLogsExporter)
+        } ?? rawDefaultLogsExporter
+        let customEventExporter: LogRecordExporter = beforeSendLog.map {
+            BeforeSendLogExporter(callback: $0, delegate: rawCustomEventExporter)
+        } ?? rawCustomEventExporter
         let selectExporter = PulseSignalSelectExporter(currentSdkName: currentSdkName)
         let logMap: [(PulseSignalMatchCondition, LogRecordExporter)] = [
             (PulseSignalMatchCondition.allMatchLogCondition, defaultLogsExporter),

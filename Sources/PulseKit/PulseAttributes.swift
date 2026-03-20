@@ -20,6 +20,10 @@ public enum PulseAttributes {
     public static let exceptionType = "exception.type"
     public static let exceptionStacktrace = "exception.stacktrace"
 
+    /// GraphQL span attributes (set when URL contains "graphql" and name/type are derivable).
+    public static let graphqlOperationName = "graphql.operation.name"
+    public static let graphqlOperationType = "graphql.operation.type"
+
     /// Project identifier; used as resource attribute "project.id" and in HTTP header X-API-KEY.
     public static let projectId = "project.id"
     internal static let apiKeyHeaderKey = "X-API-KEY"
