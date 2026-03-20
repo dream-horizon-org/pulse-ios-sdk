@@ -4,9 +4,7 @@
  */
 
 import XCTest
-#if canImport(SessionReplay)
-import SessionReplay
-#endif
+@testable import PulseKit
 
 /// Tests for Session Replay Emitter Shutdown lifecycle.
 /// Ensures graceful shutdown and prevents race conditions during app termination.
@@ -203,21 +201,5 @@ class SessionReplayEmitterShutdownTests: XCTestCase {
         
         // Should have sent the payloads via final flush
         XCTAssert(mockTransport.sendRawCallCount >= 1, "Emissions before shutdown should be flushed")
-    }
-}
-
-// MARK: - Mock Transport for Testing
-
-class MockSessionReplayTransport: SessionReplayTransport {
-    var sendRawCallCount = 0
-    var lastPayload: String?
-    
-    override func sendRaw(jsonString: String, completion: @escaping (Bool) -> Void) {
-        sendRawCallCount += 1
-        lastPayload = jsonString
-        // Always succeed to avoid retry logic complications
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
-            completion(true)
-        }
     }
 }

@@ -323,6 +323,10 @@ class MockSessionReplayTransport: SessionReplayTransport {
     var sendRawCallCount = 0
     var shouldFailAfterCallCount: Int? = nil
     
+    init() {
+        super.init(endpointBaseUrl: "http://localhost:8080", headers: [:])
+    }
+    
     override func sendRaw(jsonString: String, completion: @escaping (Bool) -> Void) {
         sendRawCallCount += 1
         
