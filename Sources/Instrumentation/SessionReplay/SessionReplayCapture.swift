@@ -10,8 +10,8 @@ import CoreGraphics
 import UIKit
 import WebKit
 import ObjectiveC
-#if canImport(phlibwebp)
-    @_implementationOnly import phlibwebp
+#if canImport(libwebp)
+    @_implementationOnly import libwebp
 #endif
 
 internal protocol SessionReplayCapturer {
@@ -1413,7 +1413,7 @@ internal class SessionReplayMasker {
 public final class SessionReplayCompressor {
     private init() {}
     
-    #if canImport(phlibwebp)
+    #if canImport(libwebp)
     private static let WEBP_MAX_DIMENSION = 16383
     #endif
 
@@ -1431,7 +1431,7 @@ public final class SessionReplayCompressor {
     }
 
     private static func encodeWebP(image: UIImage, quality: CGFloat) -> Data? {
-        #if canImport(phlibwebp)
+        #if canImport(libwebp)
         guard let cgImage = image.cgImage else { return nil }
 
         let width = cgImage.width

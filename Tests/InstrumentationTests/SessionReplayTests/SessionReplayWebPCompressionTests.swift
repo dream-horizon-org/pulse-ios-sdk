@@ -161,7 +161,8 @@ class SessionReplayWebPCompressionTests: XCTestCase {
     
     /// Test compression quality extremes
     func testWebPQualityExtremes() {
-        let image = createTestImage(width: 150, height: 150)
+        // Use a gradient image instead of a solid color to guarantee variation in algorithm compression
+        let image = createGradientImage(width: 150, height: 150)
         
         // Test minimum quality (0.0)
         let minQualityResult = SessionReplayCompressor.compress(image: image, quality: 0.0)
