@@ -346,7 +346,8 @@ extension Package {
             "Instrumentation/SignPostIntegration/README.md",
             "Instrumentation/SDKResourceExtension/README.md",
             "Instrumentation/Location/README.md",
-            "Instrumentation/AppLifecycle/README.md"
+            "Instrumentation/AppLifecycle/README.md",
+            "Instrumentation/UIKitTap/README.md"
           ],
           sources: [
             "PulseKit",
@@ -358,7 +359,8 @@ extension Package {
             "Instrumentation/SignPostIntegration",
             "Instrumentation/SDKResourceExtension",
             "Instrumentation/Location",
-            "Instrumentation/AppLifecycle"
+            "Instrumentation/AppLifecycle",
+            "Instrumentation/UIKitTap"
           ],
           linkerSettings: [.linkedFramework("CoreTelephony", .when(platforms: [.iOS]))]
         ),

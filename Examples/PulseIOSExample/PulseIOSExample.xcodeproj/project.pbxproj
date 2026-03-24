@@ -13,6 +13,7 @@
 		A1B2C3D4E5F60718DEADBEEF /* SecondViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6071829DEADBEEF /* SecondViewController.swift */; };
 		C3D4E5F607182930DEADBEEF /* ThirdViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E5F60718293A41DEADBEEF /* ThirdViewController.swift */; };
 		E5F607182930AABBDEADBEEF /* TabBarExampleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F607182930AABBCCDEADBEEF /* TabBarExampleViewController.swift */; };
+		A7B8C9D0E1F2A3B4C5D6E7F8 /* TapDemoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8C9D0E1F2A3B4C5D6E7F8A9 /* TapDemoViewController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,6 +27,7 @@
 		B2C3D4E5F6071829DEADBEEF /* SecondViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecondViewController.swift; sourceTree = "<group>"; };
 		D4E5F60718293A41DEADBEEF /* ThirdViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdViewController.swift; sourceTree = "<group>"; };
 		F607182930AABBCCDEADBEEF /* TabBarExampleViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBarExampleViewController.swift; sourceTree = "<group>"; };
+		B8C9D0E1F2A3B4C5D6E7F8A9 /* TapDemoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapDemoViewController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +87,7 @@
 				B2C3D4E5F6071829DEADBEEF /* SecondViewController.swift */,
 				D4E5F60718293A41DEADBEEF /* ThirdViewController.swift */,
 				F607182930AABBCCDEADBEEF /* TabBarExampleViewController.swift */,
+				B8C9D0E1F2A3B4C5D6E7F8A9 /* TapDemoViewController.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -194,6 +197,7 @@
 				A1B2C3D4E5F60718DEADBEEF /* SecondViewController.swift in Sources */,
 				C3D4E5F607182930DEADBEEF /* ThirdViewController.swift in Sources */,
 				E5F607182930AABBDEADBEEF /* TabBarExampleViewController.swift in Sources */,
+				A7B8C9D0E1F2A3B4C5D6E7F8 /* TapDemoViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

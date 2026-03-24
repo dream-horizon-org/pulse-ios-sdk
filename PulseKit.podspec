@@ -31,7 +31,8 @@ Pod::Spec.new do |spec|
     "Sources/Exporters/OpenTelemetryProtocolHttp/**/*.swift",
     "Sources/Exporters/Persistence/**/*.swift",
     "Sources/Instrumentation/Location/*.swift",
-    "Sources/Instrumentation/AppLifecycle/*.swift"
+    "Sources/Instrumentation/AppLifecycle/*.swift",
+    "Sources/Instrumentation/UIKitTap/*.swift"
   ]
 
   spec.exclude_files = [
