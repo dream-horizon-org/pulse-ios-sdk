@@ -337,6 +337,7 @@ extension Package {
           path: "Sources",
           exclude: [
             "PulseKit/README.md",
+            "PulseKit/Consent/README.md",
             "PulseKit/Sampling/README.md",
             "Instrumentation/Sessions/README.md",
             "Instrumentation/Crashes/README.md",

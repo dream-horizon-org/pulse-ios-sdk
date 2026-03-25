@@ -34,8 +34,8 @@ public class Pulse {
     }
 
     private var openTelemetry: OpenTelemetry?
-    private var batchSpanProcessor: BatchSpanProcessor?
-    private var batchLogProcessor: BatchLogRecordProcessor?
+    private var _consentSpanProcessor: ConsentSpanProcessor?
+    private var _consentLogProcessor: ConsentLogProcessor?
     private var instrumentationConfig: InstrumentationConfiguration?
     
     // User session emitter
@@ -80,6 +80,15 @@ public class Pulse {
     /// Keeps PulseSamplingSignalProcessors alive so SampledSpanExporter/SampledLogExporter weak parent ref stays valid.
     private var _samplingSignalProcessors: PulseSamplingSignalProcessors?
 
+    private var _dataCollectionState: PulseDataCollectionConsent = .allowed
+    private let consentStateLock = NSLock()
+
+    internal var currentDataCollectionState: PulseDataCollectionConsent {
+        consentStateLock.lock()
+        defer { consentStateLock.unlock() }
+        return _dataCollectionState
+    }
+
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
             fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
@@ -106,6 +115,7 @@ public class Pulse {
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
         configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
         instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil,
+        dataCollectionState: PulseDataCollectionConsent = .allowed,
         beforeSendSpan: BeforeSendSpanCallback? = nil,
         beforeSendLog: BeforeSendLogCallback? = nil,
         beforeSendMetric: BeforeSendMetricCallback? = nil,
@@ -119,11 +129,20 @@ public class Pulse {
                 return
             }
             PulseLogger.log("Initializing...")
+            if dataCollectionState == .denied {
+                _dataCollectionState = dataCollectionState
+                PulseLogger.log("Initialization skipped: started with DENIED consent.")
+                return
+            }
 
             _globalAttributes = globalAttributes
             var pulseKitConfig = PulseKitConfiguration()
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
+
+            consentStateLock.lock()
+            _dataCollectionState = dataCollectionState
+            consentStateLock.unlock()
 
             // Merge apiKey with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP)
             let apiKeyHeader = [PulseAttributes.apiKeyHeaderKey: apiKey]
@@ -175,6 +194,7 @@ public class Pulse {
                 config: config,
                 currentSdkConfig: configStorageQueue.sync { _currentSdkConfig },
                 currentSdkName: currentSdkName,
+                dataCollectionState: dataCollectionState,
                 beforeSendSpan: beforeSendSpan,
                 beforeSendLog: beforeSendLog,
                 beforeSendMetric: beforeSendMetric,
@@ -189,7 +209,7 @@ public class Pulse {
                 endpointBaseUrl: endpointBaseUrl,
                 endpointHeaders: endpointHeadersWithProject,
                 flushLogProcessor: { [weak self] in
-                    self?.batchLogProcessor?.forceFlush()
+                    _ = self?._consentLogProcessor?.forceFlush()
                 }
             )
             self.instrumentationConfig = config
@@ -292,6 +312,7 @@ public class Pulse {
         config: InstrumentationConfiguration,
         currentSdkConfig: PulseSdkConfig?,
         currentSdkName: PulseSdkName,
+        dataCollectionState: PulseDataCollectionConsent,
         beforeSendSpan: BeforeSendSpanCallback?,
         beforeSendLog: BeforeSendLogCallback?,
         beforeSendMetric: BeforeSendMetricCallback?,
@@ -352,27 +373,35 @@ public class Pulse {
             logExporter: finalLogExporter
         )
 
-        let spanProcessor = BatchSpanProcessor(
+        let innerBatchSpanProcessor = BatchSpanProcessor(
             spanExporter: persistentSpanExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
-        let baseLogProcessor = BatchLogRecordProcessor(
+        let consentSpanProcessor = ConsentSpanProcessor(
+            delegate: innerBatchSpanProcessor,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentSpanProcessor = consentSpanProcessor
+
+        let innerBatchLogProcessor = BatchLogRecordProcessor(
             logRecordExporter: persistentLogExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
-
-        self.batchSpanProcessor = spanProcessor
-        self.batchLogProcessor = baseLogProcessor
+        let consentLogProcessor = ConsentLogProcessor(
+            delegate: innerBatchLogProcessor,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentLogProcessor = consentLogProcessor
 
         let (spanProcessors, logProcessors) = buildProcessors(
-            baseSpanProcessor: spanProcessor,
-            baseLogProcessor: baseLogProcessor,
+            baseSpanProcessor: consentSpanProcessor,
+            baseLogProcessor: consentLogProcessor,
             config: config,
             meteredConfig: meteredConfig,
             meteredManager: meteredManager,
@@ -506,6 +535,38 @@ public class Pulse {
 
     // MARK: - Shutdown
 
+    /// Updates data collection consent. `.allowed` flushes buffered signals then exports normally. `.denied` clears buffer and shuts down pulse.
+    public func setDataCollectionState(_ newState: PulseDataCollectionConsent) {
+        var shouldShutdown = false
+        var shouldFlush = false
+        initializationQueue.sync {
+            // Read without consentStateLock — safe, we're inside initializationQueue
+            let current = _dataCollectionState
+            guard current != newState, current != .denied else { return }
+
+            // Write under consentStateLock — so exporters on hot path see update atomically
+            consentStateLock.lock()
+            _dataCollectionState = newState
+            consentStateLock.unlock()
+
+            switch newState {
+            case .allowed:
+                shouldFlush = true
+            case .denied:
+                _consentSpanProcessor?.clearBuffer()
+                _consentLogProcessor?.clearBuffer()
+                shouldShutdown = true
+            case .pending:
+                break
+            }
+        }
+        if shouldFlush {
+            _consentSpanProcessor?.flushBuffer()
+            _consentLogProcessor?.flushBuffer()
+        }
+        if shouldShutdown { shutdown() }
+    }
+
     /// Permanently shuts down the SDK. Cannot be re-initialized in this process.
     public func shutdown() {
         initializationQueue.sync {
@@ -517,8 +578,8 @@ public class Pulse {
             defaults.removeObject(forKey: "pulse_installation_id")
             defaults.removeObject(forKey: "user_id")
 
-            batchSpanProcessor?.shutdown()
-            _ = batchLogProcessor?.shutdown()
+            _consentSpanProcessor?.shutdown(explicitTimeout: nil)
+            _ = _consentLogProcessor?.shutdown()
             PersistenceUtils.clearStorage()
 
             openTelemetry = nil
