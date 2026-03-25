@@ -200,9 +200,11 @@ internal class UIWindowSwizzler {
         if let label = view as? UILabel, let text = label.text, !text.isEmpty {
             return text
         }
-        // 2. Direct UILabel child (e.g. UIButton.titleLabel)
-        if let label = view.subviews.first(where: { $0 is UILabel }) as? UILabel,
-           let text = label.text, !text.isEmpty {
+        // 2. Single direct UILabel child (e.g. UIButton.titleLabel).
+        //    Only applies when there is exactly one — multiple UILabel subviews means this is
+        //    a container view (card, cell) and the recursive scan below should collect them all.
+        let directLabels = view.subviews.compactMap { $0 as? UILabel }.filter { !($0.text?.isEmpty ?? true) }
+        if directLabels.count == 1, let text = directLabels[0].text {
             return text
         }
         // 3. accessibilityLabel
