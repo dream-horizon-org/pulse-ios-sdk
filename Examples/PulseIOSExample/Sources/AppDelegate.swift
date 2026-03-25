@@ -43,7 +43,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                         localConfig.replayEndpointBaseUrl = "http://127.0.0.1:3400"
                     }
                 }
-            }
+            },
             dataCollectionState: .allowed
         )
         window = UIWindow(frame: UIScreen.main.bounds)

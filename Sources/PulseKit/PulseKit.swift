@@ -249,12 +249,11 @@ public class Pulse {
                 endpointBaseUrl: endpointBaseUrl,
                 endpointHeaders: endpointHeadersWithProject,
                 flushLogProcessor: { [weak self] in
-                    self?.batchLogProcessor?.forceFlush()
+                    _ = self?._consentLogProcessor?.forceFlush()
                 },
                 projectId: Self.extractProjectID(from: apiKey),
                 userIdProvider: { [weak self] in
                     self?.userSessionEmitter.userId
-                    _ = self?._consentLogProcessor?.forceFlush()
                 }
             )
             self.instrumentationConfig = config
