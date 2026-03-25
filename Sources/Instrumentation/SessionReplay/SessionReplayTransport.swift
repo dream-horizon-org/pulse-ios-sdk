@@ -25,7 +25,7 @@ class SessionReplayTransport {
         baseRetryDelay: TimeInterval = 1.0
     ) {
         let base = endpointBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        self.endpointUrl = URL(string: "\(base)/s")!
+        self.endpointUrl = URL(string: "\(base)/session-capture")!
         self.headers = headers
         self.session = session
         self.maxRetries = maxRetries
