@@ -421,6 +421,14 @@ extension Package {
           path: "Tests/InstrumentationTests/AppLifecycleTests"
         ),
         .testTarget(
+          name: "UIKitTapTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/UIKitTapTests"
+        ),
+        .testTarget(
           name: "ResourceExtensionTests",
           dependencies: [
             "PulseKit",

@@ -56,9 +56,6 @@ internal class UIWindowSwizzler {
                 return
             }
 
-            // DEBUG
-            let phases = touches.map { $0.phase.rawValue }
-
             // Track touch start positions for scroll vs tap detection.
             for touch in touches where touch.phase == .began {
                 touchStartLocations[ObjectIdentifier(touch)] = touch.location(in: window)
@@ -82,7 +79,6 @@ internal class UIWindowSwizzler {
                     guard distSq <= tapSlopDistance * tapSlopDistance else {
                         return nil
                     }
-                } else {
                 }
 
                 guard let target = findClickTarget(in: window, at: endLocation) else {
@@ -122,7 +118,7 @@ internal class UIWindowSwizzler {
         return nil
     }
 
-    private static func isSwiftUIHostingView(_ view: UIView) -> Bool {
+    internal static func isSwiftUIHostingView(_ view: UIView) -> Bool {
         let name = String(describing: type(of: view))
         return name.contains("HostingView") || name.hasPrefix("_UIHostingView")
     }
@@ -133,7 +129,7 @@ internal class UIWindowSwizzler {
     ///     parent scroll view, not the cell — so we match the cell directly)
     ///   - Has a UITapGestureRecognizer (custom tappable cards, image views, etc.)
     ///
-    private static func isClickTarget(_ view: UIView) -> Bool {
+    internal static func isClickTarget(_ view: UIView) -> Bool {
         if view is UIControl { return true }
         if view is UITableViewCell || view is UICollectionViewCell { return true }
         if let recognizers = view.gestureRecognizers,
@@ -145,7 +141,15 @@ internal class UIWindowSwizzler {
 
     private static func emitClickEvent(for view: UIView, at point: CGPoint) {
         guard let logger = logger else { return }
+        emitClickEvent(for: view, at: point, logger: logger, captureContext: captureContext)
+    }
 
+    internal static func emitClickEvent(
+        for view: UIView,
+        at point: CGPoint,
+        logger: OpenTelemetryApi.Logger,
+        captureContext: Bool
+    ) {
         // app.widget.name = class name (consistent type, like Android's "Button"/"Switch")
         let widgetName = String(describing: type(of: view))
 
@@ -176,7 +180,7 @@ internal class UIWindowSwizzler {
     /// Priority: UILabel.text → direct UILabel child → accessibilityLabel → recursive text scan.
     /// Matches Android: TextView.text → contentDescription → recursive ViewGroup label scan.
     /// Only runs when captureContext is true.
-    private static func extractLabel(from view: UIView) -> String? {
+    internal static func extractLabel(from view: UIView) -> String? {
         // PII safety for text input controls: only use developer-set accessibilityLabel
         // (equivalent to Android's contentDescription on EditText). Skip UILabel scan and
         // recursive descent — their internal subviews may render placeholder/system text
