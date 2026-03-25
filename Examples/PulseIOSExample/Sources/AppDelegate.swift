@@ -44,9 +44,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
                     }
                 }
             }
+            dataCollectionState: .allowed
         )
-        
-        // Create window and root view controller
         window = UIWindow(frame: UIScreen.main.bounds)
         let mainViewController = MainViewController()
         window?.rootViewController = UINavigationController(rootViewController: mainViewController)
