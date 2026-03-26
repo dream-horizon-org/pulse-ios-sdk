@@ -7,9 +7,6 @@
  */
 
 import Foundation
-#if canImport(SessionReplay)
-import SessionReplay
-#endif
 
 extension SessionReplayConfig {
     /// Merges remote config (from backend) with local config (from app code).

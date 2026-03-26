@@ -59,6 +59,16 @@ public struct InstrumentationConfiguration {
         configure(&_sessionReplay)
     }
 
+    internal mutating func attachSessionReplayConsentFromPulse(
+        isCaptureAllowed: @escaping () -> Bool,
+        startActiveAtInstall: Bool
+    ) {
+        _sessionReplay.attachPulseSessionReplayConsent(
+            isCaptureAllowed: isCaptureAllowed,
+            startActiveAtInstall: startActiveAtInstall
+        )
+    }
+
     internal var urlSession: URLSessionInstrumentationConfig { _urlSession }
     internal var sessions: SessionsInstrumentationConfig { _sessions }
     internal var signPost: SignPostInstrumentationConfig { _signPost }

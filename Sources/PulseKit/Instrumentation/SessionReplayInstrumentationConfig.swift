@@ -4,9 +4,6 @@
  */
 
 import Foundation
-#if canImport(SessionReplay)
-import SessionReplay
-#endif
 #if os(iOS) || os(tvOS)
 import UIKit
 #endif
@@ -14,18 +11,30 @@ import UIKit
 public struct SessionReplayInstrumentationConfig {
     public private(set) var enabled: Bool = false
     public private(set) var config: SessionReplayConfig = SessionReplayConfig()
-    
+
+    /// Set from `Pulse.initialize` before `installInstrumentations`. Defaults match legacy “always allowed” if unset.
+    internal private(set) var pulseIsSessionReplayCaptureAllowed: () -> Bool = { true }
+    internal private(set) var pulseSessionReplayStartActiveAtInstall: Bool = true
+
     public init(enabled: Bool = false, config: SessionReplayConfig = SessionReplayConfig()) {
         self.enabled = enabled
         self.config = config
     }
-    
+
     public mutating func enabled(_ value: Bool) {
         self.enabled = value
     }
-    
+
     public mutating func configure(_ configure: (inout SessionReplayConfig) -> Void) {
         configure(&self.config)
+    }
+
+    internal mutating func attachPulseSessionReplayConsent(
+        isCaptureAllowed: @escaping () -> Bool,
+        startActiveAtInstall: Bool
+    ) {
+        pulseIsSessionReplayCaptureAllowed = isCaptureAllowed
+        pulseSessionReplayStartActiveAtInstall = startActiveAtInstall
     }
 }
 
@@ -43,9 +52,10 @@ extension SessionReplayInstrumentationConfig: InstrumentationLifecycle {
 
         let instrumentation = SessionReplayInstrumentation(
             config: self.config,
-            exporter: exporter
+            exporter: exporter,
+            isSessionReplayCaptureAllowed: self.pulseIsSessionReplayCaptureAllowed
         )
-        instrumentation.install()
+        instrumentation.install(shouldStartActive: self.pulseSessionReplayStartActiveAtInstall)
     }
     internal func uninstall() {
         SessionReplayInstrumentation.getInstance()?.uninstall()

@@ -20,7 +20,10 @@ internal final class SessionReplayPersistingEmitter {
     private var isFlushing = false
     private let flushLock = NSLock()
     private var flushTimer: DispatchSourceTimer?
-    
+    /// When true, periodic flush timer is not running (consent PENDING or explicit pause).
+    private var isFlushTimerPaused: Bool = false
+    private let flushTimerStateLock = NSLock()
+
     private var isShutDown: Bool = false
     private let shutdownLock: NSLock = NSLock()
 
@@ -32,7 +35,8 @@ internal final class SessionReplayPersistingEmitter {
         encryption: SessionReplayStorageEncryption? = nil,
         flushIntervalSeconds: TimeInterval = 60,
         flushAt: Int = 10,
-        maxBatchSize: Int = 50
+        maxBatchSize: Int = 50,
+        startFlushTimer: Bool = true
     ) {
         if let dir = storageDir {
             self.storageDir = dir
@@ -61,8 +65,14 @@ internal final class SessionReplayPersistingEmitter {
         
         // Trim stray files from earlier runs
         trimDiskFiles()
-        
-        scheduleFlushTimer()
+
+        if startFlushTimer {
+            scheduleFlushTimer()
+        } else {
+            flushTimerStateLock.lock()
+            isFlushTimerPaused = true
+            flushTimerStateLock.unlock()
+        }
     }
 
     deinit {
@@ -85,6 +95,38 @@ internal final class SessionReplayPersistingEmitter {
             self.flushTimer?.cancel()
             self.flushTimer = nil
             self.flushIfNeeded(ignoringShutdown: true)  // Final flush bypasses guard
+        }
+    }
+
+
+    /// Stops the periodic flush timer without shutting down; `emit` and explicit `flush()` still work.
+    func pauseFlushTimer() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.flushTimer?.cancel()
+            self.flushTimer = nil
+            self.flushTimerStateLock.lock()
+            self.isFlushTimerPaused = true
+            self.flushTimerStateLock.unlock()
+        }
+    }
+
+    /// Restarts the periodic flush timer after `pauseFlushTimer()` (no-op if shut down or not paused).
+    func resumeFlushTimer() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.shutdownLock.lock()
+            let dead = self.isShutDown
+            self.shutdownLock.unlock()
+            guard !dead else { return }
+            self.flushTimerStateLock.lock()
+            let wasPaused = self.isFlushTimerPaused
+            if wasPaused {
+                self.isFlushTimerPaused = false
+            }
+            self.flushTimerStateLock.unlock()
+            guard wasPaused else { return }
+            self.scheduleFlushTimer()
         }
     }
 
@@ -326,7 +368,10 @@ internal final class SessionReplayPersistingEmitter {
 
     private func scheduleFlushTimer() {
         flushTimer?.cancel()
-        
+        flushTimerStateLock.lock()
+        isFlushTimerPaused = false
+        flushTimerStateLock.unlock()
+
         let timer = DispatchSource.makeTimerSource(queue: queue)
         timer.schedule(
             deadline: .now() + flushIntervalSeconds,

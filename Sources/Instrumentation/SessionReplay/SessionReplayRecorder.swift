@@ -31,21 +31,34 @@ public class SessionReplayRecorder {
     private let projectId: String?
     private let userIdProvider: (() -> String?)?
     private var currentSessionId: String?
+    private let isSessionReplayCaptureAllowed: () -> Bool
+    /// After backgrounding or consent `.pending`, resume without resetting wireframe/snapshot state.
+    private var needsResumeAfterInactive: Bool = false
 
-    public init(config: SessionReplayConfig, exporter: SessionReplayExporter? = nil) {
+    public init(
+        config: SessionReplayConfig,
+        exporter: SessionReplayExporter? = nil,
+        isSessionReplayCaptureAllowed: @escaping () -> Bool = { true },
+        deferSendCachedEventsUntilAllowed: Bool = false
+    ) {
         self.config = config
         self.capturer = ScreenshotCapturer(config: config)
         self.projectId = exporter?.projectId
         self.userIdProvider = exporter?.userIdProvider
+        self.isSessionReplayCaptureAllowed = isSessionReplayCaptureAllowed
 
         if let exporter = exporter {
+            let startFlushTimer = !deferSendCachedEventsUntilAllowed
             self.persistingEmitter = SessionReplayPersistingEmitter(
                 transport: exporter.transport,
                 flushIntervalSeconds: config.effectiveFlushIntervalSeconds,
                 flushAt: config.effectiveFlushAt,
-                maxBatchSize: config.effectiveMaxBatchSize
+                maxBatchSize: config.effectiveMaxBatchSize,
+                startFlushTimer: startFlushTimer
             )
-            self.persistingEmitter?.sendCachedEvents()
+            if !deferSendCachedEventsUntilAllowed {
+                self.persistingEmitter?.sendCachedEvents()
+            }
         }
 
         setupLifecycleObservers()
@@ -88,7 +101,9 @@ public class SessionReplayRecorder {
     public func start(resetState: Bool = true) {
         queue.async { [weak self] in
             guard let self = self else { return }
-            
+
+            self.needsResumeAfterInactive = false
+
             // Update recording state safely
             self.recordingStateLock.lock()
             guard !self._isRecording else {
@@ -115,22 +130,53 @@ public class SessionReplayRecorder {
         start(resetState: false)
     }
     
-    public func stop() {
+    /// Stops capture and shuts down the persisting emitter (SDK uninstall / consent denied).
+    public func tearDown() {
         queue.async { [weak self] in
             guard let self = self else { return }
-            
-            // Update recording state safely
+            self.needsResumeAfterInactive = false
             self.recordingStateLock.lock()
             self._isRecording = false
             self.recordingStateLock.unlock()
-            
             self.throttler?.cancel()
             self.throttler = nil
             self.stopDisplayLink()
             self.persistingEmitter?.shutdown()
         }
     }
-    
+
+    /// Pauses capture and periodic upload timer; keeps on-disk batches for a later `.allowed` transition.
+    public func pauseCapturing() {
+        queue.async { [weak self] in
+            guard let self = self else { return }
+            self.needsResumeAfterInactive = true
+            self.recordingStateLock.lock()
+            self._isRecording = false
+            self.recordingStateLock.unlock()
+            self.throttler?.cancel()
+            self.throttler = nil
+            self.stopDisplayLink()
+            self.persistingEmitter?.pauseFlushTimer()
+        }
+    }
+
+    /// After consent moves to `.allowed`, flush disk cache, restart upload timer, and resume capture without resetting snapshot state.
+    public func resumeAfterConsentGrant() {
+        persistingEmitter?.flush()
+        persistingEmitter?.sendCachedEvents()
+        persistingEmitter?.resumeFlushTimer()
+        resume()
+    }
+
+    public func flushPersisting() {
+        persistingEmitter?.flush()
+    }
+
+    /// Same as `tearDown()`.
+    public func stop() {
+        tearDown()
+    }
+
     private func resetDrawOccurredFlag() {
         drawOccurredLock.lock()
         drawOccurredSinceLastCapture = false
@@ -408,10 +454,25 @@ public class SessionReplayRecorder {
             object: nil,
             queue: nil
         ) { [weak self] _ in
-            self?.start()
+            guard let self = self else { return }
+            self.queue.async { [weak self] in
+                guard let self = self else { return }
+                guard self.isSessionReplayCaptureAllowed() else { return }
+                if self.needsResumeAfterInactive {
+                    self.needsResumeAfterInactive = false
+                    self.start(resetState: false)
+                    return
+                }
+                self.recordingStateLock.lock()
+                let recording = self._isRecording
+                self.recordingStateLock.unlock()
+                if !recording {
+                    self.start(resetState: true)
+                }
+            }
         }
         lifecycleObservers.append(didBecomeActive)
-        
+
         let willResignActive = center.addObserver(
             forName: UIApplication.willResignActiveNotification,
             object: nil,
@@ -420,14 +481,14 @@ public class SessionReplayRecorder {
             self?.persistingEmitter?.flush()
         }
         lifecycleObservers.append(willResignActive)
-        
+
         let didEnterBackground = center.addObserver(
             forName: UIApplication.didEnterBackgroundNotification,
             object: nil,
             queue: nil
         ) { [weak self] _ in
             self?.persistingEmitter?.flush()
-            self?.stop()
+            self?.pauseCapturing()
         }
         lifecycleObservers.append(didEnterBackground)
         #endif
@@ -451,13 +512,18 @@ public class SessionReplayRecorder {
     
     private func stopDisplayLink() {
         #if os(iOS) || os(tvOS)
-        // Synchronous invalidation on main thread to close the post-stop firing window
-        DispatchQueue.main.sync { [weak self] in
-            self?.displayLink?.invalidate()
-            self?.displayLink = nil
-        }
+            let invalidate = {
+                self.displayLink?.invalidate()
+                self.displayLink = nil
+            }
+            
+            if Thread.isMainThread {
+                invalidate()
+            } else {
+                DispatchQueue.main.sync(execute: invalidate)
+            }
         #endif
-    }
+     }
     
     @objc private func displayLinkFired() {
         // Early guard: don't process if we've stopped recording
@@ -504,12 +570,22 @@ public class SessionReplayRecorder {
 #else
 public class SessionReplayRecorder {
     private let config: SessionReplayConfig
-    
-    public init(config: SessionReplayConfig, exporter: SessionReplayExporter? = nil) {
+
+    public init(
+        config: SessionReplayConfig,
+        exporter: SessionReplayExporter? = nil,
+        isSessionReplayCaptureAllowed: @escaping () -> Bool = { true },
+        deferSendCachedEventsUntilAllowed: Bool = false
+    ) {
         self.config = config
     }
-    
-    public func start() {}
+
+    public func start(resetState: Bool = true) {}
+    public func resume() {}
+    public func tearDown() {}
+    public func pauseCapturing() {}
+    public func resumeAfterConsentGrant() {}
+    public func flushPersisting() {}
     public func stop() {}
     public var isRecording: Bool { return false }
 }

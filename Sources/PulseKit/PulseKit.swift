@@ -4,9 +4,6 @@ import OpenTelemetrySdk
 #if canImport(OpenTelemetryProtocolExporterHttp)
 import OpenTelemetryProtocolExporterHttp
 #endif
-#if canImport(SessionReplay)
-import SessionReplay
-#endif
 
 // MARK: - SDK Constants
 internal enum PulseKitConstants {
@@ -192,13 +189,12 @@ public class Pulse {
                 }
 
                 // Extract and merge Session Replay config from backend
-                #if canImport(SessionReplay)
                 let sessionReplayFeature = sdkConfig.features.first { feature in
                     feature.featureName == .session_replay &&
                     feature.sdks.contains(currentSdkName) &&
                     feature.sessionSampleRate > 0
                 }
-                
+
                 if let feature = sessionReplayFeature {
                     let remoteConfig = SessionReplayRemoteConfig.from(featureConfig: feature)
                     let localConfig = config.sessionReplay.config
@@ -206,9 +202,7 @@ public class Pulse {
                         remote: remoteConfig,
                         local: localConfig
                     )
-                    // Update SessionReplayInstrumentationConfig with merged config
                     config.sessionReplay { replayConfig in
-                        // Update all config properties from merged config
                         replayConfig.configure { config in
                             config.captureIntervalMs = mergedConfig.captureIntervalMs
                             config.compressionQuality = mergedConfig.compressionQuality
@@ -219,14 +213,11 @@ public class Pulse {
                             config.flushAt = mergedConfig.flushAt
                             config.maxBatchSize = mergedConfig.maxBatchSize
                             config.replayEndpointBaseUrl = mergedConfig.replayEndpointBaseUrl
-                            // Preserve local-only settings (maskViewClasses, unmaskViewClasses)
-                            // These are already in mergedConfig from the merge function
                             config.maskViewClasses = mergedConfig.maskViewClasses
                             config.unmaskViewClasses = mergedConfig.unmaskViewClasses
                         }
                     }
                 }
-                #endif
             }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
@@ -245,6 +236,14 @@ public class Pulse {
                 loggerProviderCustomizer: loggerProviderCustomizer
             )
 
+            var configWithConsent = config
+            configWithConsent.attachSessionReplayConsentFromPulse(
+                isCaptureAllowed: { [weak self] in
+                    self?.currentDataCollectionState == .allowed
+                },
+                startActiveAtInstall: dataCollectionState == .allowed
+            )
+
             let installationContext = InstallationContext(
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
@@ -259,8 +258,8 @@ public class Pulse {
                     self?.userSessionEmitter.userId
                 }
             )
-            self.instrumentationConfig = config
-            installInstrumentations(config: config, ctx: installationContext)
+            self.instrumentationConfig = configWithConsent
+            installInstrumentations(config: configWithConsent, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
             if _configuration.includeScreenAttributes {
@@ -588,6 +587,7 @@ public class Pulse {
     public func setDataCollectionState(_ newState: PulseDataCollectionConsent) {
         var shouldShutdown = false
         var shouldFlush = false
+        var sessionReplayMainWork: (() -> Void)?
         initializationQueue.sync {
             // Read without consentStateLock — safe, we're inside initializationQueue
             let current = _dataCollectionState
@@ -601,17 +601,33 @@ public class Pulse {
             switch newState {
             case .allowed:
                 shouldFlush = true
+                if current == .pending {
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.resumeAfterConsent()
+                    }
+                }
             case .denied:
                 _consentSpanProcessor?.clearBuffer()
                 _consentLogProcessor?.clearBuffer()
                 shouldShutdown = true
             case .pending:
-                break
+                if current == .allowed {
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.pauseForConsent()
+                    }
+                }
             }
         }
         if shouldFlush {
             _consentSpanProcessor?.flushBuffer()
             _consentLogProcessor?.flushBuffer()
+        }
+        if let work = sessionReplayMainWork {
+            if Thread.isMainThread {
+                work()
+            } else {
+                DispatchQueue.main.async(execute: work)
+            }
         }
         if shouldShutdown { shutdown() }
     }
@@ -620,6 +636,8 @@ public class Pulse {
     public func shutdown() {
         initializationQueue.sync {
             guard _isInitialized, !_isShutdown else { return }
+
+            SessionReplayInstrumentation.getInstance()?.flushForShutdown()
 
             uninstallInstrumentations()
 
