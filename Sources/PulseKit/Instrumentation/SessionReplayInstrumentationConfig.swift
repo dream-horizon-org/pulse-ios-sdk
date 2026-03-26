@@ -12,10 +12,10 @@ import UIKit
 #endif
 
 public struct SessionReplayInstrumentationConfig {
-    public private(set) var enabled: Bool = true
+    public private(set) var enabled: Bool = false
     public private(set) var config: SessionReplayConfig = SessionReplayConfig()
     
-    public init(enabled: Bool = true, config: SessionReplayConfig = SessionReplayConfig()) {
+    public init(enabled: Bool = false, config: SessionReplayConfig = SessionReplayConfig()) {
         self.enabled = enabled
         self.config = config
     }

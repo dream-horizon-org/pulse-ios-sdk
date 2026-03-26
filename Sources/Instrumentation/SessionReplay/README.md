@@ -25,7 +25,7 @@ PulseSDK.initialize(
     apiKey: "your-project-id",
     instrumentations: { config in
         config.sessionReplay { replayConfig in
-            replayConfig.enabled(true) // true (default)
+            replayConfig.enabled(true) // opt in (SDK default is false)
             replayConfig.configure { localConfig in
                 localConfig.captureIntervalMs = 1000  // 1 second (default)
                 localConfig.compressionQuality = 0.3  // 0.3 (default)

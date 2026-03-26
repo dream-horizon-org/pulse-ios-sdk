@@ -154,7 +154,7 @@ public class Pulse {
             // Config: load from persistence (sync)
             let configCoordinator = PulseSdkConfigCoordinator()
             configStorageQueue.sync {
-                _currentSdkConfig = configCoordinator.loadCurrentConfig()
+                _currentSdkConfig = nil
             }
             if let v = _currentSdkConfig?.version {
                 PulseLogger.log("Config loaded from persistence (version \(v)).")
@@ -187,7 +187,10 @@ public class Pulse {
                 _samplingSignalProcessors = processors
                 let enabledFeatures = processors.getEnabledFeatures()
                 applyDisabledFeatures(enabledFeatures: enabledFeatures, config: &config)
-                
+                if enabledFeatures.contains(.session_replay) {
+                    config.sessionReplay { $0.enabled(true) }
+                }
+
                 // Extract and merge Session Replay config from backend
                 #if canImport(SessionReplay)
                 let sessionReplayFeature = sdkConfig.features.first { feature in
