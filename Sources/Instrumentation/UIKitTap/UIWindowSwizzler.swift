@@ -107,20 +107,13 @@ internal class UIWindowSwizzler {
 
     private static func findClickTarget(in window: UIWindow, at point: CGPoint) -> UIView? {
         guard let hitView = window.hitTest(point, with: nil) else { return nil }
-        // Phase 1: Skip SwiftUI hosting views (future SwiftUI instrumentation)
-        if isSwiftUIHostingView(hitView) { return nil }
-        // Walk up to find the most meaningful interactable ancestor
+        // Walk up to find the most meaningful interactable ancestor (same pipeline for UIKit and SwiftUI-backed UI).
         var candidate: UIView? = hitView
         while let view = candidate {
             if isClickTarget(view) { return view }
             candidate = view.superview
         }
         return nil
-    }
-
-    internal static func isSwiftUIHostingView(_ view: UIView) -> Bool {
-        let name = String(describing: type(of: view))
-        return name.contains("HostingView") || name.hasPrefix("_UIHostingView")
     }
 
     /// A view counts as a tap target if it is:

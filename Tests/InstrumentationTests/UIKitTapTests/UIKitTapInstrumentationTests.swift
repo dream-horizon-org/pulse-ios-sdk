@@ -65,16 +65,6 @@ final class UIKitTapInstrumentationTests: XCTestCase {
         XCTAssertFalse(UIWindowSwizzler.isClickTarget(view))
     }
 
-    // MARK: - SwiftUI hosting view detection
-
-    func testHostingViewNameIsDetected() {
-        // Can't instantiate a real hosting view in unit tests; verify by class name check logic.
-        // UIWindowSwizzler checks String(describing: type(of: view)).contains("HostingView")
-        // We test with a fake subclass name approach via a plain view — it is NOT a hosting view.
-        let plain = UIView()
-        XCTAssertFalse(UIWindowSwizzler.isSwiftUIHostingView(plain))
-    }
-
     // MARK: - Label extraction: UILabel
 
     func testExtractLabelFromUILabel() {
