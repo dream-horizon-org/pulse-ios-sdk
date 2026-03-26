@@ -78,7 +78,7 @@ public class SessionReplayInstrumentation {
     public func uninstall() {
         recorder?.tearDown()
         recorder = nil
-
+        SessionReplayInstrumentation.getInstance()?.flushForShutdown()
         SessionReplayInstrumentation.singletonLock.lock()
         SessionReplayInstrumentation.sharedInstance = nil
         SessionReplayInstrumentation.singletonLock.unlock()
