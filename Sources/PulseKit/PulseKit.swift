@@ -154,7 +154,7 @@ public class Pulse {
             // Config: load from persistence (sync)
             let configCoordinator = PulseSdkConfigCoordinator()
             configStorageQueue.sync {
-                _currentSdkConfig = nil
+                _currentSdkConfig = configCoordinator.loadCurrentConfig()
             }
             if let v = _currentSdkConfig?.version {
                 PulseLogger.log("Config loaded from persistence (version \(v)).")
