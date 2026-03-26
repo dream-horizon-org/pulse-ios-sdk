@@ -245,6 +245,14 @@ public class Pulse {
                 loggerProviderCustomizer: loggerProviderCustomizer
             )
 
+            var configWithConsent = config
+            configWithConsent.attachSessionReplayConsentFromPulse(
+                isCaptureAllowed: { [weak self] in
+                    self?.currentDataCollectionState == .allowed
+                },
+                startActiveAtInstall: dataCollectionState == .allowed
+            )
+
             let installationContext = InstallationContext(
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
@@ -259,8 +267,8 @@ public class Pulse {
                     self?.userSessionEmitter.userId
                 }
             )
-            self.instrumentationConfig = config
-            installInstrumentations(config: config, ctx: installationContext)
+            self.instrumentationConfig = configWithConsent
+            installInstrumentations(config: configWithConsent, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
             if _configuration.includeScreenAttributes {
@@ -588,6 +596,9 @@ public class Pulse {
     public func setDataCollectionState(_ newState: PulseDataCollectionConsent) {
         var shouldShutdown = false
         var shouldFlush = false
+        #if canImport(SessionReplay)
+        var sessionReplayMainWork: (() -> Void)?
+        #endif
         initializationQueue.sync {
             // Read without consentStateLock — safe, we're inside initializationQueue
             let current = _dataCollectionState
@@ -601,18 +612,40 @@ public class Pulse {
             switch newState {
             case .allowed:
                 shouldFlush = true
+                if current == .pending {
+                    #if canImport(SessionReplay)
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.resumeAfterConsent()
+                    }
+                    #endif
+                }
             case .denied:
                 _consentSpanProcessor?.clearBuffer()
                 _consentLogProcessor?.clearBuffer()
                 shouldShutdown = true
             case .pending:
-                break
+                if current == .allowed {
+                    #if canImport(SessionReplay)
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.pauseForConsent()
+                    }
+                    #endif
+                }
             }
         }
         if shouldFlush {
             _consentSpanProcessor?.flushBuffer()
             _consentLogProcessor?.flushBuffer()
         }
+        #if canImport(SessionReplay)
+        if let work = sessionReplayMainWork {
+            if Thread.isMainThread {
+                work()
+            } else {
+                DispatchQueue.main.async(execute: work)
+            }
+        }
+        #endif
         if shouldShutdown { shutdown() }
     }
 
@@ -620,6 +653,10 @@ public class Pulse {
     public func shutdown() {
         initializationQueue.sync {
             guard _isInitialized, !_isShutdown else { return }
+
+            #if canImport(SessionReplay)
+            SessionReplayInstrumentation.getInstance()?.flushForShutdown()
+            #endif
 
             uninstallInstrumentations()
 
