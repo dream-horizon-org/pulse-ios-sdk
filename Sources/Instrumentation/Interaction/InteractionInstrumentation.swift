@@ -34,7 +34,7 @@ public class InteractionInstrumentation {
     
     private lazy var interactionManager: InteractionManager = {
         let configFetcher: InteractionConfigFetcher = configuration.useMockFetcher
-            ? InteractionConfigMockFetcher()
+            ? InteractionConfigMockFetcher(customConfigs: configuration.mockConfigs)
             : InteractionConfigRestFetcher(urlProvider: configuration.configUrlProvider, headers: configuration.headers)
         return InteractionManager(interactionFetcher: configFetcher)
     }()

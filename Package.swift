@@ -391,6 +391,7 @@ extension Package {
           name: "InteractionInstrumentationTests",
           dependencies: [
             "PulseKit",
+            "InMemoryExporter",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/InteractionTests"
