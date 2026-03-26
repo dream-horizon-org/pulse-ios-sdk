@@ -14,6 +14,18 @@ import ObjectiveC
     @_implementationOnly import libwebp
 #endif
 
+internal enum SessionReplayPrivacyEmitPolicy {
+    static func shouldDropAfterValidation(maskingRequired: Bool, validatedRectCount: Int) -> Bool {
+        maskingRequired && validatedRectCount == 0
+    }
+
+    static func shouldDropMaskedImageFailure(maskingRequired: Bool, imageWidth: CGFloat?, imageHeight: CGFloat?) -> Bool {
+        guard maskingRequired else { return false }
+        guard let w = imageWidth, let h = imageHeight, w > 0, h > 0 else { return true }
+        return false
+    }
+}
+
 internal protocol SessionReplayCapturer {
     func capture(window: UIWindow, scale: CGFloat, completion: @escaping (UIImage?) -> Void)
 }
@@ -60,6 +72,7 @@ private struct ViewSnapshot {
     let paddingRight: CGFloat
     let paddingBottom: CGFloat
     let superviewId: ObjectIdentifier?
+    let textSuggestsPassword: Bool
 }
 
 internal class SessionReplayMasker {
@@ -76,21 +89,106 @@ internal class SessionReplayMasker {
         self.drawFlagChecker = checker
     }
 
+    private struct MaskGeometryResult {
+        let maskRects: [CGRect]
+        let viewsNeedingMask: [ViewSnapshot]
+        let hasNilWindowFrameAmongTargets: Bool
+        let masksValid: Bool
+
+        var viewsNeedingMaskCount: Int { viewsNeedingMask.count }
+    }
+
+    private func computeMaskGeometry(window: UIWindow) -> MaskGeometryResult {
+        let windowBounds = window.bounds
+        window.layoutIfNeeded()
+        if let rootVC = window.rootViewController {
+            rootVC.view.layoutIfNeeded()
+        }
+        var snapshots: [ObjectIdentifier: ViewSnapshot] = [:]
+        var visited: Set<ObjectIdentifier> = []
+        snapshotViewHierarchy(
+            view: window,
+            window: window,
+            snapshots: &snapshots,
+            visited: &visited
+        )
+        let viewsNeedingMask = findViewsNeedingMask(snapshots: snapshots, windowBounds: windowBounds)
+        let hasNil = viewsNeedingMask.contains { $0.windowFrame == nil }
+        var visitedForMasking: Set<ObjectIdentifier> = []
+        var maskRects = processMaskingFromSnapshot(
+            snapshots: snapshots,
+            rootViewId: ObjectIdentifier(window),
+            windowBounds: windowBounds,
+            visited: &visitedForMasking
+        )
+        maskRects = mergeOverlappingRects(maskRects)
+        let masksValid = preValidateMaskRects(maskRects, windowBounds: windowBounds)
+        return MaskGeometryResult(
+            maskRects: maskRects,
+            viewsNeedingMask: viewsNeedingMask,
+            hasNilWindowFrameAmongTargets: hasNil,
+            masksValid: masksValid
+        )
+    }
+
+    private func enqueueUnmaskedScreenshotExport(
+        window: UIWindow,
+        windowBounds: CGRect,
+        scale: CGFloat,
+        completion: @escaping (UIImage?) -> Void
+    ) {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else {
+                completion(nil)
+                return
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else {
+                    completion(nil)
+                    return
+                }
+                let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
+                guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
+                    completion(nil)
+                    return
+                }
+                DispatchQueue.global(qos: .userInitiated).async {
+                    let clampedScale = max(0.01, min(1.0, scale))
+                    if clampedScale < 1.0 {
+                        let finalSize = CGSize(
+                            width: max(1, screenshot.size.width * clampedScale),
+                            height: max(1, screenshot.size.height * clampedScale)
+                        )
+                        let format = UIGraphicsImageRendererFormat(for: .init(displayScale: 1))
+                        format.opaque = true
+                        let renderer = UIGraphicsImageRenderer(size: finalSize, format: format)
+                        let scaledImage = renderer.image { _ in
+                            screenshot.draw(in: CGRect(origin: .zero, size: finalSize))
+                        }
+                        completion(scaledImage)
+                    } else {
+                        completion(screenshot)
+                    }
+                }
+            }
+        }
+    }
+
     func captureWithMaskingAsync(window: UIWindow, scale: CGFloat, completion: @escaping (UIImage?) -> Void) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
                 completion(nil)
                 return
             }
-            
+
             let currentTopVC = self.getTopViewController(in: window)
             let viewControllerChanged = currentTopVC !== self.lastTopViewController
-            
+
             if viewControllerChanged {
                 self.lastTopViewController = currentTopVC
                 self.lastViewControllerChangeTime = Date()
             }
-            
+
             if let changeTime = self.lastViewControllerChangeTime {
                 let timeSinceChange = Date().timeIntervalSince(changeTime)
                 let minStabilizationDelay: TimeInterval = 0.1
@@ -99,161 +197,149 @@ internal class SessionReplayMasker {
                     return
                 }
             }
-            
+
             let isStable = self.isViewStateStable(window: window)
             let isVisible = self.isViewHierarchyVisible(window: window)
-            
+
             guard isStable && isVisible else {
                 completion(nil)
                 return
             }
-            
+
             let windowBounds = window.bounds
             guard windowBounds.width > 0 && windowBounds.height > 0 else {
                 completion(nil)
                 return
             }
-            
+
             guard window.rootViewController != nil || !window.subviews.isEmpty else {
                 completion(nil)
                 return
             }
-            
-            var scrollPositionAtSnapshot: CGFloat = 0
-            if let scrollView = self.findScrollView(in: window) {
-                scrollPositionAtSnapshot = scrollView.contentOffset.y
-            }
-            
-            var snapshots: [ObjectIdentifier: ViewSnapshot] = [:]
-            var visited: Set<ObjectIdentifier> = []
-            
-            window.layoutIfNeeded()
-            if let rootVC = window.rootViewController {
-                rootVC.view.layoutIfNeeded()
-            }
-            
-            self.snapshotViewHierarchy(
-                view: window,
-                window: window,
-                snapshots: &snapshots,
-                visited: &visited
-            )
-            
-            var visitedForMasking: Set<ObjectIdentifier> = []
-            let viewsNeedingMask = self.findViewsNeedingMask(snapshots: snapshots, windowBounds: windowBounds)
-            let viewsWithNilWindowFrame = viewsNeedingMask.filter { $0.windowFrame == nil }
-            
-            if !viewsWithNilWindowFrame.isEmpty {
+
+            let firstPass = self.computeMaskGeometry(window: window)
+            if firstPass.hasNilWindowFrameAmongTargets {
                 completion(nil)
                 return
             }
-            
-            var maskRects = self.processMaskingFromSnapshot(
-                snapshots: snapshots,
-                rootViewId: ObjectIdentifier(window),
-                windowBounds: windowBounds,
-                visited: &visitedForMasking
-            )
-            
-            maskRects = self.mergeOverlappingRects(maskRects)
-            let masksValid = self.preValidateMaskRects(maskRects, windowBounds: windowBounds)
-            let viewsNeedingMaskCount = viewsNeedingMask.count
-            
-            if maskRects.isEmpty && viewsNeedingMaskCount == 0 {
-                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                    guard let self = self else {
-                        completion(nil)
-                        return
-                    }
-                    
-                    DispatchQueue.main.async {
-                        let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
-                        
-                        guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
-                            completion(nil)
-                            return
-                        }
-                        
-                        DispatchQueue.global(qos: .userInitiated).async {
-                            let clampedScale = max(0.01, min(1.0, scale))
-                            if clampedScale < 1.0 {
-                                let finalSize = CGSize(
-                                    width: max(1, screenshot.size.width * clampedScale),
-                                    height: max(1, screenshot.size.height * clampedScale)
-                                )
-                                let format = UIGraphicsImageRendererFormat(for: .init(displayScale: 1))
-                                format.opaque = true
-                                let renderer = UIGraphicsImageRenderer(size: finalSize, format: format)
-                                let scaledImage = renderer.image { _ in
-                                    screenshot.draw(in: CGRect(origin: .zero, size: finalSize))
-                                }
-                                completion(scaledImage)
-                            } else {
-                                completion(screenshot)
-                            }
-                        }
-                    }
+
+            if firstPass.maskRects.isEmpty && firstPass.viewsNeedingMaskCount == 0 {
+                if self.config.textAndInputPrivacy == .maskAll || self.config.imagePrivacy == .maskAll {
+                    completion(nil)
+                    return
                 }
+                self.enqueueUnmaskedScreenshotExport(window: window, windowBounds: windowBounds, scale: scale, completion: completion)
                 return
             }
-            
-            guard masksValid else {
+
+            guard firstPass.masksValid else {
                 completion(nil)
                 return
             }
-            
+
             if let drawFlagChecker = self.drawFlagChecker, drawFlagChecker() {
                 completion(nil)
                 return
             }
-            
+
+            let finalPass = self.computeMaskGeometry(window: window)
+            if finalPass.hasNilWindowFrameAmongTargets {
+                completion(nil)
+                return
+            }
+
+            guard finalPass.masksValid else {
+                completion(nil)
+                return
+            }
+
+            let maskRects = finalPass.maskRects
+
+            if maskRects.isEmpty && finalPass.viewsNeedingMaskCount == 0 {
+                if self.config.textAndInputPrivacy == .maskAll || self.config.imagePrivacy == .maskAll {
+                    completion(nil)
+                    return
+                }
+                self.enqueueUnmaskedScreenshotExport(window: window, windowBounds: windowBounds, scale: scale, completion: completion)
+                return
+            }
+
+            if let drawFlagChecker = self.drawFlagChecker, drawFlagChecker() {
+                completion(nil)
+                return
+            }
+
+            let scrollPositionBeforeCapture: CGFloat
+            if let scrollView = self.findScrollView(in: window) {
+                scrollPositionBeforeCapture = scrollView.contentOffset.y
+            } else {
+                scrollPositionBeforeCapture = 0
+            }
+
             let screenshot = self.captureScreenshotSync(window: window, bounds: windowBounds)
-            
+
             guard let screenshot = screenshot, screenshot.size.width > 0 && screenshot.size.height > 0 else {
                 completion(nil)
                 return
             }
-            
-            var scrollPositionAtScreenshot: CGFloat = 0
+
+            let scrollPositionAfterCapture: CGFloat
             if let scrollView = self.findScrollView(in: window) {
-                scrollPositionAtScreenshot = scrollView.contentOffset.y
+                scrollPositionAfterCapture = scrollView.contentOffset.y
+            } else {
+                scrollPositionAfterCapture = 0
             }
-            let scrollDelta = scrollPositionAtScreenshot - scrollPositionAtSnapshot
-            
+
+            let scrollDelta = scrollPositionAfterCapture - scrollPositionBeforeCapture
             if abs(scrollDelta) > 5.0 {
                 completion(nil)
                 return
             }
-            
+
             if let drawFlagChecker = self.drawFlagChecker, drawFlagChecker() {
                 completion(nil)
                 return
             }
-            
+
+            let maskingRequiredForDrawing = !maskRects.isEmpty
+
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 guard let self = self else {
                     completion(nil)
                     return
                 }
-                
+
                 let capturedScreenshot = screenshot
                 let validatedRects = self.validateMaskRects(maskRects, imageSize: capturedScreenshot.size)
-               
-                
-                let maskedImage = self.drawMasksOnImage(
-                    image: capturedScreenshot,
-                    maskRects: validatedRects
-                )
-                
-                guard let maskedImage = maskedImage, maskedImage.size.width > 0 && maskedImage.size.height > 0 else {
-                    if viewsNeedingMaskCount > 0 {
-                        completion(nil)
-                        return
-                    }
-                    completion(capturedScreenshot)
+
+                if SessionReplayPrivacyEmitPolicy.shouldDropAfterValidation(
+                    maskingRequired: maskingRequiredForDrawing,
+                    validatedRectCount: validatedRects.count
+                ) {
+                    completion(nil)
                     return
                 }
-                
+
+                let maskedImage = self.drawMasksOnImage(
+                    image: capturedScreenshot,
+                    maskRects: validatedRects,
+                    requiresAppliedMasks: maskingRequiredForDrawing
+                )
+
+                if SessionReplayPrivacyEmitPolicy.shouldDropMaskedImageFailure(
+                    maskingRequired: maskingRequiredForDrawing,
+                    imageWidth: maskedImage?.size.width,
+                    imageHeight: maskedImage?.size.height
+                ) {
+                    completion(nil)
+                    return
+                }
+
+                guard let maskedImage = maskedImage else {
+                    completion(nil)
+                    return
+                }
+
                 let clampedScale = max(0.01, min(1.0, scale))
                 if clampedScale < 1.0 {
                     let finalSize = CGSize(
@@ -274,8 +360,6 @@ internal class SessionReplayMasker {
         }
     }
 
-    
-    
     private func getTopViewController(in window: UIWindow) -> UIViewController? {
         guard let rootVC = window.rootViewController else { return nil }
         return getTopViewController(from: rootVC)
@@ -372,12 +456,14 @@ internal class SessionReplayMasker {
             }
         }
         
-        if textField.keyboardType == .default {
-            let placeholder = textField.placeholder?.lowercased() ?? ""
-            let accessibilityLabel = textField.accessibilityLabel?.lowercased() ?? ""
-            if placeholder.contains("password") || accessibilityLabel.contains("password") {
-                return true
-            }
+        let placeholder = textField.placeholder?.lowercased() ?? ""
+        let accessibilityLabel = textField.accessibilityLabel?.lowercased() ?? ""
+        if placeholder.contains("password") || accessibilityLabel.contains("password") {
+            return true
+        }
+        
+        if textField.text?.lowercased().contains("password") == true {
+            return true
         }
         
         return false
@@ -394,7 +480,6 @@ internal class SessionReplayMasker {
             }
         }
         
-        // Heuristic: check placeholder or accessibility label
         let placeholder = textField.placeholder?.lowercased() ?? ""
         let accessibilityLabel = textField.accessibilityLabel?.lowercased() ?? ""
         if placeholder.contains("email") || accessibilityLabel.contains("email") {
@@ -439,6 +524,10 @@ internal class SessionReplayMasker {
         
         let accessibilityLabel = textView.accessibilityLabel?.lowercased() ?? ""
         if accessibilityLabel.contains("password") {
+            return true
+        }
+        
+        if textView.text?.lowercased().contains("password") == true {
             return true
         }
         
@@ -489,7 +578,6 @@ internal class SessionReplayMasker {
         case undecided
     }
 
-    
     private func snapshotViewHierarchy(
         view: UIView,
         window: UIWindow,
@@ -500,11 +588,7 @@ internal class SessionReplayMasker {
         let viewId = ObjectIdentifier(view)
         if visited.contains(viewId) { return }
         visited.insert(viewId)
-        
-        if let checker = drawFlagChecker, checker() {
-            return
-        }
-        
+
         let className = String(describing: type(of: view))
         let frame = view.frame
         
@@ -566,18 +650,26 @@ internal class SessionReplayMasker {
         
         let hasText: Bool
         let placeholder: String?
+        let textSuggestsPassword: Bool
         if let textField = textField {
             hasText = !(textField.text?.isEmpty ?? true) || !(textField.placeholder?.isEmpty ?? true)
             placeholder = textField.placeholder
+            let t = textField.text?.lowercased() ?? ""
+            let p = textField.placeholder?.lowercased() ?? ""
+            textSuggestsPassword = t.contains("password") || p.contains("password")
         } else if let textView = textView {
             hasText = !(textView.text?.isEmpty ?? true)
             placeholder = nil
+            let t = textView.text?.lowercased() ?? ""
+            textSuggestsPassword = t.contains("password")
         } else if let label = label {
             hasText = !(label.text?.isEmpty ?? true) || !(label.attributedText?.string.isEmpty ?? true)
             placeholder = nil
+            textSuggestsPassword = false
         } else {
             hasText = false
             placeholder = nil
+            textSuggestsPassword = false
         }
         
         let hasImage = imageView?.image != nil
@@ -635,7 +727,8 @@ internal class SessionReplayMasker {
             paddingTop: paddingTop,
             paddingRight: paddingRight,
             paddingBottom: paddingBottom,
-            superviewId: parentId
+            superviewId: parentId,
+            textSuggestsPassword: textSuggestsPassword
         )
         
         snapshots[viewId] = snapshot
@@ -870,48 +963,53 @@ internal class SessionReplayMasker {
     
     private func findViewsNeedingMask(snapshots: [ObjectIdentifier: ViewSnapshot], windowBounds: CGRect) -> [ViewSnapshot] {
         var viewsNeedingMask: [ViewSnapshot] = []
-        
+
         for (_, snapshot) in snapshots {
             let isWindow = snapshot.className.contains("Window")
             let isVisible = !snapshot.isHidden && snapshot.alpha > 0 && (isWindow || snapshot.hasWindow)
-            
+
             guard isVisible else { continue }
-            
-            var shouldMask = false
-            
-            if snapshot.isTextField {
-                shouldMask = shouldMaskTextFieldFromSnapshot(snapshot: snapshot)
-            } else if snapshot.isTextView {
-                shouldMask = shouldMaskTextViewFromSnapshot(snapshot: snapshot)
-            } else if snapshot.isLabel {
-                shouldMask = snapshot.hasText && shouldMaskLabelFromSnapshot(snapshot: snapshot)
-            } else if snapshot.isPickerView {
-                shouldMask = shouldMaskSpinner()
-            } else if snapshot.isImageView {
-                shouldMask = snapshot.hasImage && shouldMaskImageFromSnapshot(snapshot: snapshot)
-            } else if snapshot.isWebView {
-                shouldMask = shouldMaskWebView()
-            }
-            
+            guard !isWindow else { continue }
+
             let instanceDecision = resolveInstanceDecisionFromSnapshot(snapshot: snapshot)
-            if instanceDecision == .mask {
-                shouldMask = true
-            }
-            
             let classDecision = resolveClassDecisionFromSnapshot(snapshot: snapshot)
-            if classDecision == .mask {
-                shouldMask = true
+            let effectiveDecision: MaskDecision
+            if instanceDecision != .undecided {
+                effectiveDecision = instanceDecision
+            } else {
+                effectiveDecision = classDecision
             }
-            
+
+            var shouldMask = false
+            switch effectiveDecision {
+            case .unmask:
+                shouldMask = false
+            case .mask:
+                shouldMask = true
+            case .undecided:
+                if snapshot.isTextField {
+                    shouldMask = shouldMaskTextFieldFromSnapshot(snapshot: snapshot)
+                } else if snapshot.isTextView {
+                    shouldMask = shouldMaskTextViewFromSnapshot(snapshot: snapshot)
+                } else if snapshot.isLabel {
+                    shouldMask = snapshot.hasText && shouldMaskLabelFromSnapshot(snapshot: snapshot)
+                } else if snapshot.isPickerView {
+                    shouldMask = shouldMaskSpinner()
+                } else if snapshot.isImageView {
+                    shouldMask = snapshot.hasImage && shouldMaskImageFromSnapshot(snapshot: snapshot)
+                } else if snapshot.isWebView {
+                    shouldMask = shouldMaskWebView()
+                }
+            }
+
             if shouldMask {
                 viewsNeedingMask.append(snapshot)
             }
         }
-        
+
         return viewsNeedingMask
     }
     
-    /// Returns text area window rect for text fields/views, accounting for padding.
     private func getTextAreaWindowRect(
         snapshot: ViewSnapshot,
         windowBounds: CGRect
@@ -1046,6 +1144,7 @@ internal class SessionReplayMasker {
     
     private func isSensitiveInputTypeFromSnapshot(snapshot: ViewSnapshot) -> Bool {
         if snapshot.isSecureTextEntry { return true }
+        if snapshot.textSuggestsPassword { return true }
         
         if let textContentType = snapshot.textContentType?.lowercased() {
             if textContentType.contains("password") {
@@ -1087,7 +1186,6 @@ internal class SessionReplayMasker {
         return false
     }
     
-    /// Clamps a rectangle to window bounds, handling negative coordinates.
     private func clampRectToBounds(rect: CGRect, bounds: CGRect) -> CGRect {
         guard rect.width > 0 && rect.height > 0 else { return .zero }
         guard rect.origin.x.isFinite && rect.origin.y.isFinite else { return .zero }
@@ -1123,7 +1221,6 @@ internal class SessionReplayMasker {
         )
     }
     
-    /// Merges overlapping mask rects to reduce rendering overhead.
     private func mergeOverlappingRects(_ rects: [CGRect]) -> [CGRect] {
         guard rects.count > 1 else { return rects }
         
@@ -1134,7 +1231,6 @@ internal class SessionReplayMasker {
             var current = remaining.removeFirst()
             var mergedAny = true
             
-            // Try to merge with other rects
             while mergedAny {
                 mergedAny = false
                 var i = 0
@@ -1164,7 +1260,6 @@ internal class SessionReplayMasker {
         return merged
     }
     
-    /// Pre-validates mask rects against window bounds before screenshot capture.
     private func preValidateMaskRects(_ rects: [CGRect], windowBounds: CGRect) -> Bool {
         guard !rects.isEmpty else {
             return true
@@ -1198,8 +1293,7 @@ internal class SessionReplayMasker {
         return true
     }
     
-    /// Validates mask rects before rendering against actual screenshot size.
-    private func validateMaskRects(_ rects: [CGRect], imageSize: CGSize) -> [CGRect] {
+    internal func validateMaskRects(_ rects: [CGRect], imageSize: CGSize) -> [CGRect] {
         var validRects: [CGRect] = []
         let imageBounds = CGRect(origin: .zero, size: imageSize)
         
@@ -1253,9 +1347,13 @@ internal class SessionReplayMasker {
     
     private func drawMasksOnImage(
         image: UIImage,
-        maskRects: [CGRect]
+        maskRects: [CGRect],
+        requiresAppliedMasks: Bool
     ) -> UIImage? {
         guard !maskRects.isEmpty else {
+            if requiresAppliedMasks {
+                return nil
+            }
             return image
         }
         
