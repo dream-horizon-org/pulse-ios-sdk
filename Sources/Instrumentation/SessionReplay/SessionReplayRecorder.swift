@@ -78,7 +78,18 @@ public class SessionReplayRecorder {
     }
 
     deinit {
-        stopDisplayLink()
+        #if os(iOS) || os(tvOS)
+        if let link = displayLink {
+            displayLink = nil
+            if Thread.isMainThread {
+                link.invalidate()
+            } else {
+                DispatchQueue.main.sync {
+                    link.invalidate()
+                }
+            }
+        }
+        #endif
         removeLifecycleObservers()
     }
     
@@ -195,77 +206,86 @@ public class SessionReplayRecorder {
         drawOccurredLock.unlock()
     }
     
+    /// Schedules capture on the main queue so UIKit/window access never uses `DispatchQueue.main.sync` from the recorder utility queue (avoids deadlock with `Pulse.shutdown()` / `initializationQueue.sync` on the main thread).
     private func captureFrame(completion: @escaping (SessionReplayFrame?) -> Void) {
         #if os(iOS) || os(tvOS)
+        let run = { [weak self] in
+            guard let self = self else {
+                completion(nil)
+                return
+            }
+            self.performCaptureFrameOnMainThread(completion: completion)
+        }
+        if Thread.isMainThread {
+            run()
+        } else {
+            DispatchQueue.main.async(execute: run)
+        }
+        #else
+        completion(nil)
+        #endif
+    }
+
+    #if os(iOS) || os(tvOS)
+    /// Must run on the main thread. Performs window enumeration, draw-flag setup, masking checker wiring, and kicks off `capturer.capture` (masking pipeline still runs on main + global per `ScreenshotCapturer`).
+    private func performCaptureFrameOnMainThread(completion: @escaping (SessionReplayFrame?) -> Void) {
+        assert(Thread.isMainThread)
+
         let windows = getAllVisibleWindows()
-        
+
         guard !windows.isEmpty else {
             completion(nil)
             return
         }
-        
-        if Thread.isMainThread {
-            resetDrawFlag()
-        } else {
-            DispatchQueue.main.sync {
-                resetDrawFlag()
-            }
-        }
-        
+
+        resetDrawFlag()
+
         if let masker = (capturer as? ScreenshotCapturer)?.masker {
             masker.setDrawFlagChecker { [weak self] in
                 self?.checkDrawFlag() ?? false
             }
         }
-        
-        let windowsToCapture: [UIWindow]
-        if Thread.isMainThread {
-            let keyWindows = windows.filter { $0.isKeyWindow }
-            windowsToCapture = keyWindows.isEmpty ? windows : keyWindows
-        } else {
-            var keyWindows: [UIWindow] = []
-            var allWindows: [UIWindow] = []
-            DispatchQueue.main.sync {
-                keyWindows = windows.filter { $0.isKeyWindow }
-                allWindows = windows
-            }
-            windowsToCapture = keyWindows.isEmpty ? allWindows : keyWindows
-        }
-        
+
+        let keyWindows = windows.filter { $0.isKeyWindow }
+        let windowsToCapture = keyWindows.isEmpty ? windows : keyWindows
+
         let session = SessionManagerProvider.getInstance().getSession()
         let frameSessionId = session.id
-        
-        if self.currentSessionId != frameSessionId {
-            self.currentSessionId = frameSessionId
+
+        if currentSessionId != frameSessionId {
+            currentSessionId = frameSessionId
         }
-        
+
+        let windowsAndNames: [(UIWindow, String)] = windowsToCapture.map { window in
+            (window, getCurrentScreenName(from: window))
+        }
+
         let dispatchGroup = DispatchGroup()
         var capturedFrames: [SessionReplayFrame] = []
         var allEvents: [SessionReplayEvent] = []
         let framesLock = NSLock()
         let eventsLock = NSLock()
-        
-        for window in windowsToCapture {
+
+        for (window, screenName) in windowsAndNames {
             dispatchGroup.enter()
-            
+
             capturer.capture(window: window, scale: config.effectiveScreenshotScale) { [weak self] capturedImage in
                 defer { dispatchGroup.leave() }
-                
+
                 guard let self = self, let capturedImage = capturedImage else {
                     return
                 }
-                
+
                 guard let compressed = SessionReplayCompressor.compress(
                     image: capturedImage,
                     quality: self.config.effectiveCompressionQuality
                 ) else {
                     return
                 }
-                
+
                 let imgW = Int(capturedImage.size.width)
                 let imgH = Int(capturedImage.size.height)
-                let screenName = self.getCurrentScreenName(from: window)
-                
+
                 let frame = SessionReplayFrame(
                     timestamp: Date(),
                     sessionId: frameSessionId,
@@ -275,11 +295,11 @@ public class SessionReplayRecorder {
                     width: imgW,
                     height: imgH
                 )
-                
+
                 framesLock.lock()
                 capturedFrames.append(frame)
                 framesLock.unlock()
-                
+
                 if self.persistingEmitter != nil, let pid = self.projectId {
                     var windowStatus = self.getWindowStatus(window: window)
                     let events = self.transformer.transformFrame(
@@ -289,20 +309,20 @@ public class SessionReplayRecorder {
                         userId: self.resolvedUserId()
                     )
                     self.updateWindowStatus(window: window, status: windowStatus)
-                    
+
                     eventsLock.lock()
                     allEvents.append(contentsOf: events)
                     eventsLock.unlock()
                 }
             }
         }
-        
+
         dispatchGroup.notify(queue: queue) { [weak self] in
             guard let self = self else {
                 completion(nil)
                 return
             }
-            
+
             guard !capturedFrames.isEmpty else {
                 completion(nil)
                 return
@@ -318,7 +338,7 @@ public class SessionReplayRecorder {
                         snapshotData: allEvents
                     )
                 )
-                
+
                 if let jsonData = try? JSONEncoder().encode(payload),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
                     emitter.emit(payloadJson: jsonString)
@@ -327,21 +347,13 @@ public class SessionReplayRecorder {
 
             completion(capturedFrames.first)
         }
-        #else
-        completion(nil)
-        #endif
     }
+    #endif
     
     private func getAllVisibleWindows() -> [UIWindow] {
         #if os(iOS) || os(tvOS)
-        guard Thread.isMainThread else {
-            var windows: [UIWindow] = []
-            DispatchQueue.main.sync {
-                windows = getAllVisibleWindows()
-            }
-            return windows
-        }
-        
+        assert(Thread.isMainThread, "getAllVisibleWindows must run on the main thread")
+
         var visibleWindows: [UIWindow] = []
         
         if #available(iOS 15.0, *) {
@@ -424,20 +436,11 @@ public class SessionReplayRecorder {
     
     #if os(iOS) || os(tvOS)
     private func getCurrentScreenName(from window: UIWindow) -> String {
-        if Thread.isMainThread {
-            if let rootViewController = window.rootViewController {
-                return getTopViewControllerName(from: rootViewController)
-            }
-            return ""
-        } else {
-            var screenName = ""
-            DispatchQueue.main.sync {
-                if let rootViewController = window.rootViewController {
-                    screenName = getTopViewControllerName(from: rootViewController)
-                }
-            }
-            return screenName
+        assert(Thread.isMainThread, "getCurrentScreenName must run on the main thread")
+        if let rootViewController = window.rootViewController {
+            return getTopViewControllerName(from: rootViewController)
         }
+        return ""
     }
     
     private func getTopViewControllerName(from viewController: UIViewController) -> String {
@@ -515,27 +518,28 @@ public class SessionReplayRecorder {
         #if os(iOS) || os(tvOS)
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            self.recordingStateLock.lock()
+            let recording = self._isRecording
+            self.recordingStateLock.unlock()
+            guard recording else { return }
+
             let link = CADisplayLink(target: self, selector: #selector(self.displayLinkFired))
             link.add(to: .main, forMode: .common)
             self.displayLink = link
         }
         #endif
     }
-    
+
+    /// Invalidates on the main run loop without `main.sync` from the recorder queue (prevents deadlock when main is blocked in `Pulse.shutdown` → `initializationQueue.sync`).
     private func stopDisplayLink() {
         #if os(iOS) || os(tvOS)
-            let invalidate = {
-                self.displayLink?.invalidate()
-                self.displayLink = nil
-            }
-            
-            if Thread.isMainThread {
-                invalidate()
-            } else {
-                DispatchQueue.main.sync(execute: invalidate)
-            }
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.displayLink?.invalidate()
+            self.displayLink = nil
+        }
         #endif
-     }
+    }
     
     @objc private func displayLinkFired() {
         // Early guard: don't process if we've stopped recording

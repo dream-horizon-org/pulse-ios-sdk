@@ -36,8 +36,12 @@ public class SessionReplayInstrumentation {
         self.isSessionReplayCaptureAllowed = isSessionReplayCaptureAllowed
 
         SessionReplayInstrumentation.singletonLock.lock()
+        defer { SessionReplayInstrumentation.singletonLock.unlock() }
+        precondition(
+            SessionReplayInstrumentation.sharedInstance == nil,
+            "SessionReplayInstrumentation already exists. Call uninstall() on the existing instance before creating another."
+        )
         SessionReplayInstrumentation.sharedInstance = self
-        SessionReplayInstrumentation.singletonLock.unlock()
     }
 
     /// Installs replay. When `shouldStartActive` is false (consent `.pending` at init), capture and cached upload wait until `.allowed`.
