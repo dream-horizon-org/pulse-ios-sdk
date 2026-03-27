@@ -23,6 +23,9 @@ public struct InteractionInstrumentationConfiguration {
     /// Internal: Use mock fetcher instead of real API (for testing only)
     internal var useMockFetcher: Bool = false
 
+    /// When using the mock fetcher, optional configs to return (defaults to built-in mock data when nil)
+    internal var mockConfigs: [InteractionConfig]? = nil
+
     public init(
         configUrlProvider: @escaping () -> String = {
             "http://10.0.2.2:8080/v1/interactions/all-active-interactions"
