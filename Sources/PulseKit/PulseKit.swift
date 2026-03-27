@@ -637,8 +637,6 @@ public class Pulse {
         initializationQueue.sync {
             guard _isInitialized, !_isShutdown else { return }
 
-            SessionReplayInstrumentation.getInstance()?.flushForShutdown()
-
             uninstallInstrumentations()
 
             let defaults = UserDefaults.standard
