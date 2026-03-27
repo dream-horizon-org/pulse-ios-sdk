@@ -199,16 +199,20 @@ public class SessionReplayExporter {
     internal let projectId: String
     internal let userIdProvider: () -> String?
 
-    public init(
+    /// Returns `nil` if `endpointBaseUrl` cannot be resolved to a valid session-capture URL (invalid or missing scheme).
+    public init?(
         endpointBaseUrl: String,
         headers: [String: String],
         projectId: String,
         userIdProvider: @escaping () -> String? = { nil }
     ) {
-        self.transport = SessionReplayTransport(
+        guard let transport = SessionReplayTransport(
             endpointBaseUrl: endpointBaseUrl,
             headers: headers
-        )
+        ) else {
+            return nil
+        }
+        self.transport = transport
         self.projectId = projectId
         self.userIdProvider = userIdProvider
     }

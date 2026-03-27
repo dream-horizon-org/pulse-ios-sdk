@@ -17,20 +17,33 @@ class SessionReplayTransport {
     private let baseRetryDelay: TimeInterval
     private let retryQueue: DispatchQueue
 
-    init(
+    init?(
         endpointBaseUrl: String,
         headers: [String: String],
         session: URLSession = .shared,
         maxRetries: Int = 3,
         baseRetryDelay: TimeInterval = 1.0
     ) {
-        let base = endpointBaseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        self.endpointUrl = URL(string: "\(base)/session-capture")!
+        guard let url = Self.sessionCaptureURL(from: endpointBaseUrl) else { return nil }
+        self.endpointUrl = url
         self.headers = headers
         self.session = session
         self.maxRetries = maxRetries
         self.baseRetryDelay = baseRetryDelay
         self.retryQueue = DispatchQueue(label: "com.pulse.sessionreplay.transport.retry")
+    }
+
+    /// Resolves `…/session-capture` from a Pulse-style base URL string.
+    private static func sessionCaptureURL(from endpointBaseUrl: String) -> URL? {
+        var trimmed = endpointBaseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        while trimmed.hasSuffix("/") {
+            trimmed.removeLast()
+        }
+        guard let baseURL = URL(string: trimmed),
+              let scheme = baseURL.scheme,
+              !scheme.isEmpty else { return nil }
+        return baseURL.appendingPathComponent("session-capture")
     }
 
     func sendRaw(jsonString: String, completion: @escaping (Bool) -> Void) {

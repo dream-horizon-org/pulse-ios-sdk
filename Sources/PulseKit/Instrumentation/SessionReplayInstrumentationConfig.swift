@@ -43,12 +43,14 @@ extension SessionReplayInstrumentationConfig: InstrumentationLifecycle {
         guard self.enabled else { return }
         
         let replayEndpoint = self.config.replayEndpointBaseUrl ?? ctx.endpointBaseUrl
-        let exporter = SessionReplayExporter(
+        guard let exporter = SessionReplayExporter(
             endpointBaseUrl: replayEndpoint,
             headers: ctx.endpointHeaders,
             projectId: ctx.projectId,
             userIdProvider: ctx.userIdProvider
-        )
+        ) else {
+            return
+        }
 
         let instrumentation = SessionReplayInstrumentation(
             config: self.config,
