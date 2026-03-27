@@ -7,6 +7,9 @@ import Foundation
 
 internal final class SessionReplayPersistingEmitter {
 
+    private static let queueSpecificKey = DispatchSpecificKey<UInt8>()
+    private static let queueMarker: UInt8 = 1
+
     private let storageDir: URL
     private let transport: SessionReplayTransport
     private let encryption: SessionReplayStorageEncryption
@@ -62,7 +65,9 @@ internal final class SessionReplayPersistingEmitter {
         self.maxBatchSize = maxBatchSize
 
         try? FileManager.default.createDirectory(at: self.storageDir, withIntermediateDirectories: true)
-        
+
+        queue.setSpecific(key: Self.queueSpecificKey, value: Self.queueMarker)
+
         // Trim stray files from earlier runs
         trimDiskFiles()
 
@@ -78,9 +83,17 @@ internal final class SessionReplayPersistingEmitter {
     deinit {
         flushTimer?.cancel()
     }
-    
+
+    private func executeOnQueueSync(_ work: () -> Void) {
+        if DispatchQueue.getSpecific(key: Self.queueSpecificKey) == Self.queueMarker {
+            work()
+        } else {
+            queue.sync(execute: work)
+        }
+    }
+
     // MARK: - Shutdown Management
-    
+
     func shutdown() {
         shutdownLock.lock()
         guard !isShutDown else {
@@ -89,12 +102,11 @@ internal final class SessionReplayPersistingEmitter {
         }
         isShutDown = true
         shutdownLock.unlock()
-        
-        queue.async { [weak self] in
-            guard let self: SessionReplayPersistingEmitter = self else { return }
-            self.flushTimer?.cancel()
-            self.flushTimer = nil
-            self.flushIfNeeded(ignoringShutdown: true)  // Final flush bypasses guard
+
+        executeOnQueueSync { [self] in
+            flushTimer?.cancel()
+            flushTimer = nil
+            flushIfNeeded(ignoringShutdown: true) // Final flush bypasses guard
         }
     }
 

@@ -25,6 +25,33 @@ class SessionReplayEmitterShutdownTests: XCTestCase {
         super.tearDown()
     }
     
+    // MARK: - Synchronous shutdown scheduling (release-safety)
+
+    /// Regression: `shutdown()` must run final-flush work on the persisting queue before returning, so
+    /// releasing the owner (e.g. `SessionReplayRecorder`) does not race `[weak self]` async teardown.
+    func testShutdownInvokesSendRawBeforeReturning() {
+        let mockTransport = MockSessionReplayTransport()
+        let emitter = SessionReplayPersistingEmitter(
+            storageDir: tempDirectory,
+            transport: mockTransport,
+            flushIntervalSeconds: 300,
+            flushAt: 10_000,
+            maxBatchSize: 100
+        )
+
+        emitter.emit(payloadJson: "{\"test\": \"pending\"}")
+
+        XCTAssertEqual(mockTransport.sendRawCallCount, 0, "Precondition: payload should not flush before shutdown")
+
+        emitter.shutdown()
+
+        XCTAssertGreaterThanOrEqual(
+            mockTransport.sendRawCallCount,
+            1,
+            "Final flush should be scheduled synchronously during shutdown, before the call returns"
+        )
+    }
+
     // MARK: - Shutdown Prevents New Emissions (Android parity)
     
     /// Verifies that after shutdown(), new emit() calls are rejected without entering the queue.

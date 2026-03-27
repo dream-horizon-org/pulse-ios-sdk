@@ -11,6 +11,9 @@ import Sessions
 import UIKit
 import QuartzCore
 public class SessionReplayRecorder {
+    private static let recorderQueueSpecificKey = DispatchSpecificKey<UInt8>()
+    private static let recorderQueueMarker: UInt8 = 1
+
     private let config: SessionReplayConfig
     private let capturer: SessionReplayCapturer
     private var _isRecording: Bool = false
@@ -61,9 +64,19 @@ public class SessionReplayRecorder {
             }
         }
 
+        queue.setSpecific(key: Self.recorderQueueSpecificKey, value: Self.recorderQueueMarker)
+
         setupLifecycleObservers()
     }
-    
+
+    private func executeOnRecorderQueueSync(_ work: () -> Void) {
+        if DispatchQueue.getSpecific(key: Self.recorderQueueSpecificKey) == Self.recorderQueueMarker {
+            work()
+        } else {
+            queue.sync(execute: work)
+        }
+    }
+
     deinit {
         stopDisplayLink()
         removeLifecycleObservers()
@@ -132,16 +145,15 @@ public class SessionReplayRecorder {
     
     /// Stops capture and shuts down the persisting emitter (SDK uninstall / consent denied).
     public func tearDown() {
-        queue.async { [weak self] in
-            guard let self = self else { return }
-            self.needsResumeAfterInactive = false
-            self.recordingStateLock.lock()
-            self._isRecording = false
-            self.recordingStateLock.unlock()
-            self.throttler?.cancel()
-            self.throttler = nil
-            self.stopDisplayLink()
-            self.persistingEmitter?.shutdown()
+        executeOnRecorderQueueSync { [self] in
+            needsResumeAfterInactive = false
+            recordingStateLock.lock()
+            _isRecording = false
+            recordingStateLock.unlock()
+            throttler?.cancel()
+            throttler = nil
+            stopDisplayLink()
+            persistingEmitter?.shutdown()
         }
     }
 
