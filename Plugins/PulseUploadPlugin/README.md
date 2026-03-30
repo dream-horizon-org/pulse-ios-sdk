@@ -174,3 +174,9 @@ Currently, the plugin supports:
 - **dSYM files** - iOS debug symbol files (automatically detected and zipped if directory)
 
 Other file types default to `"unknown"` and may be rejected by the backend.
+
+## CocoaPods
+
+If the SDK is integrated with **CocoaPods** instead of SPM, use the shell upload scripts in [`Scripts/PulseUploadSourcemaps/README.md`](../../Scripts/PulseUploadSourcemaps/README.md). Those run without invoking Swift.
+
+If you use **Swift Package Manager** for the SDK, this command plugin is the usual choice: run `swift package uploadSourceMaps` from the package that contains the dependency.
