@@ -116,17 +116,27 @@ internal class UIWindowSwizzler {
         return nil
     }
 
-    /// A view counts as a tap target if it is:
-    ///   - A UIControl (UIButton, UISwitch, UISegmentedControl, etc.)
-    ///   - A UITableViewCell or UICollectionViewCell (their tap gesture lives on the
-    ///     parent scroll view, not the cell — so we match the cell directly)
-    ///   - Has a UITapGestureRecognizer (custom tappable cards, image views, etc.)
-    ///
     internal static func isClickTarget(_ view: UIView) -> Bool {
+        if view is UIScrollView { return false }
         if view is UIControl { return true }
         if view is UITableViewCell || view is UICollectionViewCell { return true }
-        if let recognizers = view.gestureRecognizers,
-           recognizers.contains(where: { $0 is UITapGestureRecognizer }) { return true }
+        if hasDiscreteTappableGestureRecognizer(view) { return true }
+        let traits = view.accessibilityTraits
+        if traits.contains(.button) || traits.contains(.link) {
+            return true
+        }
+        return false
+    }
+
+    /// Gestures that indicate intentional on-view actions. Excludes `UIPanGestureRecognizer`
+    /// so scroll views, maps, and drag surfaces are not logged on every small touch movement.
+    private static func hasDiscreteTappableGestureRecognizer(_ view: UIView) -> Bool {
+        guard let recognizers = view.gestureRecognizers else { return false }
+        for gr in recognizers {
+            if gr is UITapGestureRecognizer { return true }
+            if gr is UILongPressGestureRecognizer { return true }
+            if gr is UISwipeGestureRecognizer { return true }
+        }
         return false
     }
 
@@ -165,7 +175,7 @@ internal class UIWindowSwizzler {
             .emit()
 
         let contextLog = label.map { " | context: \"label=\($0)\"" } ?? ""
-        print("[Pulse] app.widget.click → name: \"\(widgetName)\"\(contextLog) | (\(Int(point.x)), \(Int(point.y)))")
+        PulseLogger.log("app.widget.click → name: \"\(widgetName)\"\(contextLog) | (\(Int(point.x)), \(Int(point.y)))")
     }
 
     // MARK: - Label Extraction

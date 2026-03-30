@@ -42,7 +42,10 @@ class TapDemoViewController: UIViewController {
     }
 
     private func buildSections() {
-        addHint("No accessibilityLabel or accessibilityIdentifier set anywhere.\nCheck Xcode console — SDK prints app.widget.click payload for each tap.")
+        addHint(
+            "UIKit rows: no accessibility set (SDK infers labels where possible).\n"
+                + "Debug builds: [Pulse] tap hitTest → … | resolved → … then app.widget.click."
+        )
 
         // ── 1. UIButton with text ──────────────────────────────────────────────
         // Expected: label=Add to Cart, element=button (from titleLabel.text)

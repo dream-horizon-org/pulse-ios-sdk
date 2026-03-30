@@ -55,6 +55,17 @@ final class UIKitTapInstrumentationTests: XCTestCase {
         XCTAssertFalse(UIWindowSwizzler.isClickTarget(UIView()))
     }
 
+    func testUIScrollViewIsNotClickTargetEvenWithTapGesture() {
+        let scroll = UIScrollView()
+        scroll.addGestureRecognizer(UITapGestureRecognizer())
+        XCTAssertFalse(UIWindowSwizzler.isClickTarget(scroll))
+    }
+
+    func testUITableViewIsNotClickTarget() {
+        let table = UITableView()
+        XCTAssertFalse(UIWindowSwizzler.isClickTarget(table))
+    }
+
     func testUILabelIsNotClickTarget() {
         XCTAssertFalse(UIWindowSwizzler.isClickTarget(UILabel()))
     }
@@ -63,6 +74,30 @@ final class UIKitTapInstrumentationTests: XCTestCase {
         let view = UIView()
         view.addGestureRecognizer(UIPanGestureRecognizer())
         XCTAssertFalse(UIWindowSwizzler.isClickTarget(view))
+    }
+
+    func testViewWithLongPressGestureRecognizerIsClickTarget() {
+        let view = UIView()
+        view.addGestureRecognizer(UILongPressGestureRecognizer())
+        XCTAssertTrue(UIWindowSwizzler.isClickTarget(view))
+    }
+
+    func testViewWithSwipeGestureRecognizerIsClickTarget() {
+        let view = UIView()
+        view.addGestureRecognizer(UISwipeGestureRecognizer())
+        XCTAssertTrue(UIWindowSwizzler.isClickTarget(view))
+    }
+
+    func testViewWithAccessibilityButtonTraitIsClickTarget() {
+        let view = UIView()
+        view.accessibilityTraits.insert(.button)
+        XCTAssertTrue(UIWindowSwizzler.isClickTarget(view))
+    }
+
+    func testViewWithAccessibilityLinkTraitIsClickTarget() {
+        let view = UIView()
+        view.accessibilityTraits.insert(.link)
+        XCTAssertTrue(UIWindowSwizzler.isClickTarget(view))
     }
 
     // MARK: - Label extraction: UILabel
