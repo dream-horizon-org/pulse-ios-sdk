@@ -184,6 +184,40 @@ public class Pulse {
                 _samplingSignalProcessors = processors
                 let enabledFeatures = processors.getEnabledFeatures()
                 applyDisabledFeatures(enabledFeatures: enabledFeatures, config: &config)
+                if enabledFeatures.contains(.session_replay) {
+                    config.sessionReplay { $0.enabled(true) }
+                }
+
+                // Extract and merge Session Replay config from backend
+                let sessionReplayFeature = sdkConfig.features.first { feature in
+                    feature.featureName == .session_replay &&
+                    feature.sdks.contains(currentSdkName) &&
+                    feature.sessionSampleRate > 0
+                }
+
+                if let feature = sessionReplayFeature {
+                    let remoteConfig = SessionReplayRemoteConfig.from(featureConfig: feature)
+                    let localConfig = config.sessionReplay.config
+                    let mergedConfig = SessionReplayConfig.merge(
+                        remote: remoteConfig,
+                        local: localConfig
+                    )
+                    config.sessionReplay { replayConfig in
+                        replayConfig.configure { config in
+                            config.captureIntervalMs = mergedConfig.captureIntervalMs
+                            config.compressionQuality = mergedConfig.compressionQuality
+                            config.textAndInputPrivacy = mergedConfig.textAndInputPrivacy
+                            config.imagePrivacy = mergedConfig.imagePrivacy
+                            config.screenshotScale = mergedConfig.screenshotScale
+                            config.flushIntervalSeconds = mergedConfig.flushIntervalSeconds
+                            config.flushAt = mergedConfig.flushAt
+                            config.maxBatchSize = mergedConfig.maxBatchSize
+                            config.replayEndpointBaseUrl = mergedConfig.replayEndpointBaseUrl
+                            config.maskViewClasses = mergedConfig.maskViewClasses
+                            config.unmaskViewClasses = mergedConfig.unmaskViewClasses
+                        }
+                    }
+                }
             }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
@@ -202,6 +236,14 @@ public class Pulse {
                 loggerProviderCustomizer: loggerProviderCustomizer
             )
 
+            var configWithConsent = config
+            configWithConsent.attachSessionReplayConsentFromPulse(
+                isCaptureAllowed: { [weak self] in
+                    self?.currentDataCollectionState == .allowed
+                },
+                startActiveAtInstall: dataCollectionState == .allowed
+            )
+
             let installationContext = InstallationContext(
                 tracerProvider: tracerProvider,
                 loggerProvider: loggerProvider,
@@ -210,10 +252,14 @@ public class Pulse {
                 endpointHeaders: endpointHeadersWithProject,
                 flushLogProcessor: { [weak self] in
                     _ = self?._consentLogProcessor?.forceFlush()
+                },
+                projectId: Self.extractProjectID(from: apiKey),
+                userIdProvider: { [weak self] in
+                    self?.userSessionEmitter.userId
                 }
             )
-            self.instrumentationConfig = config
-            installInstrumentations(config: config, ctx: installationContext)
+            self.instrumentationConfig = configWithConsent
+            installInstrumentations(config: configWithConsent, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
             if _configuration.includeScreenAttributes {
@@ -263,6 +309,8 @@ public class Pulse {
             case .rn_screen_interactive: break
             case .ios_crash:
                 config.crash { $0.enabled(false) }
+            case .session_replay:
+                config.sessionReplay { $0.enabled(false) }
             case .unknown: break
             }
         }
@@ -539,6 +587,7 @@ public class Pulse {
     public func setDataCollectionState(_ newState: PulseDataCollectionConsent) {
         var shouldShutdown = false
         var shouldFlush = false
+        var sessionReplayMainWork: (() -> Void)?
         initializationQueue.sync {
             // Read without consentStateLock — safe, we're inside initializationQueue
             let current = _dataCollectionState
@@ -552,17 +601,33 @@ public class Pulse {
             switch newState {
             case .allowed:
                 shouldFlush = true
+                if current == .pending {
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.resumeAfterConsent()
+                    }
+                }
             case .denied:
                 _consentSpanProcessor?.clearBuffer()
                 _consentLogProcessor?.clearBuffer()
                 shouldShutdown = true
             case .pending:
-                break
+                if current == .allowed {
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.pauseForConsent()
+                    }
+                }
             }
         }
         if shouldFlush {
             _consentSpanProcessor?.flushBuffer()
             _consentLogProcessor?.flushBuffer()
+        }
+        if let work = sessionReplayMainWork {
+            if Thread.isMainThread {
+                work()
+            } else {
+                DispatchQueue.main.async(execute: work)
+            }
         }
         if shouldShutdown { shutdown() }
     }

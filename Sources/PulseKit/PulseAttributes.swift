@@ -59,6 +59,8 @@ public enum PulseAttributes {
         /// App session lifecycle (matches Otel semantic convention event names)
         public static let appSessionStart = "session.start"
         public static let appSessionEnd = "session.end"
+        /// Session replay
+        public static let sessionReplay = "session_replay"
         public static func isNetworkType(_ pulseType: String) -> Bool {
             return pulseType == network || pulseType.hasPrefix("\(network).")
         }
