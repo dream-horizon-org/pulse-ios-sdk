@@ -2,16 +2,30 @@
 
 Automatic screen recording for iOS applications. Captures screenshots at configurable intervals, applies privacy masking, and sends replay data to the backend for visualization.
 
+**UI framework:** The implementation is **UIKit-first** (windows and `UIView` screenshots). **SwiftUI is not supported** for session replay today; SwiftUI-only or SwiftUI-driven screens may not capture reliably.
+
+## Consent and `Pulse.initialize`
+
+Replay respects `dataCollectionState` on `Pulse.initialize` and `Pulse.setDataCollectionState`:
+
+- **`.allowed`:** install + start capturing when the app is active; disk cache may upload.
+- **`.pending`:** install only — no screenshots, no cached replay upload until consent becomes `.allowed` (then resume without resetting snapshot state).
+- **`.denied` at init:** Pulse never builds the SDK (no replay).
+- **`.allowed` → `.pending`:** pause capture and periodic upload; on-disk batches in `pulse-replay/` are retained.
+- **`.pending` → `.allowed`:** consent buffers flush for OTLP; replay resumes with `resumeAfterConsent()` (same session semantics as `resumeCurrent=true` on other platforms).
+
+See also [Consent README](../../PulseKit/Consent/README.md). For a short logical overview (including consent), see [WORKFLOW.md](./WORKFLOW.md).
+
 ## Features
 
 - **Automatic Screen Capture** - Captures screenshots at configurable intervals using CADisplayLink
 - **Privacy Controls** - Granular masking of text, inputs, and images with multiple privacy levels
 - **Class-Level Masking** - Register view classes to always mask or unmask
-- **Instance-Level Masking** - Per-view masking controls via SwiftUI modifiers or UIKit extensions
+- **Instance-Level Masking** - Per-view masking controls via UIKit view extensions
 - **Automatic Batching** - Groups replay events into batches for efficient transmission
 - **Persistent Storage** - Caches replay data on disk to survive app termination
 - **Lifecycle Management** - Automatically flushes data on app background/termination
-- **Compression** - JPEG/WebP compression with configurable quality
+- **Compression** - **WebP** when `libwebp` is linked (PulseKit depends on it via SPM); **JPEG** fallback if WebP is unavailable or encoding fails; configurable `compressionQuality`
 
 ## Setup
 
@@ -105,20 +119,6 @@ myPrivateView.pulseReplayMask()
 
 // Unmask a specific view
 myPublicView.pulseReplayUnmask()
-```
-
-### SwiftUI
-
-Use view modifiers:
-
-```swift
-// Mask a view
-MyPrivateView()
-    .pulseReplayMask()
-
-// Unmask a view
-MyPublicView()
-    .pulseReplayUnmask()
 ```
 
 ## Replay Events

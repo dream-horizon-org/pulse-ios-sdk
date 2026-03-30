@@ -804,9 +804,6 @@ class MainViewController: UIViewController {
     // MARK: - Session Replay Testing
     
     @objc private func testPIIMaskingTapped() {
-        print("━━━ testPIIMaskingTapped ━━━")
-        // Runtime check: SessionReplay is compiled into PulseKit when using CocoaPods
-        // Check if SessionReplayInstrumentation is available
         if SessionReplayInstrumentation.getInstance() != nil {
             let testVC = PIIMaskingTestViewController()
             navigationController?.pushViewController(testVC, animated: true)
