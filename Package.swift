@@ -350,6 +350,7 @@ extension Package {
             "Instrumentation/SDKResourceExtension/README.md",
             "Instrumentation/Location/README.md",
             "Instrumentation/AppLifecycle/README.md",
+            "Instrumentation/UIKitTap/README.md",
             "Instrumentation/SessionReplay/README.md"
           ],
           sources: [
@@ -363,6 +364,7 @@ extension Package {
             "Instrumentation/SDKResourceExtension",
             "Instrumentation/Location",
             "Instrumentation/AppLifecycle",
+            "Instrumentation/UIKitTap",
             "Instrumentation/SessionReplay"
           ],
           linkerSettings: [.linkedFramework("CoreTelephony", .when(platforms: [.iOS]))]
@@ -424,6 +426,14 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/AppLifecycleTests"
+        ),
+        .testTarget(
+          name: "UIKitTapTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/UIKitTapTests"
         ),
         .testTarget(
           name: "SessionReplayTests",

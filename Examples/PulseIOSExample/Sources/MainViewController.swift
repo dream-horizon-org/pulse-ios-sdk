@@ -190,7 +190,26 @@ class MainViewController: UIViewController {
         stackView.addArrangedSubview(event2Button)
         
         stackView.addArrangedSubview(createSeparator())
-        
+
+        // ── Tap Auto-Instrumentation ──
+        stackView.addArrangedSubview(createSectionHeader("Tap Auto-Instrumentation"))
+
+        let tapHint = UILabel()
+        tapHint.text = "Opens a screen with every tappable UIKit element type.\nNo accessibilityLabel/ID set — tests automatic context extraction."
+        tapHint.font = .systemFont(ofSize: 12)
+        tapHint.textColor = .secondaryLabel
+        tapHint.textAlignment = .center
+        tapHint.numberOfLines = 0
+        stackView.addArrangedSubview(tapHint)
+
+        stackView.addArrangedSubview(createButton(
+            title: "Tap Demo →",
+            action: #selector(openTapDemoTapped),
+            color: .systemCyan
+        ))
+
+        stackView.addArrangedSubview(createSeparator())
+
         // ── App Lifecycle Testing ──
         stackView.addArrangedSubview(createSectionHeader("App Lifecycle Testing"))
         
@@ -740,6 +759,10 @@ class MainViewController: UIViewController {
     
     // MARK: - App Lifecycle Testing
     
+    @objc private func openTapDemoTapped() {
+        navigationController?.pushViewController(TapDemoViewController(), animated: true)
+    }
+
     @objc private func pushSecondScreenTapped() {
         print("━━━ pushSecondScreenTapped ━━━")
         print("  Pushing SecondViewController")

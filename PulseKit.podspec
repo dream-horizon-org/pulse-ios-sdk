@@ -32,6 +32,7 @@ Pod::Spec.new do |spec|
     "Sources/Exporters/Persistence/**/*.swift",
     "Sources/Instrumentation/Location/*.swift",
     "Sources/Instrumentation/AppLifecycle/*.swift",
+    "Sources/Instrumentation/UIKitTap/*.swift",
     "Sources/Instrumentation/SessionReplay/**/*.swift"
   ]
 
@@ -46,6 +47,7 @@ Pod::Spec.new do |spec|
     "Sources/Instrumentation/SignPostIntegration/README.md",
     "Sources/Exporters/Persistence/README.md",
     "Sources/Instrumentation/AppLifecycle/README.md",
+    "Sources/Instrumentation/UIKitTap/README.md",
     "Sources/Instrumentation/SessionReplay/README.md"
   ]
   

@@ -152,8 +152,8 @@ internal class PulseSignalProcessor {
                         pulseType = nil
                     }
                     
-                case "app.screen.click", "app.widget.click", "event.app.widget.click":
-                    pulseType = PulseAttributes.PulseTypeValues.touch
+                case "app.widget.click":
+                    pulseType = PulseAttributes.PulseTypeValues.appClick
                     
                 case "network.change":
                     pulseType = PulseAttributes.PulseTypeValues.networkChange
