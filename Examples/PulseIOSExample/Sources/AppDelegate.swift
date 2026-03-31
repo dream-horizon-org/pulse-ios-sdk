@@ -24,12 +24,28 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         
         Pulse.shared.initialize(
             endpointBaseUrl: "http://127.0.0.1:4318",
-            projectId: "default",
+            apiKey: "default-project",
             endpointHeaders: nil,
-            globalAttributes: globalAttributes
+            globalAttributes: globalAttributes,
+            instrumentations: { config in
+                // Enable Session Replay
+                config.sessionReplay { replayConfig in
+                    replayConfig.enabled(true)
+                    replayConfig.configure { localConfig in
+                        localConfig.textAndInputPrivacy = .maskAllInputs
+                        localConfig.imagePrivacy = .maskNone
+                        
+                        // Register custom classes for class-level overrides
+                        localConfig.maskViewClasses = Set([
+                            "PulseIOSExample.PrivateSecureView",
+                            "PulseIOSExample.PrivateDataLabel",
+                        ])
+                        localConfig.replayEndpointBaseUrl = "http://127.0.0.1:3400"
+                    }
+                }
+            },
+            dataCollectionState: .allowed
         )
-        
-        // Create window and root view controller
         window = UIWindow(frame: UIScreen.main.bounds)
         let mainViewController = MainViewController()
         window?.rootViewController = UINavigationController(rootViewController: mainViewController)
@@ -38,5 +54,3 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 }
-
-

@@ -30,3 +30,14 @@ This behaviour can be modified or augmented by using the optional callbacks defi
 
 `baggageProvider: ((inout URLRequest, Span) -> (Baggage)?)?`: Provides baggage instance for instrumented requests that is merged with active baggage. The callback receives URLRequest and Span parameters to create dynamic baggage based on request context. The resulting baggage is injected into request headers using the configured propagator.
 
+## GraphQL
+
+When a request URL contains `"graphql"` (case-insensitive), the SDK may add span attributes at **span start** (request time) only:
+
+- **`graphql.operation.name`** — Operation name when known (from body `operationName`, URL query param `operationName`, or parsed from the `query` string).
+- **`graphql.operation.type`** — Operation type: `query`, `mutation`, or `subscription` (from body `operation`, URL query param `operation`, or parsed from the `query` string).
+
+Body is read from `URLRequest.httpBody` only. **Limitation:** When the request uses a streamed body (`httpBodyStream`) and `httpBody` is nil, no GraphQL attributes are derived from the body; only URL query parameters are used. This is a known limitation for streamed requests.
+
+Example: a POST to `https://api.example.com/graphql` with body `{"operationName":"GetUser","operation":"query"}` adds `graphql.operation.name` = `GetUser` and `graphql.operation.type` = `query` to the network span at creation time.
+

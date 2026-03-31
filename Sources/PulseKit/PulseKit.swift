@@ -34,8 +34,8 @@ public class Pulse {
     }
 
     private var openTelemetry: OpenTelemetry?
-    private var batchSpanProcessor: BatchSpanProcessor?
-    private var batchLogProcessor: BatchLogRecordProcessor?
+    private var _consentSpanProcessor: ConsentSpanProcessor?
+    private var _consentLogProcessor: ConsentLogProcessor?
     private var instrumentationConfig: InstrumentationConfiguration?
     
     // User session emitter
@@ -80,6 +80,15 @@ public class Pulse {
     /// Keeps PulseSamplingSignalProcessors alive so SampledSpanExporter/SampledLogExporter weak parent ref stays valid.
     private var _samplingSignalProcessors: PulseSamplingSignalProcessors?
 
+    private var _dataCollectionState: PulseDataCollectionConsent = .allowed
+    private let consentStateLock = NSLock()
+
+    internal var currentDataCollectionState: PulseDataCollectionConsent {
+        consentStateLock.lock()
+        defer { consentStateLock.unlock() }
+        return _dataCollectionState
+    }
+
     private lazy var logger: Logger = {
         guard let otel = openTelemetry else {
             fatalError("Pulse SDK is not initialized. Please call Pulse.initialize")
@@ -98,7 +107,7 @@ public class Pulse {
 
     public func initialize(
         endpointBaseUrl: String,
-        projectId: String,
+        apiKey: String,
         configEndpointUrl: String? = nil,
         customEventCollectorUrl: String? = nil,
         endpointHeaders: [String: String]? = nil,
@@ -106,6 +115,10 @@ public class Pulse {
         resource: ((inout [String: AttributeValue]) -> Void)? = nil,
         configuration: ((inout PulseKitConfiguration) -> Void)? = nil,
         instrumentations: ((inout InstrumentationConfiguration) -> Void)? = nil,
+        dataCollectionState: PulseDataCollectionConsent = .allowed,
+        beforeSendSpan: BeforeSendSpanCallback? = nil,
+        beforeSendLog: BeforeSendLogCallback? = nil,
+        beforeSendMetric: BeforeSendMetricCallback? = nil,
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)? = nil,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])? = nil
     ) {
@@ -116,15 +129,24 @@ public class Pulse {
                 return
             }
             PulseLogger.log("Initializing...")
+            if dataCollectionState == .denied {
+                _dataCollectionState = dataCollectionState
+                PulseLogger.log("Initialization skipped: started with DENIED consent.")
+                return
+            }
 
             _globalAttributes = globalAttributes
             var pulseKitConfig = PulseKitConfiguration()
             configuration?(&pulseKitConfig)
             _configuration = pulseKitConfig
 
-            // Merge projectId with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP)
-            let projectIdHeader = [PulseAttributes.projectIdHeaderKey: projectId]
-            let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(projectIdHeader) { _, new in new }
+            consentStateLock.lock()
+            _dataCollectionState = dataCollectionState
+            consentStateLock.unlock()
+
+            // Merge apiKey with endpointHeaders for all API calls (config endpoint—default or custom—and OTLP)
+            let apiKeyHeader = [PulseAttributes.apiKeyHeaderKey: apiKey]
+            let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(apiKeyHeader) { _, new in new }
 
             // Config: load from persistence (sync)
             let configCoordinator = PulseSdkConfigCoordinator()
@@ -147,7 +169,7 @@ public class Pulse {
             var config = InstrumentationConfiguration()
             instrumentations?(&config)
 
-            let resource = buildResource(projectId: projectId, resource: resource)
+            let resource = buildResource(apiKey: apiKey, resource: resource)
             // 3. Read from built resource
             let telemetrySdkName: String? = {
                 guard let av = resource.attributes[ResourceAttributes.telemetrySdkName.rawValue] else { return nil }
@@ -162,6 +184,40 @@ public class Pulse {
                 _samplingSignalProcessors = processors
                 let enabledFeatures = processors.getEnabledFeatures()
                 applyDisabledFeatures(enabledFeatures: enabledFeatures, config: &config)
+                if enabledFeatures.contains(.session_replay) {
+                    config.sessionReplay { $0.enabled(true) }
+                }
+
+                // Extract and merge Session Replay config from backend
+                let sessionReplayFeature = sdkConfig.features.first { feature in
+                    feature.featureName == .session_replay &&
+                    feature.sdks.contains(currentSdkName) &&
+                    feature.sessionSampleRate > 0
+                }
+
+                if let feature = sessionReplayFeature {
+                    let remoteConfig = SessionReplayRemoteConfig.from(featureConfig: feature)
+                    let localConfig = config.sessionReplay.config
+                    let mergedConfig = SessionReplayConfig.merge(
+                        remote: remoteConfig,
+                        local: localConfig
+                    )
+                    config.sessionReplay { replayConfig in
+                        replayConfig.configure { config in
+                            config.captureIntervalMs = mergedConfig.captureIntervalMs
+                            config.compressionQuality = mergedConfig.compressionQuality
+                            config.textAndInputPrivacy = mergedConfig.textAndInputPrivacy
+                            config.imagePrivacy = mergedConfig.imagePrivacy
+                            config.screenshotScale = mergedConfig.screenshotScale
+                            config.flushIntervalSeconds = mergedConfig.flushIntervalSeconds
+                            config.flushAt = mergedConfig.flushAt
+                            config.maxBatchSize = mergedConfig.maxBatchSize
+                            config.replayEndpointBaseUrl = mergedConfig.replayEndpointBaseUrl
+                            config.maskViewClasses = mergedConfig.maskViewClasses
+                            config.unmaskViewClasses = mergedConfig.unmaskViewClasses
+                        }
+                    }
+                }
             }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
@@ -172,8 +228,20 @@ public class Pulse {
                 config: config,
                 currentSdkConfig: configStorageQueue.sync { _currentSdkConfig },
                 currentSdkName: currentSdkName,
+                dataCollectionState: dataCollectionState,
+                beforeSendSpan: beforeSendSpan,
+                beforeSendLog: beforeSendLog,
+                beforeSendMetric: beforeSendMetric,
                 tracerProviderCustomizer: tracerProviderCustomizer,
                 loggerProviderCustomizer: loggerProviderCustomizer
+            )
+
+            var configWithConsent = config
+            configWithConsent.attachSessionReplayConsentFromPulse(
+                isCaptureAllowed: { [weak self] in
+                    self?.currentDataCollectionState == .allowed
+                },
+                startActiveAtInstall: dataCollectionState == .allowed
             )
 
             let installationContext = InstallationContext(
@@ -183,11 +251,15 @@ public class Pulse {
                 endpointBaseUrl: endpointBaseUrl,
                 endpointHeaders: endpointHeadersWithProject,
                 flushLogProcessor: { [weak self] in
-                    self?.batchLogProcessor?.forceFlush()
+                    _ = self?._consentLogProcessor?.forceFlush()
+                },
+                projectId: Self.extractProjectID(from: apiKey),
+                userIdProvider: { [weak self] in
+                    self?.userSessionEmitter.userId
                 }
             )
-            self.instrumentationConfig = config
-            installInstrumentations(config: config, ctx: installationContext)
+            self.instrumentationConfig = configWithConsent
+            installInstrumentations(config: configWithConsent, ctx: installationContext)
 
             #if os(iOS) || os(tvOS)
             if _configuration.includeScreenAttributes {
@@ -237,6 +309,8 @@ public class Pulse {
             case .rn_screen_interactive: break
             case .ios_crash:
                 config.crash { $0.enabled(false) }
+            case .session_replay:
+                config.sessionReplay { $0.enabled(false) }
             case .unknown: break
             }
         }
@@ -254,21 +328,21 @@ public class Pulse {
         let withPort = endpointBaseUrl.replacingOccurrences(of: ":4318", with: ":8080")
         return normalizedBaseUrl(withPort) + "/v1/configs/active/"
     }
-    internal static func extractProjectID(from projectId: String) -> String {
-        if let lastUnderscoreIndex = projectId.lastIndex(of: "_"), lastUnderscoreIndex > projectId.startIndex {
-            return String(projectId[..<lastUnderscoreIndex])
+    internal static func extractProjectID(from apiKey: String) -> String {
+        if let lastUnderscoreIndex = apiKey.lastIndex(of: "_"), lastUnderscoreIndex > apiKey.startIndex {
+            return String(apiKey[..<lastUnderscoreIndex])
         }
-        return projectId
+        return apiKey
     }
 
     /// Set default telemetry.sdk.name first, then resource callback (overrides if it sets the key)
-    private func buildResource(projectId: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
+    private func buildResource(apiKey: String, resource: ((inout [String: AttributeValue]) -> Void)?) -> Resource {
         let defaultResource = DefaultResources().get()
         var attributes = defaultResource.attributes
 
         // 1. Set default (native iOS = pulse_ios_swift)
         attributes[ResourceAttributes.telemetrySdkName.rawValue] = AttributeValue.string(PulseAttributes.PulseSdkNames.iosSwift)
-        attributes[PulseAttributes.projectId] = AttributeValue.string(Self.extractProjectID(from: projectId))
+        attributes[PulseAttributes.projectId] = AttributeValue.string(Self.extractProjectID(from: apiKey))
 
         // 2. Resource callback can override (e.g. RN bridge sets pulse_ios_rn)
         if let resourceCustomizer = resource {
@@ -286,6 +360,10 @@ public class Pulse {
         config: InstrumentationConfiguration,
         currentSdkConfig: PulseSdkConfig?,
         currentSdkName: PulseSdkName,
+        dataCollectionState: PulseDataCollectionConsent,
+        beforeSendSpan: BeforeSendSpanCallback?,
+        beforeSendLog: BeforeSendLogCallback?,
+        beforeSendMetric: BeforeSendMetricCallback?,
         tracerProviderCustomizer: ((TracerProviderBuilder) -> TracerProviderBuilder)?,
         loggerProviderCustomizer: (([LogRecordProcessor]) -> [LogRecordProcessor])?
     ) -> (tracerProvider: TracerProvider, loggerProvider: LoggerProvider, openTelemetry: OpenTelemetry) {
@@ -304,13 +382,23 @@ public class Pulse {
             ?? URL(string: "\(base)/v1/logs")!
         let customEventUrl = currentSdkConfig.map { URL(string: $0.signals.customEventCollectorUrl)! }
             ?? (customEventCollectorUrl.flatMap { URL(string: $0) } ?? URL(string: "\(base)/v1/logs")!)
+        //TODO: wrap with beforeSendMetric: beforeSendMetric.map { BeforeSendMetricExporter(callback: $0, delegate: otlpMetricExporter) } ?? otlpMetricExporter when metrics is added
         let otlpSpanExporter = OtlpHttpTraceExporter(endpoint: tracesUrl, envVarHeaders: envVarHeaders)
-        let filteredSpanExporter = FilteringSpanExporter(delegate: otlpSpanExporter)
+        let spanExporterAfterBeforeSend: SpanExporter = beforeSendSpan.map {
+            BeforeSendSpanExporter(callback: $0, delegate: otlpSpanExporter)
+        } ?? otlpSpanExporter
+        let filteredSpanExporter = FilteringSpanExporter(delegate: spanExporterAfterBeforeSend)
 
         // Always use SelectedLogExporter: route custom events to customEventUrl, others to logsUrl.
         // When config is nil: customEventUrl = customEventCollectorUrl from init ?? logsUrl.
-        let defaultLogsExporter = OtlpHttpLogExporter(endpoint: logsUrl, envVarHeaders: envVarHeaders)
-        let customEventExporter = OtlpHttpLogExporter(endpoint: customEventUrl, envVarHeaders: envVarHeaders)
+        let rawDefaultLogsExporter = OtlpHttpLogExporter(endpoint: logsUrl, envVarHeaders: envVarHeaders)
+        let rawCustomEventExporter = OtlpHttpLogExporter(endpoint: customEventUrl, envVarHeaders: envVarHeaders)
+        let defaultLogsExporter: LogRecordExporter = beforeSendLog.map {
+            BeforeSendLogExporter(callback: $0, delegate: rawDefaultLogsExporter)
+        } ?? rawDefaultLogsExporter
+        let customEventExporter: LogRecordExporter = beforeSendLog.map {
+            BeforeSendLogExporter(callback: $0, delegate: rawCustomEventExporter)
+        } ?? rawCustomEventExporter
         let selectExporter = PulseSignalSelectExporter(currentSdkName: currentSdkName)
         let logMap: [(PulseSignalMatchCondition, LogRecordExporter)] = [
             (PulseSignalMatchCondition.allMatchLogCondition, defaultLogsExporter),
@@ -333,27 +421,35 @@ public class Pulse {
             logExporter: finalLogExporter
         )
 
-        let spanProcessor = BatchSpanProcessor(
+        let innerBatchSpanProcessor = BatchSpanProcessor(
             spanExporter: persistentSpanExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
-        let baseLogProcessor = BatchLogRecordProcessor(
+        let consentSpanProcessor = ConsentSpanProcessor(
+            delegate: innerBatchSpanProcessor,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentSpanProcessor = consentSpanProcessor
+
+        let innerBatchLogProcessor = BatchLogRecordProcessor(
             logRecordExporter: persistentLogExporter,
             scheduleDelay: BatchProcessorDefaults.scheduleDelay,
             exportTimeout: BatchProcessorDefaults.exportTimeout,
             maxQueueSize: BatchProcessorDefaults.maxQueueSize,
             maxExportBatchSize: BatchProcessorDefaults.maxExportBatchSize
         )
-
-        self.batchSpanProcessor = spanProcessor
-        self.batchLogProcessor = baseLogProcessor
+        let consentLogProcessor = ConsentLogProcessor(
+            delegate: innerBatchLogProcessor,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentLogProcessor = consentLogProcessor
 
         let (spanProcessors, logProcessors) = buildProcessors(
-            baseSpanProcessor: spanProcessor,
-            baseLogProcessor: baseLogProcessor,
+            baseSpanProcessor: consentSpanProcessor,
+            baseLogProcessor: consentLogProcessor,
             config: config,
             meteredConfig: meteredConfig,
             meteredManager: meteredManager,
@@ -487,6 +583,55 @@ public class Pulse {
 
     // MARK: - Shutdown
 
+    /// Updates data collection consent. `.allowed` flushes buffered signals then exports normally. `.denied` clears buffer and shuts down pulse.
+    public func setDataCollectionState(_ newState: PulseDataCollectionConsent) {
+        var shouldShutdown = false
+        var shouldFlush = false
+        var sessionReplayMainWork: (() -> Void)?
+        initializationQueue.sync {
+            // Read without consentStateLock — safe, we're inside initializationQueue
+            let current = _dataCollectionState
+            guard current != newState, current != .denied else { return }
+
+            // Write under consentStateLock — so exporters on hot path see update atomically
+            consentStateLock.lock()
+            _dataCollectionState = newState
+            consentStateLock.unlock()
+
+            switch newState {
+            case .allowed:
+                shouldFlush = true
+                if current == .pending {
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.resumeAfterConsent()
+                    }
+                }
+            case .denied:
+                _consentSpanProcessor?.clearBuffer()
+                _consentLogProcessor?.clearBuffer()
+                shouldShutdown = true
+            case .pending:
+                if current == .allowed {
+                    sessionReplayMainWork = {
+                        SessionReplayInstrumentation.getInstance()?.pauseForConsent()
+                    }
+                }
+            }
+        }
+        if shouldFlush {
+            _consentSpanProcessor?.flushBuffer()
+            _consentLogProcessor?.flushBuffer()
+        }
+        if let work = sessionReplayMainWork {
+            if Thread.isMainThread {
+                work()
+            } else {
+                DispatchQueue.main.async(execute: work)
+            }
+        }
+        if shouldShutdown { shutdown() }
+    }
+
     /// Permanently shuts down the SDK. Cannot be re-initialized in this process.
     public func shutdown() {
         initializationQueue.sync {
@@ -498,8 +643,8 @@ public class Pulse {
             defaults.removeObject(forKey: "pulse_installation_id")
             defaults.removeObject(forKey: "user_id")
 
-            batchSpanProcessor?.shutdown()
-            _ = batchLogProcessor?.shutdown()
+            _consentSpanProcessor?.shutdown(explicitTimeout: nil)
+            _ = _consentLogProcessor?.shutdown()
             PersistenceUtils.clearStorage()
 
             openTelemetry = nil
