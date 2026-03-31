@@ -57,6 +57,8 @@ Pod::Spec.new do |spec|
   spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
   spec.dependency 'SwiftProtobuf', '~> 1.28'
   spec.dependency 'KSCrash', '~> 2.5'
+
+  spec.resources = "Scripts/PulseUploadSourcemaps/*.sh"
   spec.preserve_paths = "Scripts/PulseUploadSourcemaps/**/*"
 
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name PulseKit -package-name pulse_kit" }
