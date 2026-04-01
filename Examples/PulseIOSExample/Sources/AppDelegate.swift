@@ -27,6 +27,23 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             apiKey: "default-project",
             endpointHeaders: nil,
             globalAttributes: globalAttributes,
+            instrumentations: { config in
+                // Enable Session Replay
+                config.sessionReplay { replayConfig in
+                    replayConfig.enabled(true)
+                    replayConfig.configure { localConfig in
+                        localConfig.textAndInputPrivacy = .maskAllInputs
+                        localConfig.imagePrivacy = .maskNone
+                        
+                        // Register custom classes for class-level overrides
+                        localConfig.maskViewClasses = Set([
+                            "PulseIOSExample.PrivateSecureView",
+                            "PulseIOSExample.PrivateDataLabel",
+                        ])
+                        localConfig.replayEndpointBaseUrl = "http://127.0.0.1:3400"
+                    }
+                }
+            },
             dataCollectionState: .allowed
         )
         window = UIWindow(frame: UIScreen.main.bounds)
@@ -37,5 +54,3 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return true
     }
 }
-
-

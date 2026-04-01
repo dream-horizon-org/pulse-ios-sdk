@@ -46,6 +46,8 @@ public struct SessionsInstrumentationConfig {
             endEventName: SessionConstants.sessionEndEvent
         )
         let otelManager = SessionManager(configuration: otelConfig)
+        // Register with SessionManagerProvider so session replay uses the same session
+        SessionManagerProvider.register(sessionManager: otelManager)
         
         let otelSpanProcessor = SessionSpanProcessor(sessionManager: otelManager)
         let otelLogProcessor = SessionLogRecordProcessor(nextProcessor: baseLogProcessor, sessionManager: otelManager)

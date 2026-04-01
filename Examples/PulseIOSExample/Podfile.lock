@@ -22,11 +22,24 @@ PODS:
   - KSCrash/Sinks (2.5.1):
     - KSCrash/Filters
     - KSCrash/Recording
+  - libwebp (1.5.0):
+    - libwebp/demux (= 1.5.0)
+    - libwebp/mux (= 1.5.0)
+    - libwebp/sharpyuv (= 1.5.0)
+    - libwebp/webp (= 1.5.0)
+  - libwebp/demux (1.5.0):
+    - libwebp/webp
+  - libwebp/mux (1.5.0):
+    - libwebp/demux
+  - libwebp/sharpyuv (1.5.0)
+  - libwebp/webp (1.5.0):
+    - libwebp/sharpyuv
   - OpenTelemetry-Swift-Api (2.2.0)
   - OpenTelemetry-Swift-Sdk (2.2.0):
     - OpenTelemetry-Swift-Api (= 2.2.0)
-  - PulseKit (0.0.1-beta.4):
+  - PulseKit (0.0.1-beta.5):
     - KSCrash (= 2.5.1)
+    - libwebp (= 1.5.0)
     - OpenTelemetry-Swift-Api (= 2.2.0)
     - OpenTelemetry-Swift-Sdk (= 2.2.0)
     - SwiftProtobuf (= 1.34.1)
@@ -38,6 +51,7 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - KSCrash
+    - libwebp
     - OpenTelemetry-Swift-Api
     - OpenTelemetry-Swift-Sdk
     - SwiftProtobuf
@@ -48,9 +62,10 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   KSCrash: 8c4464fd5da7de520f2ce4a00fdf63f169a80f18
+  libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
   OpenTelemetry-Swift-Api: 0785e3b9888286449aa297c0b48269797bfcaf7f
   OpenTelemetry-Swift-Sdk: b856396d6147c01829a88ad782f481c0e1cd0966
-  PulseKit: 86b155c6c54c3455b99a95a93dc75b0570d3b840
+  PulseKit: 9c3c22bd0c6a1506ff72f52009a93287e5075a9c
   SwiftProtobuf: c901f00a3e125dc33cac9b16824da85682ee47da
 
 PODFILE CHECKSUM: d7e992ed53e576159ebf29036c98bb3c0f9adf17

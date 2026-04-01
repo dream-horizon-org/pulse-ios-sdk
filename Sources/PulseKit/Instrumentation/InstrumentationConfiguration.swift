@@ -15,6 +15,8 @@ public struct InstrumentationConfiguration {
     private var _appLifecycle: AppLifecycleInstrumentationConfig = AppLifecycleInstrumentationConfig()
     private var _screenLifecycle: ScreenLifecycleInstrumentationConfig = ScreenLifecycleInstrumentationConfig()
     private var _appStartup: AppStartupInstrumentationConfig = AppStartupInstrumentationConfig()
+    private var _uiKitTap: UIKitTapInstrumentationConfig = UIKitTapInstrumentationConfig()
+    private var _sessionReplay: SessionReplayInstrumentationConfig = SessionReplayInstrumentationConfig()
 
     public init() {}
 
@@ -54,6 +56,24 @@ public struct InstrumentationConfiguration {
         configure(&_appStartup)
     }
 
+    public mutating func uiKitTap(_ configure: (inout UIKitTapInstrumentationConfig) -> Void) {
+        configure(&_uiKitTap)
+    }
+
+    public mutating func sessionReplay(_ configure: (inout SessionReplayInstrumentationConfig) -> Void) {
+        configure(&_sessionReplay)
+    }
+
+    internal mutating func attachSessionReplayConsentFromPulse(
+        isCaptureAllowed: @escaping () -> Bool,
+        startActiveAtInstall: Bool
+    ) {
+        _sessionReplay.attachPulseSessionReplayConsent(
+            isCaptureAllowed: isCaptureAllowed,
+            startActiveAtInstall: startActiveAtInstall
+        )
+    }
+
     internal var urlSession: URLSessionInstrumentationConfig { _urlSession }
     internal var sessions: SessionsInstrumentationConfig { _sessions }
     internal var signPost: SignPostInstrumentationConfig { _signPost }
@@ -63,6 +83,8 @@ public struct InstrumentationConfiguration {
     internal var appLifecycle: AppLifecycleInstrumentationConfig { _appLifecycle }
     internal var screenLifecycle: ScreenLifecycleInstrumentationConfig { _screenLifecycle }
     internal var appStartup: AppStartupInstrumentationConfig { _appStartup }
+    internal var uiKitTap: UIKitTapInstrumentationConfig { _uiKitTap }
+    internal var sessionReplay: SessionReplayInstrumentationConfig { _sessionReplay }
 
     internal var instrumentations: [InstrumentationLifecycle] {
         [
@@ -74,7 +96,9 @@ public struct InstrumentationConfiguration {
             _crash,
             _appLifecycle,
             _screenLifecycle,
-            _appStartup
+            _appStartup,
+            _uiKitTap,
+            _sessionReplay
         ]
     }
 }

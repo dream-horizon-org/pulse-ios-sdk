@@ -31,7 +31,9 @@ Pod::Spec.new do |spec|
     "Sources/Exporters/OpenTelemetryProtocolHttp/**/*.swift",
     "Sources/Exporters/Persistence/**/*.swift",
     "Sources/Instrumentation/Location/*.swift",
-    "Sources/Instrumentation/AppLifecycle/*.swift"
+    "Sources/Instrumentation/AppLifecycle/*.swift",
+    "Sources/Instrumentation/UIKitTap/*.swift",
+    "Sources/Instrumentation/SessionReplay/**/*.swift"
   ]
 
   spec.exclude_files = [
@@ -44,7 +46,9 @@ Pod::Spec.new do |spec|
     "Sources/Instrumentation/Interaction/Internal_Interaction.md",
     "Sources/Instrumentation/SignPostIntegration/README.md",
     "Sources/Exporters/Persistence/README.md",
-    "Sources/Instrumentation/AppLifecycle/README.md"
+    "Sources/Instrumentation/AppLifecycle/README.md",
+    "Sources/Instrumentation/UIKitTap/README.md",
+    "Sources/Instrumentation/SessionReplay/README.md"
   ]
   
   spec.swift_version = "5.10"
@@ -57,6 +61,7 @@ Pod::Spec.new do |spec|
   spec.dependency 'OpenTelemetry-Swift-Sdk', '2.2.0'
   spec.dependency 'SwiftProtobuf', '1.34.1'
   spec.dependency 'KSCrash', '2.5.1'
+  spec.dependency 'libwebp', '1.5.0'
 
   spec.resources = [
     "Scripts/PulseUploadSourcemaps/*.sh"
