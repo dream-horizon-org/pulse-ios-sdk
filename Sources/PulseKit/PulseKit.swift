@@ -1,6 +1,9 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+#if os(iOS) || os(tvOS)
+import UIKit
+#endif
 #if canImport(OpenTelemetryProtocolExporterHttp)
 import OpenTelemetryProtocolExporterHttp
 #endif
@@ -104,6 +107,34 @@ public class Pulse {
     }()
 
     private init() {}
+
+    /// Computes current viewport aspect ratio from active key UIWindow as "w:h".
+    /// Uses window bounds in points to match click viewport width/height semantics.
+    internal func currentViewportAspectRatio() -> String? {
+        #if os(iOS) || os(tvOS)
+        guard
+            let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive }),
+            let window = scene.windows.first(where: { $0.isKeyWindow })
+        else {
+            return nil
+        }
+
+        let width = Int(window.bounds.width)
+        let height = Int(window.bounds.height)
+        guard width > 0, height > 0 else { return nil }
+
+        let divisor = gcd(width, height)
+        return "\(width / divisor):\(height / divisor)"
+        #else
+        return nil
+        #endif
+    }
+
+    private func gcd(_ a: Int, _ b: Int) -> Int {
+        b == 0 ? abs(a) : gcd(b, a % b)
+    }
 
     public func initialize(
         endpointBaseUrl: String,
@@ -218,6 +249,24 @@ public class Pulse {
                         }
                     }
                 }
+                
+                // Extract and merge Click rage config from backend
+                let clickFeature = sdkConfig.features.first { feature in
+                    feature.featureName == .click &&
+                    feature.sdks.contains(currentSdkName) &&
+                    feature.sessionSampleRate > 0
+                }
+                
+                if let feature = clickFeature {
+                    let remoteConfig = ClickFeatureRemoteConfig.from(featureConfig: feature)
+                    var resolvedRage = config.uiKitTap.rage
+                    if let remote = remoteConfig?.rage {
+                        resolvedRage.timeWindowMs = remote.timeWindowMs ?? resolvedRage.timeWindowMs
+                        resolvedRage.rageThreshold = remote.rageThreshold ?? resolvedRage.rageThreshold
+                        resolvedRage.radiusPt = remote.radius ?? resolvedRage.radiusPt
+                    }
+                    config.uiKitTap { $0.rage { r in r = resolvedRage } }
+                }
             }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
@@ -311,6 +360,8 @@ public class Pulse {
                 config.crash { $0.enabled(false) }
             case .session_replay:
                 config.sessionReplay { $0.enabled(false) }
+            case .click:
+                config.uiKitTap { $0.enabled(false) }
             case .unknown: break
             }
         }

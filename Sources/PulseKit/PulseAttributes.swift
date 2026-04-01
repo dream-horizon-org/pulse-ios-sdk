@@ -27,6 +27,16 @@ public enum PulseAttributes {
     /// Project identifier; used as resource attribute "project.id" and in HTTP header X-API-KEY.
     public static let projectId = "project.id"
     internal static let apiKeyHeaderKey = "X-API-KEY"
+    
+    // Click instrumentation attributes
+    public static let clickType = "click.type"
+    public static let clickIsRage = "click.is_rage"
+    public static let clickRageCount = "click.rageCount"
+    public static let deviceScreenWidth = "device.screen.width"
+    public static let deviceScreenHeight = "device.screen.height"
+    public static let deviceScreenAspectRatio = "device.screen.aspect_ratio"
+    public static let appScreenCoordinateNx = "app.screen.coordinate.nx"
+    public static let appScreenCoordinateNy = "app.screen.coordinate.ny"
 
     public static func pulseUserParameter(_ key: String) -> String {
         return "\(pulseUserPrefix).\(key)"
@@ -35,6 +45,18 @@ public enum PulseAttributes {
     public enum PulseSdkNames {
         public static let iosSwift = "pulse_ios_swift"
         public static let iosRn = "pulse_ios_rn"
+    }
+
+    public enum ClickTypeValues {
+        public static let good = "good"
+        public static let dead = "dead"
+    }
+    
+    public enum AppClickContext {
+        public static func buildContext(label: String?) -> String? {
+            guard let trimmed = label?.trimmingCharacters(in: .whitespaces), !trimmed.isEmpty else { return nil }
+            return "label=\(trimmed)"
+        }
     }
 
     public enum PulseTypeValues {

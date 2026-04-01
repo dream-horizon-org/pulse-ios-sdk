@@ -338,5 +338,287 @@ final class UIKitTapInstrumentationTests: XCTestCase {
         config.captureContext(false)
         XCTAssertFalse(config.captureContext)
     }
+    
+    // MARK: - Click type attribute
+
+    func testClickEventIncludesGoodClickType() {
+        let button = UIButton()
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 100, y: 200, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        XCTAssertEqual(record.attributes[PulseAttributes.clickType], .string(PulseAttributes.ClickTypeValues.good))
+    }
+
+    func testClickEventIncludesDeadClickType() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 100, y: 200, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: false, widgetName: nil, widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitDeadClick(click)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        XCTAssertEqual(record.attributes[PulseAttributes.clickType], .string(PulseAttributes.ClickTypeValues.dead))
+    }
+
+    // MARK: - Viewport attributes
+
+    func testClickEventIncludesViewportDimensions() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 187.5, y: 406, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        XCTAssertEqual(record.attributes[PulseAttributes.deviceScreenWidth], .int(375))
+        XCTAssertEqual(record.attributes[PulseAttributes.deviceScreenHeight], .int(812))
+    }
+
+    func testClickEventIncludesNormalizedCoordinates() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 187.5, y: 406, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        if case .double(let nx) = record.attributes[PulseAttributes.appScreenCoordinateNx] ?? .double(0) {
+            XCTAssertEqual(nx, 0.5, accuracy: 0.01)
+        } else {
+            XCTFail("Expected double for nx")
+        }
+        if case .double(let ny) = record.attributes[PulseAttributes.appScreenCoordinateNy] ?? .double(0) {
+            XCTAssertEqual(ny, 0.5, accuracy: 0.01)
+        } else {
+            XCTFail("Expected double for ny")
+        }
+    }
+
+    // MARK: - Rage detection
+
+    func testClickEventIncludesRageAttributes() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let rage = RageEvent(
+            count: 5, hasTarget: true, x: 100, y: 200, tapEpochMs: 1000,
+            widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitRageClick(rage)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        XCTAssertEqual(record.attributes[PulseAttributes.clickIsRage], .bool(true))
+        XCTAssertEqual(record.attributes[PulseAttributes.clickRageCount], .int(5))
+    }
+
+    func testRageClickUsesGoodTypeWhenTargetExists() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let rage = RageEvent(
+            count: 3, hasTarget: true, x: 100, y: 200, tapEpochMs: 1000,
+            widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitRageClick(rage)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        XCTAssertEqual(record.attributes[PulseAttributes.clickType], .string(PulseAttributes.ClickTypeValues.good))
+    }
+
+    func testRageClickUsesDeadTypeWhenNoTarget() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let rage = RageEvent(
+            count: 3, hasTarget: false, x: 100, y: 200, tapEpochMs: 1000,
+            widgetName: nil, widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitRageClick(rage)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        XCTAssertEqual(record.attributes[PulseAttributes.clickType], .string(PulseAttributes.ClickTypeValues.dead))
+    }
+
+    // MARK: - ClickEventBuffer rage threshold
+
+    func testClickEventBufferDetectsRageAtThresholdAndEmitsOnExpiry() {
+        var clockMs: Int64 = 0
+        var emittedRages: [RageEvent] = []
+
+        let config = RageConfig(timeWindowMs: 2000, rageThreshold: 3, radiusPt: 50)
+        let buffer = ClickEventBuffer(
+            rageConfig: config,
+            onRage: { emittedRages.append($0) },
+            onEmit: { _ in },
+            clock: { clockMs }
+        )
+
+        buffer.record(PendingClick(x: 100, y: 100, timestampMs: 0, tapEpochMs: 0, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+        buffer.record(PendingClick(x: 110, y: 110, timestampMs: 100, tapEpochMs: 100, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+        buffer.record(PendingClick(x: 120, y: 120, timestampMs: 200, tapEpochMs: 200, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+
+        // Rage cluster formed, but emitted on expiry/flush (not immediately).
+        XCTAssertEqual(emittedRages.count, 0)
+
+        // Trigger expiry by recording a tap after time window.
+        clockMs = 2500
+        buffer.record(PendingClick(x: 300, y: 300, timestampMs: 2500, tapEpochMs: 2500, hasTarget: false, widgetName: nil, widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+
+        XCTAssertEqual(emittedRages.count, 1)
+        XCTAssertEqual(emittedRages[0].count, 3)
+    }
+
+    func testClickEventBufferEmitsIndividualClickBelowThreshold() {
+        var emittedCount = 0
+        var rageEmitted = false
+
+        let config = RageConfig(timeWindowMs: 2000, rageThreshold: 3, radiusPt: 50)
+        let buffer = ClickEventBuffer(
+            rageConfig: config,
+            onRage: { _ in
+                rageEmitted = true
+            },
+            onEmit: { _ in
+                emittedCount += 1
+            }
+        )
+
+        let click = PendingClick(
+            x: 100, y: 100, timestampMs: 0, tapEpochMs: 0,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        buffer.record(click)
+
+        XCTAssertFalse(rageEmitted)
+        XCTAssertEqual(emittedCount, 0)
+
+        buffer.flush()
+        XCTAssertEqual(emittedCount, 1)
+    }
+
+    func testClickEventBufferFlushEmitsPendingRage() {
+        var rageEmitted = false
+        var emittedCount = 0
+
+        let config = RageConfig(timeWindowMs: 2000, rageThreshold: 3, radiusPt: 50)
+        let buffer = ClickEventBuffer(
+            rageConfig: config,
+            onRage: { _ in
+                rageEmitted = true
+            },
+            onEmit: { _ in
+                emittedCount += 1
+            }
+        )
+
+        let baseClick = PendingClick(
+            x: 100, y: 100, timestampMs: 0, tapEpochMs: 0,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+
+        buffer.record(baseClick)
+        buffer.record(PendingClick(x: 110, y: 110, timestampMs: 100, tapEpochMs: 100, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+        buffer.record(PendingClick(x: 120, y: 120, timestampMs: 200, tapEpochMs: 200, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+
+        XCTAssertFalse(rageEmitted)
+        buffer.flush()
+        XCTAssertTrue(rageEmitted)
+        XCTAssertEqual(emittedCount, 0)
+    }
+
+    func testClickEventBufferUsesNearestClusterWhenTwoClustersOverlapRadius() {
+        var clockMs: Int64 = 0
+        var emittedRages: [RageEvent] = []
+
+        let config = RageConfig(timeWindowMs: 2000, rageThreshold: 3, radiusPt: 50)
+        let buffer = ClickEventBuffer(
+            rageConfig: config,
+            onRage: { emittedRages.append($0) },
+            onEmit: { _ in },
+            clock: { clockMs }
+        )
+
+        // Cluster A around (100,100)
+        buffer.record(PendingClick(x: 100, y: 100, timestampMs: 0, tapEpochMs: 0, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+        buffer.record(PendingClick(x: 105, y: 105, timestampMs: 50, tapEpochMs: 50, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+        buffer.record(PendingClick(x: 110, y: 110, timestampMs: 100, tapEpochMs: 100, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+
+        // Cluster B around (160,160)
+        buffer.record(PendingClick(x: 160, y: 160, timestampMs: 200, tapEpochMs: 200, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+        buffer.record(PendingClick(x: 165, y: 165, timestampMs: 250, tapEpochMs: 250, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+        buffer.record(PendingClick(x: 170, y: 170, timestampMs: 300, tapEpochMs: 300, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+
+        // Tap in overlap area but closer to cluster B.
+        buffer.record(PendingClick(x: 145, y: 145, timestampMs: 350, tapEpochMs: 350, hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+
+        // Expire both clusters.
+        clockMs = 3000
+        buffer.record(PendingClick(x: 320, y: 320, timestampMs: 3000, tapEpochMs: 3000, hasTarget: false, widgetName: nil, widgetId: nil, clickContext: nil, viewportWidthPt: 375, viewportHeightPt: 812))
+
+        XCTAssertEqual(emittedRages.count, 2)
+        // One cluster should have received the overlap tap and count become 4.
+        XCTAssertTrue(emittedRages.contains(where: { $0.count == 4 }))
+        XCTAssertTrue(emittedRages.contains(where: { $0.count == 3 }))
+    }
+
+    func testClickEventBufferIgnoresClicksOutsideRadius() {
+        var rageEmitted = false
+
+        let config = RageConfig(timeWindowMs: 2000, rageThreshold: 3, radiusPt: 50)
+        let buffer = ClickEventBuffer(
+            rageConfig: config,
+            onRage: { _ in
+                rageEmitted = true
+            },
+            onEmit: { _ in }
+        )
+
+        let click1 = PendingClick(
+            x: 100, y: 100, timestampMs: 0, tapEpochMs: 0,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        let click2 = PendingClick(
+            x: 200, y: 200, timestampMs: 100, tapEpochMs: 100,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+
+        buffer.record(click1)
+        buffer.record(click2)
+
+        XCTAssertFalse(rageEmitted)
+    }
+
+    // MARK: - RageConfig
+
+    func testRageConfigDefaults() {
+        let config = RageConfig()
+        XCTAssertEqual(config.timeWindowMs, 2000)
+        XCTAssertEqual(config.rageThreshold, 3)
+        XCTAssertEqual(config.radiusPt, 50.0)
+    }
+
+    func testUIKitTapInstrumentationConfigIncludesRage() {
+        var config = UIKitTapInstrumentationConfig()
+        config.rage { r in
+            r.timeWindowMs = 1500
+            r.rageThreshold = 4
+        }
+        XCTAssertEqual(config.rage.timeWindowMs, 1500)
+        XCTAssertEqual(config.rage.rageThreshold, 4)
+        XCTAssertEqual(config.rage.radiusPt, 50.0)
+    }
 }
 #endif
