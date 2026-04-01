@@ -95,8 +95,8 @@ Aliases: `--url` → `--api-url`, `--dsym` → `--dsym-path`.
 bash /path/to/pulse-upload-dsym.sh --help
 ```
 
-## Choosing the SPM plugin vs these scripts
+## Swift Package Manager apps
 
-If you add the SDK with **Swift Package Manager**, use the command plugin in [Pulse Upload Plugin](../../Plugins/PulseUploadPlugin/README.md) and run `swift package uploadSourceMaps`.
+SPM does not bundle these scripts into your app target the way CocoaPods can. Copy `Scripts/PulseUploadSourcemaps/*.sh` into your repo (or reference a checkout path), then add an **Xcode Run Script** build phase that invokes `pulse-upload-dsym.sh` the same way as in the CocoaPods example above.
 
-If you add the SDK with **CocoaPods** or you want an upload step that runs **shell commands only** and does not call `swift`, use the scripts in this directory.
+CocoaPods users get the scripts under `Pods/PulseKit/Scripts/PulseUploadSourcemaps/` via `resources` in the podspec.

@@ -42,7 +42,7 @@ jobs:
 
       - name: Build XCFramework
         run: |
-          ./scripts/build-xcframework.sh
+          ./Scripts/build-xcframework.sh
           echo "::notice::XCFramework built successfully"
 
       - name: Create zip and compute checksum

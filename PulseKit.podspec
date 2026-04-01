@@ -58,8 +58,13 @@ Pod::Spec.new do |spec|
   spec.dependency 'SwiftProtobuf', '~> 1.28'
   spec.dependency 'KSCrash', '~> 2.5'
 
-  spec.resources = "Scripts/PulseUploadSourcemaps/*.sh"
-  spec.preserve_paths = "Scripts/PulseUploadSourcemaps/**/*"
+  # Embed in PulseKit.framework: `resources` (plural). `preserve_paths` only keeps files in the pod checkout.
+  spec.resources = [
+    "Scripts/PulseUploadSourcemaps/*.sh"
+  ]
+  spec.preserve_paths = [
+    "Scripts/PulseUploadSourcemaps/**/*"
+  ]
 
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name PulseKit -package-name pulse_kit" }
 end

@@ -104,8 +104,8 @@ jobs:
       run: pod install
     - name: Build XCFramework
       run: |
-        chmod +x scripts/build-xcframework.sh
-        ./scripts/build-xcframework.sh
+        chmod +x Scripts/build-xcframework.sh
+        ./Scripts/build-xcframework.sh
     - name: Verify XCFramework output
       run: |
         if [ ! -d "build/PulseKit.xcframework" ]; then

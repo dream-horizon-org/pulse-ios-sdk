@@ -2,74 +2,118 @@
 set -euo pipefail
 
 # ------------------------------------------------------------------
-# Build PulseKit.xcframework
+# Build PulseKit.xcframework and peer dependency xcframeworks from the
+# CocoaPods example workspace.
 #
-# Requires: pod install in Examples/PulseIOSExample/ first.
+# Requires: pod install in Examples/PulseIOSExample/
 #
-# Usage:
-#   ./scripts/build-xcframework.sh
+# Outputs (under build/):
+#   - PulseKit.xcframework
+#   - KSCrash, OpenTelemetryApi, OpenTelemetrySdk, SwiftProtobuf (see EXTRA_XCFRAMEWORKS)
+#
+# Usage (from repo root):
+#   ./Scripts/build-xcframework.sh
 # ------------------------------------------------------------------
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
 WORKSPACE="Examples/PulseIOSExample/PulseIOSExample.xcworkspace"
-SCHEME="PulseKit"
 
 OUT_DIR="build"
 ARC_DIR="$OUT_DIR/archives"
-DST_PATH="$OUT_DIR/${SCHEME}.xcframework"
 
-IOS_ARCHIVE_PATH="${ARC_DIR}/${SCHEME}-iOS.xcarchive"
-SIM_ARCHIVE_PATH="${ARC_DIR}/${SCHEME}-Sim.xcarchive"
+# scheme:FrameworkBasename — basename is the folder under .../Frameworks/*.framework
+EXTRA_XCFRAMEWORKS=(
+  "KSCrash:KSCrash"
+  "OpenTelemetry-Swift-Api:OpenTelemetryApi"
+  "OpenTelemetry-Swift-Sdk:OpenTelemetrySdk"
+  "SwiftProtobuf:SwiftProtobuf"
+)
+
+# ------------------------------------------------------------------
+# Archive + create-xcframework for one Pods scheme.
+# Args: $1 = xcode scheme, $2 = framework folder name (without .framework)
+# ------------------------------------------------------------------
+build_xcframework_for_scheme() {
+  local scheme="$1"
+  local fw_name="${2:-$scheme}"
+
+  local ios_arc="${ARC_DIR}/${scheme}-iOS.xcarchive"
+  local sim_arc="${ARC_DIR}/${scheme}-Sim.xcarchive"
+  local dst="${OUT_DIR}/${fw_name}.xcframework"
+
+  local ios_fw="${ios_arc}/Products/Library/Frameworks/${fw_name}.framework"
+  local sim_fw="${sim_arc}/Products/Library/Frameworks/${fw_name}.framework"
+  local ios_dsym="${ios_arc}/dSYMs/${fw_name}.framework.dSYM"
+
+  local common_flags=(
+    -workspace "$WORKSPACE"
+    -scheme "$scheme"
+    -configuration Release
+    SKIP_INSTALL=NO
+    DEBUG_INFORMATION_FORMAT=dwarf-with-dsym
+    BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+    MACH_O_TYPE=mh_dylib
+  )
+
+  echo ""
+  echo "============================================================"
+  echo "  Building xcframework: ${fw_name} (scheme: ${scheme})"
+  echo "============================================================"
+
+  echo ""
+  echo "==> Archive ${scheme} (iOS device)..."
+  xcodebuild archive \
+    "${common_flags[@]}" \
+    -archivePath "$ios_arc" \
+    -sdk iphoneos
+
+  echo ""
+  echo "==> Archive ${scheme} (iOS Simulator)..."
+  xcodebuild archive \
+    "${common_flags[@]}" \
+    -archivePath "$sim_arc" \
+    -sdk iphonesimulator \
+    -arch arm64 -arch x86_64
+
+  if [[ ! -d "$ios_fw" || ! -d "$sim_fw" ]]; then
+    echo "error: missing framework in archive (expected ${fw_name}.framework)" >&2
+    echo "  ios:  $ios_fw" >&2
+    echo "  sim:  $sim_fw" >&2
+    exit 1
+  fi
+
+  echo ""
+  echo "==> Create ${fw_name}.xcframework..."
+  rm -rf "$dst"
+  xcodebuild -create-xcframework \
+    -framework "$ios_fw" \
+    -framework "$sim_fw" \
+    -output "$dst"
+
+  if [[ -d "$ios_dsym" ]]; then
+    echo "==> Copying dSYM for ${fw_name}..."
+    cp -R "$ios_dsym" "$dst/"
+  fi
+
+  echo "==> ${dst} ($(du -sh "$dst" | cut -f1))"
+}
 
 # ---- Clean ----
 rm -rf "$OUT_DIR"
 mkdir -p "$ARC_DIR"
 
-# ---- Common build flags ----
-COMMON_FLAGS=(
-  -workspace "$WORKSPACE"
-  -scheme "$SCHEME"
-  -configuration Release
-  SKIP_INSTALL=NO
-  DEBUG_INFORMATION_FORMAT=dwarf-with-dsym
-  BUILD_LIBRARY_FOR_DISTRIBUTION=YES
-  MACH_O_TYPE=mh_dylib
-)
+# ---- PulseKit ----
+build_xcframework_for_scheme "PulseKit" "PulseKit"
 
-# ---- Step 1: Archive for iOS device ----
-echo ""
-echo "==> Step 1/3: Archive (iOS device)..."
-xcodebuild archive \
-  "${COMMON_FLAGS[@]}" \
-  -archivePath "$IOS_ARCHIVE_PATH" \
-  -sdk iphoneos
-
-# ---- Step 2: Archive for iOS Simulator (arm64 + x86_64) ----
-echo ""
-echo "==> Step 2/3: Archive (iOS Simulator)..."
-xcodebuild archive \
-  "${COMMON_FLAGS[@]}" \
-  -archivePath "$SIM_ARCHIVE_PATH" \
-  -sdk iphonesimulator \
-  -arch arm64 -arch x86_64
-
-# ---- Step 3: Create XCFramework ----
-echo ""
-echo "==> Step 3/3: Create XCFramework..."
-
-IOS_FRAMEWORK="${IOS_ARCHIVE_PATH}/Products/Library/Frameworks/${SCHEME}.framework"
-SIM_FRAMEWORK="${SIM_ARCHIVE_PATH}/Products/Library/Frameworks/${SCHEME}.framework"
-IOS_DSYM="${IOS_ARCHIVE_PATH}/dSYMs/${SCHEME}.framework.dSYM"
-
-xcodebuild -create-xcframework \
-  -framework "$IOS_FRAMEWORK" \
-  -framework "$SIM_FRAMEWORK" \
-  -output "$DST_PATH"
-
-# Copy dSYM if available
-if [ -d "$IOS_DSYM" ]; then
-  echo "==> Copying debug symbols..."
-  cp -R "$IOS_DSYM" "$DST_PATH/"
-fi
+# ---- Extra dependencies ----
+for entry in "${EXTRA_XCFRAMEWORKS[@]}"; do
+  scheme="${entry%%:*}"
+  fw_name="${entry#*:}"
+  build_xcframework_for_scheme "$scheme" "$fw_name"
+done
 
 # ---- Done ----
 echo ""
@@ -77,9 +121,9 @@ echo "============================================================"
 echo "  BUILD COMPLETE"
 echo "============================================================"
 echo ""
-echo "  XCFramework: $DST_PATH"
-echo "  Size:        $(du -sh "$DST_PATH" | cut -f1)"
-if [ -d "$IOS_DSYM" ]; then
-  echo "  dSYM:        Included"
-fi
+echo "  Artifacts:"
+echo "    ${OUT_DIR}/PulseKit.xcframework"
+for entry in "${EXTRA_XCFRAMEWORKS[@]}"; do
+  echo "    ${OUT_DIR}/${entry#*:}.xcframework"
+done
 echo "============================================================"
