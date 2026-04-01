@@ -9,10 +9,11 @@ set -euo pipefail
 #
 # Outputs (under build/):
 #   - PulseKit.xcframework
-#   - KSCrash, OpenTelemetryApi, OpenTelemetrySdk, SwiftProtobuf (see EXTRA_XCFRAMEWORKS)
+#   - Peer xcframeworks: from PulseKit.podspec via Scripts/print-peer-xcframework-entries.rb (see script header for prerequisites)
 #
 # Usage (from repo root):
 #   ./Scripts/build-xcframework.sh
+# Requires bash (do not run with `sh` — process substitution on the peer list needs bash).
 # ------------------------------------------------------------------
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,13 +25,14 @@ WORKSPACE="Examples/PulseIOSExample/PulseIOSExample.xcworkspace"
 OUT_DIR="build"
 ARC_DIR="$OUT_DIR/archives"
 
-# scheme:FrameworkBasename — basename is the folder under .../Frameworks/*.framework
-EXTRA_XCFRAMEWORKS=(
-  "KSCrash:KSCrash"
-  "OpenTelemetry-Swift-Api:OpenTelemetryApi"
-  "OpenTelemetry-Swift-Sdk:OpenTelemetrySdk"
-  "SwiftProtobuf:SwiftProtobuf"
-)
+PEER_XCFRAMEWORK_SUMMARY_FILE="$(mktemp)"
+export PEER_XCFRAMEWORK_SUMMARY_FILE
+
+PEER_XCFRAMEWORKS=()
+while IFS= read -r line || [[ -n "${line}" ]]; do
+  [[ -z "${line}" ]] && continue
+  PEER_XCFRAMEWORKS+=("${line}")
+done < <(ruby "${SCRIPT_DIR}/print-peer-xcframework-entries.rb" "${REPO_ROOT}")
 
 # ------------------------------------------------------------------
 # Archive + create-xcframework for one Pods scheme.
@@ -108,8 +110,8 @@ mkdir -p "$ARC_DIR"
 # ---- PulseKit ----
 build_xcframework_for_scheme "PulseKit" "PulseKit"
 
-# ---- Extra dependencies ----
-for entry in "${EXTRA_XCFRAMEWORKS[@]}"; do
+# ---- Peer dependencies (PulseKit.podspec + Local Podspecs) ----
+for entry in "${PEER_XCFRAMEWORKS[@]}"; do
   scheme="${entry%%:*}"
   fw_name="${entry#*:}"
   build_xcframework_for_scheme "$scheme" "$fw_name"
@@ -123,7 +125,13 @@ echo "============================================================"
 echo ""
 echo "  Artifacts:"
 echo "    ${OUT_DIR}/PulseKit.xcframework"
-for entry in "${EXTRA_XCFRAMEWORKS[@]}"; do
+for entry in "${PEER_XCFRAMEWORKS[@]}"; do
   echo "    ${OUT_DIR}/${entry#*:}.xcframework"
 done
 echo "============================================================"
+if [[ -n "${PEER_XCFRAMEWORK_SUMMARY_FILE:-}" && -s "${PEER_XCFRAMEWORK_SUMMARY_FILE}" ]]; then
+  echo ""
+  cat "${PEER_XCFRAMEWORK_SUMMARY_FILE}"
+  echo "============================================================"
+fi
+rm -f "${PEER_XCFRAMEWORK_SUMMARY_FILE:-}"

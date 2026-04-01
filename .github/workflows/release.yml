@@ -45,7 +45,8 @@ jobs:
           ./Scripts/build-xcframework.sh
           echo "::notice::XCFramework built successfully"
 
-      - name: Create zip and compute checksum
+      # CocoaPods / GitHub Release: zip + checksum for PulseKit only. All peer xcframeworks are copied too (same set as build-xcframework.sh).
+      - name: Zip PulseKit and compute checksum
         run: |
           cd build
           zip -r -q PulseKit.xcframework.zip PulseKit.xcframework
@@ -63,7 +64,9 @@ jobs:
 
       - name: Prepare release branch
         run: |
-          cd release-repo
+          set -euo pipefail
+          WS="${GITHUB_WORKSPACE}"
+          cd "${WS}/release-repo"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -71,10 +74,19 @@ jobs:
           BRANCH="release/${VERSION}"
           git checkout -b "$BRANCH"
 
+          # PulseKit + zip (CocoaPods / GitHub Release asset).
           rm -rf PulseKit.xcframework
-          cp -R ../build/PulseKit.xcframework .
+          cp -R "${WS}/build/PulseKit.xcframework" .
+          cp "${WS}/build/PulseKit.xcframework.zip" .
 
-          cp ../build/PulseKit.xcframework.zip .
+          # Peers: same list as build-xcframework.sh (print-peer-xcframework-entries.rb from PulseKit.podspec).
+          while IFS= read -r entry || [[ -n "${entry}" ]]; do
+            [[ -z "${entry}" ]] && continue
+            name="${entry#*:}"
+            rm -rf "${name}.xcframework"
+            cp -R "${WS}/build/${name}.xcframework" .
+          done < <(ruby "${WS}/Scripts/print-peer-xcframework-entries.rb" "${WS}")
+          echo "::notice::Copied PulseKit + all peer xcframeworks from build/"
 
           sed -i '' "s/spec.version.*=.*/spec.version      = \"${VERSION}\"/" PulseKit.podspec
           sed -i '' "s/let version = \"[^\"]*\"/let version = \"${VERSION}\"/" Package.swift
@@ -100,9 +112,9 @@ jobs:
           Automated release from [pulse-ios-sdk@${GITHUB_SHA::7}](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}).
 
           ### Checklist
-          - [ ] Review xcframework contents
+          - [ ] Review **PulseKit** + peer xcframeworks and PulseKit zip (full set from this build)
           - [ ] Verify podspec version: \`${VERSION}\`
-          - [ ] Verify Package.swift checksum: \`${CHECKSUM}\`
+          - [ ] Verify Package.swift version (+ checksum line if present): \`${CHECKSUM}\`
 
           ### On merge, the publish workflow will:
           1. Create git tag \`${VERSION}\`
@@ -120,5 +132,5 @@ jobs:
           echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Checksum | \`${CHECKSUM:-N/A}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| PulseKit checksum | \`${CHECKSUM:-N/A}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Release Repo | [${{ env.RELEASE_REPO }}](https://github.com/${{ env.RELEASE_REPO }}) |" >> $GITHUB_STEP_SUMMARY

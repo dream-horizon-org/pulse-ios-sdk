@@ -52,11 +52,11 @@ Pod::Spec.new do |spec|
   spec.module_name = "PulseKit"
 
   spec.ios.frameworks = "CoreTelephony", "CoreLocation"
-  
-  spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
-  spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
-  spec.dependency 'SwiftProtobuf', '~> 1.28'
-  spec.dependency 'KSCrash', '~> 2.5'
+
+  spec.dependency 'OpenTelemetry-Swift-Api', '2.2.0'
+  spec.dependency 'OpenTelemetry-Swift-Sdk', '2.2.0'
+  spec.dependency 'SwiftProtobuf', '1.34.1'
+  spec.dependency 'KSCrash', '2.5.1'
 
   # Embed in PulseKit.framework: `resources` (plural). `preserve_paths` only keeps files in the pod checkout.
   spec.resources = [

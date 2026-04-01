@@ -27,13 +27,13 @@ pulse-ios-sdk (source)                          pulse-ios (release)
 │  release.yml        │
 │  • Read version     │
 │  • Build XCFramework│
-│  • Zip + checksum   │                     ┌─────────────────────────┐
-│  • Push release/*   │ ──── creates PR ──► │  validate-pr.yml        │
-│  • Create PR        │     in release repo │  • Version consistency  │
-└─────────────────────┘                     │  • SPM build (sim+dev)  │
-                                            │  • Example app build    │
-                                            │  • CocoaPods lint       │
-                                            └────────────┬────────────┘
+│  • Zip PulseKit +   │                     ┌─────────────────────────┐
+│    checksum; copy   │                     │  validate-pr.yml        │
+│    PulseKit + peers │                     │  • Version consistency  │
+│    (from podspec)   │                     │  • SPM build (sim+dev)  │
+│  • Push release/*   │ ──── creates PR ──► │  • Example app build    │
+│  • Create PR        │     in release repo │  • CocoaPods lint       │
+└─────────────────────┘                     └────────────┬────────────┘
                                                          │ On merge
                                                          ▼
                                             ┌─────────────────────────┐
@@ -68,16 +68,18 @@ All jobs must pass before merge is allowed.
 **Workflow:** `release.yml`
 **Trigger:** Manual dispatch
 
+Peer frameworks are derived from **`PulseKit.podspec`** `spec.dependency` lines; **`Scripts/print-peer-xcframework-entries.rb`** resolves each pod’s **Xcode scheme** and **`PRODUCT_MODULE_NAME`** via `xcodebuild -showBuildSettings` (after **`pod install`**). The same script feeds `build-xcframework.sh` and the release job (which copies every built peer into the release repo).
+
 Steps:
 1. Read version from `PulseKit.podspec`
 2. Verify version doesn't already exist in the release repo (no duplicate tags)
 3. `pod install` in `Examples/PulseIOSExample/`
-4. Run `Scripts/build-xcframework.sh` — archives for iOS device + simulator, creates xcframework
-5. Zip the xcframework and compute Swift Package Manager checksum
+4. Run `Scripts/build-xcframework.sh` — builds PulseKit + all peers under `build/`
+5. Zip **PulseKit** only and compute Swift Package Manager checksum (CocoaPods / release asset)
 6. Checkout the release repo (`dream-horizon-org/pulse-ios`)
 7. Create a `release/{version}` branch
-8. Copy `PulseKit.xcframework` and `PulseKit.xcframework.zip` into the release repo
-9. Update `PulseKit.podspec` version, `Package.swift` version + checksum
+8. Copy **`PulseKit.xcframework`**, **`PulseKit.xcframework.zip`**, and **every peer** `*.xcframework` produced by the build (same list as `print-peer-xcframework-entries.rb`)
+9. Update `PulseKit.podspec` version, `Package.swift` version + checksum (if present)
 10. Push branch and create a PR in the release repo
 
 ---
