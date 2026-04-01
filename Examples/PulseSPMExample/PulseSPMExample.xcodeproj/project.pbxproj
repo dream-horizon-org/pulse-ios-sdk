@@ -108,7 +108,7 @@
 			);
 			mainGroup = 249E83CAFDEBFD4E77C024F4;
 			packageReferences = (
-				F1E2D3C4B5A6978890ABCDEF /* XCLocalSwiftPackageReference */,
+				C89D2E0B1A9F4C8E6D5B3A19012AB /* XCLocalSwiftPackageReference */,
 			);
 			projectDirPath = "";
 			projectRoot = "";
@@ -314,7 +314,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		F1E2D3C4B5A6978890ABCDEF /* XCLocalSwiftPackageReference */ = {
+		C89D2E0B1A9F4C8E6D5B3A19012AB /* XCLocalSwiftPackageReference */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
@@ -323,7 +323,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		BE7D8FC3BCDE8295673DDBDD /* PulseSPMExampleSupport */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = F1E2D3C4B5A6978890ABCDEF /* XCLocalSwiftPackageReference */;
+			package = C89D2E0B1A9F4C8E6D5B3A19012AB /* XCLocalSwiftPackageReference */;
 			productName = PulseSPMExampleSupport;
 		};
 /* End XCSwiftPackageProductDependency section */
