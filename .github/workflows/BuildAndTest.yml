@@ -20,7 +20,20 @@ jobs:
       - name: Check if the workflow should run
         id: check
         run: |
-          git diff --name-only origin/${{ github.base_ref }} HEAD | grep -qE "^(Sources/|Tests/|scripts/)" && echo "should-run=true" >> "$GITHUB_OUTPUT" || echo "should-run=false" >> "$GITHUB_OUTPUT"
+          # Match repo layout: Swift uses Sources/Tests/; tooling uses Scripts/ (capital S); CI/examples/pod surface area.
+          BASE_REF="${{ github.base_ref }}"
+          if [ -z "$BASE_REF" ]; then BASE_REF="main"; fi
+          if git rev-parse "origin/${BASE_REF}" >/dev/null 2>&1; then
+            RANGE="origin/${BASE_REF}...HEAD"
+          else
+            git fetch origin "${BASE_REF}" --depth=256 2>/dev/null || true
+            RANGE="origin/${BASE_REF}...HEAD"
+          fi
+          if git diff --name-only ${RANGE} 2>/dev/null | grep -qE "^(Sources/|Tests/|scripts/|Scripts/|Examples/|\.github/workflows/|Makefile|Package\.swift|.*\.podspec)"; then
+            echo "should-run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-run=false" >> "$GITHUB_OUTPUT"
+          fi
   
   UnitTests:
     needs: should-run

@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = "PulseKit"
-  spec.version = "0.0.1-beta.4"
+  spec.version = "0.0.1-beta.5"
   spec.summary = "Pulse iOS SDK - Simplified OpenTelemetry for iOS"
   spec.description = <<-DESC
     Pulse iOS SDK is a production-ready SDK for instrumenting iOS 
@@ -58,7 +58,6 @@ Pod::Spec.new do |spec|
   spec.dependency 'SwiftProtobuf', '1.34.1'
   spec.dependency 'KSCrash', '2.5.1'
 
-  # Embed in PulseKit.framework: `resources` (plural). `preserve_paths` only keeps files in the pod checkout.
   spec.resources = [
     "Scripts/PulseUploadSourcemaps/*.sh"
   ]

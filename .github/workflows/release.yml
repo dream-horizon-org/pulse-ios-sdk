@@ -2,6 +2,8 @@ name: Create XC Framework and Release PR for Pulse iOS
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
 
 env:
   RELEASE_REPO: dream-horizon-org/pulse-ios
@@ -15,11 +17,12 @@ jobs:
       - name: Checkout source repo
         uses: actions/checkout@v4
 
-      - name: Read version from podspec
+      # Release version is whatever is in **this** repo’s PulseKit.podspec. Bump it in a commit here before dispatching this workflow; the PR in the release repo will match it.
+      - name: Read version from PulseKit.podspec (source repo)
         run: |
           VERSION=$(grep "spec.version" PulseKit.podspec | head -1 | sed "s/.*\"\(.*\)\"/\1/")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "::notice::Release version: $VERSION"
+          echo "::notice::Release version (from source podspec): $VERSION"
 
       - name: Check version doesn't already exist in release repo
         env:
@@ -88,9 +91,24 @@ jobs:
           done < <(ruby "${WS}/Scripts/print-peer-xcframework-entries.rb" "${WS}")
           echo "::notice::Copied PulseKit + all peer xcframeworks from build/"
 
-          sed -i '' "s/spec.version.*=.*/spec.version      = \"${VERSION}\"/" PulseKit.podspec
-          sed -i '' "s/let version = \"[^\"]*\"/let version = \"${VERSION}\"/" Package.swift
-          sed -i '' "s/let checksum = \"[^\"]*\"/let checksum = \"${CHECKSUM}\"/" Package.swift
+          # Sync spec.dependency from source podspec + regenerate Package.swift binary targets (PulseKit + all peers).
+          ruby "${WS}/Scripts/release/sync-release-distribution.rb" \
+            --source-root "${WS}" \
+            --release-dir "${PWD}" \
+            --version "${VERSION}"
+
+          PODSPEC_VER=$(grep "spec.version" PulseKit.podspec | head -1 | sed "s/.*\"\(.*\)\"/\1/")
+          if [ "${PODSPEC_VER}" != "${VERSION}" ]; then
+            echo "::error::PulseKit.podspec spec.version after sed is '${PODSPEC_VER}', expected '${VERSION}'"
+            exit 1
+          fi
+          echo "::notice::Verified release repo PulseKit.podspec spec.version=${VERSION}"
+
+          echo "::group::Validate release manifests"
+          pod ipc spec PulseKit.podspec >/dev/null
+          swift package dump-package >/dev/null
+          echo "::endgroup::"
+          echo "::notice::Podspec + Package.swift validated locally"
 
           git add -A
           git commit -m "Release PulseKit v${VERSION}"
@@ -113,8 +131,9 @@ jobs:
 
           ### Checklist
           - [ ] Review **PulseKit** + peer xcframeworks and PulseKit zip (full set from this build)
-          - [ ] Verify podspec version: \`${VERSION}\`
-          - [ ] Verify Package.swift version (+ checksum line if present): \`${CHECKSUM}\`
+          - [ ] Confirm **PulseKit.podspec**: \`spec.version\` \`${VERSION}\` and \`spec.dependency\` lines match **pulse-ios-sdk** \`PulseKit.podspec\`
+          - [ ] Confirm **Package.swift** was regenerated with **path** \`.binaryTarget\` entries for every \`*.xcframework\` on this branch (PulseKit + peers)
+          - [ ] **PulseKit** zip checksum for CocoaPods/GitHub asset: \`${CHECKSUM}\`
 
           ### On merge, the publish workflow will:
           1. Create git tag \`${VERSION}\`

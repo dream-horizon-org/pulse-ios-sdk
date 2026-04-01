@@ -79,8 +79,9 @@ Steps:
 6. Checkout the release repo (`dream-horizon-org/pulse-ios`)
 7. Create a `release/{version}` branch
 8. Copy **`PulseKit.xcframework`**, **`PulseKit.xcframework.zip`**, and **every peer** `*.xcframework` produced by the build (same list as `print-peer-xcframework-entries.rb`)
-9. Update `PulseKit.podspec` version, `Package.swift` version + checksum (if present)
-10. Push branch and create a PR in the release repo
+9. Run **`Scripts/release/sync-release-distribution.rb`**: set **`spec.version`**, replace **`spec.dependency`** lines with those from the source **`PulseKit.podspec`**, and **regenerate `Package.swift`** with one **path-based** `.binaryTarget` per xcframework at the repo root (PulseKit + peers—new pods in the source podspec therefore add new binaries + targets automatically)
+10. Validate with **`pod ipc spec`** and **`swift package dump-package`** in the release checkout (catches bad podspec / `Package.swift` before push)
+11. Push branch and create a PR in the release repo
 
 ---
 
@@ -91,13 +92,13 @@ Steps:
 
 | Check | What it validates |
 |-------|-------------------|
-| Version consistency | `PulseKit.podspec` version == `Package.swift` version |
+| Version consistency | `PulseKit.podspec` `spec.version` matches the release tag; `Package.swift` is generated in lockstep (see `Scripts/release/sync-release-distribution.rb`) |
 | Example app (Simulator) | Framework links, compiles, and public API is intact (SPM) |
 | Example app (Device) | Same validation for arm64 device architecture |
 | CocoaPods lint | `pod lib lint` — podspec is valid and publishable |
 
 **How the SPM build works:**
-- `Package.swift` has a binary target pointing to a GitHub Release URL that doesn't exist yet
+- `Package.swift` uses **path** `.binaryTarget` entries at repo root; validate-pr may still patch or lint as needed. (If your publish flow relied on `let version` / `let checksum` + zip URL, align **validate-pr** / **publish** in the release repo with the generated manifest.)
 - The workflow patches it to use the local `PulseKit.xcframework` directory instead
 - It also injects a `PulseKitValidation` target (source in `Example/Sources/`) that imports PulseKit and exercises the public API: `initialize`, `trackEvent`, `trackSpan`, `startSpan`, `getOtelOrNull`
 - If the build succeeds, the framework is proven compatible
@@ -127,6 +128,7 @@ Idempotent — skips steps if tag/release already exist.
 |------|---------|
 | `PulseKit.podspec` | Source of truth for version |
 | `Scripts/build-xcframework.sh` | Builds xcframework from CocoaPods workspace |
+| `Scripts/release/sync-release-distribution.rb` | Release PR: sync `spec.dependency` + regenerate `Package.swift` binary targets |
 | `Examples/PulseIOSExample/` | Example app used during xcframework build |
 | `.github/workflows/BuildAndTest.yml` | PR validation |
 | `.github/workflows/release.yml` | Build + push to release repo |
