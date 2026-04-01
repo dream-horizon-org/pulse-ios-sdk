@@ -1,21 +1,32 @@
 PODS:
+  - KSCrash (2.5.1):
+    - KSCrash/Installations (= 2.5.1)
   - KSCrash/Core (2.5.1)
+  - KSCrash/DemangleFilter (2.5.1):
+    - KSCrash/Recording
   - KSCrash/Filters (2.5.1):
     - KSCrash/Recording
     - KSCrash/RecordingCore
     - KSCrash/ReportingCore
+  - KSCrash/Installations (2.5.1):
+    - KSCrash/DemangleFilter
+    - KSCrash/Filters
+    - KSCrash/Recording
+    - KSCrash/Sinks
   - KSCrash/Recording (2.5.1):
     - KSCrash/RecordingCore
   - KSCrash/RecordingCore (2.5.1):
     - KSCrash/Core
   - KSCrash/ReportingCore (2.5.1):
     - KSCrash/Core
+  - KSCrash/Sinks (2.5.1):
+    - KSCrash/Filters
+    - KSCrash/Recording
   - OpenTelemetry-Swift-Api (2.2.0)
   - OpenTelemetry-Swift-Sdk (2.2.0):
     - OpenTelemetry-Swift-Api (= 2.2.0)
   - PulseKit (0.0.1-beta.4):
-    - KSCrash/Filters (~> 2.5)
-    - KSCrash/Recording (~> 2.5)
+    - KSCrash (~> 2.5)
     - OpenTelemetry-Swift-Api (~> 2.2)
     - OpenTelemetry-Swift-Sdk (~> 2.2)
     - SwiftProtobuf (~> 1.28)
@@ -39,7 +50,7 @@ SPEC CHECKSUMS:
   KSCrash: 8c4464fd5da7de520f2ce4a00fdf63f169a80f18
   OpenTelemetry-Swift-Api: 0785e3b9888286449aa297c0b48269797bfcaf7f
   OpenTelemetry-Swift-Sdk: b856396d6147c01829a88ad782f481c0e1cd0966
-  PulseKit: ac61c36008de349ca7b9ccb066e79d9e0b556cf6
+  PulseKit: 528ded33639813b5d3f7e6959bb72dd1f6140041
   SwiftProtobuf: c901f00a3e125dc33cac9b16824da85682ee47da
 
 PODFILE CHECKSUM: d7e992ed53e576159ebf29036c98bb3c0f9adf17
