@@ -75,6 +75,12 @@ def strip_development_only_podspec_stanzas(podspec_text)
           depth += lines[i].count("[") - lines[i].count("]")
           i += 1
         end
+        if depth.positive?
+          abort(
+            "error: unclosed '[' while stripping #{marker_hit.inspect} — refusing to truncate PulseKit.podspec " \
+            "(check podspec or disable strip for this release layout)"
+          )
+        end
       else
         i += 1
       end
@@ -99,20 +105,27 @@ def ensure_pulsekit_wrapper(release_dir)
 end
 
 def insert_dependencies_after_anchor(podspec_without_deps, dep_lines)
-  anchor = podspec_without_deps.match(/(^\s*spec\.module_name\s*=.*\n)/m)
+  # One line per anchor only: with /m, `.*` would span newlines and swallow the rest of the podspec.
+  eol = "(?:\r?\n)"
+  anchor = podspec_without_deps.match(/(^\s*spec\.module_name\s*=[^\n]*#{eol})/m)
   if anchor
     return podspec_without_deps.sub(anchor[1], anchor[1] + dep_lines.join)
   end
 
-  anchor = podspec_without_deps.match(/(^\s*spec\.ios\.deployment_target\s*=.*\n)/m)
+  anchor = podspec_without_deps.match(/(^\s*spec\.ios\.deployment_target\s*=[^\n]*#{eol})/m)
   if anchor
     return podspec_without_deps.sub(anchor[1], anchor[1] + dep_lines.join)
   end
 
-  anchor = podspec_without_deps.match(/(^\s*spec\.vendored_frameworks\b.*\n)/m)
+  anchor = podspec_without_deps.match(/(^\s*spec\.vendored_frameworks\b[^\n]*#{eol})/m)
   return podspec_without_deps.sub(anchor[1], dep_lines.join + anchor[1]) if anchor
 
-  podspec_without_deps + dep_lines.join
+  # Fallback: insert before the final bare `end` at EOF (closes Pod::Spec.new).
+  unless podspec_without_deps.match?(/\n\s*end\s*\z/m)
+    abort("error: could not place spec.dependency lines (podspec has no trailing \\n...end)")
+  end
+
+  podspec_without_deps.sub(/\n(\s*end)\s*\z/m, "\n" + dep_lines.join + "\n\\1\n")
 end
 
 source_text = File.read(source_pod)
