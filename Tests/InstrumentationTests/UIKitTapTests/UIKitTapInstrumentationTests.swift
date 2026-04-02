@@ -245,8 +245,13 @@ final class UIKitTapInstrumentationTests: XCTestCase {
     // MARK: - Event emission
 
     func testEmitClickEventEmitsCorrectEventName() {
-        let button = UIButton()
-        UIWindowSwizzler.emitClickEvent(for: button, at: CGPoint(x: 10, y: 20), logger: logger, captureContext: false)
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 10, y: 20, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
 
         let records = logExporter.getFinishedLogRecords()
         XCTAssertEqual(records.count, 1)
@@ -254,16 +259,26 @@ final class UIKitTapInstrumentationTests: XCTestCase {
     }
 
     func testEmitClickEventSetsWidgetNameToClassName() {
-        let button = UIButton()
-        UIWindowSwizzler.emitClickEvent(for: button, at: .zero, logger: logger, captureContext: false)
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 0, y: 0, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
 
         let record = logExporter.getFinishedLogRecords()[0]
         XCTAssertEqual(record.attributes["app.widget.name"], .string("UIButton"))
     }
 
     func testEmitClickEventSetsCoordinates() {
-        let view = UIButton()
-        UIWindowSwizzler.emitClickEvent(for: view, at: CGPoint(x: 142, y: 380), logger: logger, captureContext: false)
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 142, y: 380, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
 
         let record = logExporter.getFinishedLogRecords()[0]
         XCTAssertEqual(record.attributes["app.screen.coordinate.x"], .int(142))
@@ -271,49 +286,78 @@ final class UIKitTapInstrumentationTests: XCTestCase {
     }
 
     func testEmitClickEventIncludesLabelInContextWhenCaptureContextTrue() {
-        let button = UIButton(type: .system)
-        button.setTitle("Checkout", for: .normal)
-        button.layoutIfNeeded()
-
-        UIWindowSwizzler.emitClickEvent(for: button, at: .zero, logger: logger, captureContext: true)
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 0, y: 0, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: "label=Checkout",
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
 
         let record = logExporter.getFinishedLogRecords()[0]
         XCTAssertEqual(record.attributes["app.click.context"], .string("label=Checkout"))
     }
 
     func testEmitClickEventOmitsContextWhenCaptureContextFalse() {
-        let button = UIButton(type: .system)
-        button.setTitle("Checkout", for: .normal)
-        button.layoutIfNeeded()
-
-        UIWindowSwizzler.emitClickEvent(for: button, at: .zero, logger: logger, captureContext: false)
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 0, y: 0, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
 
         let record = logExporter.getFinishedLogRecords()[0]
         XCTAssertNil(record.attributes["app.click.context"])
     }
 
     func testEmitClickEventOmitsContextWhenNoLabelFound() {
-        let view = UIButton() // no title set
-        UIWindowSwizzler.emitClickEvent(for: view, at: .zero, logger: logger, captureContext: true)
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 0, y: 0, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
 
         let record = logExporter.getFinishedLogRecords()[0]
         XCTAssertNil(record.attributes["app.click.context"])
     }
 
     func testEmitClickEventSegmentedControlUsesSelectedSegmentLabel() {
-        let seg = UISegmentedControl(items: ["Monthly", "Daily", "Weekly"])
-        seg.selectedSegmentIndex = 2
-
-        UIWindowSwizzler.emitClickEvent(for: seg, at: .zero, logger: logger, captureContext: true)
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 0, y: 0, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UISegmentedControl", widgetId: nil, clickContext: "label=Weekly",
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
 
         let record = logExporter.getFinishedLogRecords()[0]
         XCTAssertEqual(record.attributes["app.click.context"], .string("label=Weekly"))
     }
 
-    func testEmitClickEventDoesNotEmitAppWidgetId() {
-        let button = UIButton()
-        button.accessibilityIdentifier = "some_id"
-        UIWindowSwizzler.emitClickEvent(for: button, at: .zero, logger: logger, captureContext: false)
+    func testEmitClickEventEmitsAppWidgetIdWhenPresent() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 0, y: 0, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: true, widgetName: "UIButton", widgetId: "some_id", clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitGoodClick(click)
+
+        let record = logExporter.getFinishedLogRecords()[0]
+        XCTAssertEqual(record.attributes["app.widget.id"], .string("some_id"))
+    }
+
+    func testEmitDeadClickDoesNotEmitAppWidgetId() {
+        let emitter = ClickEventEmitter(logger: logger)
+        let click = PendingClick(
+            x: 0, y: 0, timestampMs: 1000, tapEpochMs: 1000,
+            hasTarget: false, widgetName: nil, widgetId: nil, clickContext: nil,
+            viewportWidthPt: 375, viewportHeightPt: 812
+        )
+        emitter.emitDeadClick(click)
 
         let record = logExporter.getFinishedLogRecords()[0]
         XCTAssertNil(record.attributes["app.widget.id"])
@@ -321,10 +365,10 @@ final class UIKitTapInstrumentationTests: XCTestCase {
 
     // MARK: - Config
 
-    func testConfigDefaultsToEnabled() {
+    func testConfigDefaultsToDisabled() {
         let config = UIKitTapInstrumentationConfig()
-        XCTAssertTrue(config.enabled)
-        XCTAssertTrue(config.captureContext)
+        XCTAssertFalse(config.enabled)
+        XCTAssertFalse(config.captureContext)
     }
 
     func testConfigCanBeDisabled() {
@@ -337,6 +381,14 @@ final class UIKitTapInstrumentationTests: XCTestCase {
         var config = UIKitTapInstrumentationConfig()
         config.captureContext(false)
         XCTAssertFalse(config.captureContext)
+    }
+
+    func testConfigCanBeEnabled() {
+        var config = UIKitTapInstrumentationConfig()
+        config.enabled(true)
+        config.captureContext(true)
+        XCTAssertTrue(config.enabled)
+        XCTAssertTrue(config.captureContext)
     }
     
     // MARK: - Click type attribute
