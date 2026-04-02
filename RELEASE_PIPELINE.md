@@ -79,7 +79,7 @@ Steps:
 6. Checkout the release repo (`dream-horizon-org/pulse-ios`)
 7. Create a `release/{version}` branch
 8. Copy **`PulseKit.xcframework`**, **`PulseKit.xcframework.zip`**, and **every peer** `*.xcframework` produced by the build (same list as `print-peer-xcframework-entries.rb`)
-9. Run **`Scripts/release/sync-release-distribution.rb`**: set **`spec.version`**, replace **`spec.dependency`** lines with those from the source **`PulseKit.podspec`**, and **regenerate `Package.swift`** with one **path-based** `.binaryTarget` per xcframework at the repo root (PulseKit + peers—new pods in the source podspec therefore add new binaries + targets automatically)
+9. Run **`Scripts/release/sync-release-distribution.rb`**: set **`spec.version`**, replace **`spec.dependency`** lines with those from the source **`PulseKit.podspec`**, strip **`spec.source_files` / `exclude_files` / `resources` / `preserve_paths`** (source-repo-only; avoids **`pod ipc spec`** failures on the release tree), ensure **`Sources/PulseKitWrapper/Exports.swift`** exists for SPM, and **regenerate `Package.swift`** with one **path-based** `.binaryTarget` per xcframework at the repo root (PulseKit + peers)
 10. Validate with **`pod ipc spec`** and **`swift package dump-package`** in the release checkout (catches bad podspec / `Package.swift` before push)
 11. Push branch and create a PR in the release repo
 

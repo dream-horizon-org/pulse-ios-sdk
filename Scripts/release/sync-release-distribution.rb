@@ -15,6 +15,7 @@
 # Requires: peer xcframeworks already present under release-dir (names match
 # PRODUCT_MODULE_NAME, e.g. OpenTelemetryApi.xcframework).
 
+require "fileutils"
 require "optparse"
 require "open3"
 
@@ -51,6 +52,52 @@ def strip_dependency_lines(podspec_text)
   podspec_text.lines.reject { |l| l.match?(/^\s*spec\.dependency\s+/) }.join
 end
 
+# Remove stanzas that only apply to the source repo (paths like Sources/…, Scripts/…).
+# The release repo ships xcframeworks at the root; leaving these makes `pod ipc spec` fail.
+def strip_development_only_podspec_stanzas(podspec_text)
+  lines = podspec_text.lines
+  markers = [
+    "spec.source_files",
+    "spec.exclude_files",
+    "spec.resources",
+    "spec.preserve_paths"
+  ]
+  out = []
+  i = 0
+  while i < lines.length
+    line = lines[i]
+    marker_hit = markers.find { |m| line.strip.start_with?(m) }
+    if marker_hit
+      if line.include?("[")
+        depth = line.count("[") - line.count("]")
+        i += 1
+        while i < lines.length && depth.positive?
+          depth += lines[i].count("[") - lines[i].count("]")
+          i += 1
+        end
+      else
+        i += 1
+      end
+      next
+    end
+
+    out << line
+    i += 1
+  end
+  out.join
+end
+
+def ensure_pulsekit_wrapper(release_dir)
+  wrapper = File.join(release_dir, "Sources", "PulseKitWrapper", "Exports.swift")
+  return if File.file?(wrapper)
+
+  FileUtils.mkdir_p(File.dirname(wrapper))
+  File.write(wrapper, <<~SWIFT)
+    @_exported import PulseKit
+  SWIFT
+  puts "Created #{wrapper} (SPM wrapper for distribution)"
+end
+
 def insert_dependencies_after_anchor(podspec_without_deps, dep_lines)
   anchor = podspec_without_deps.match(/(^\s*spec\.module_name\s*=.*\n)/m)
   if anchor
@@ -77,6 +124,7 @@ else
 end
 
 release_text = File.read(release_pod)
+release_text = strip_development_only_podspec_stanzas(release_text)
 stripped = strip_dependency_lines(release_text)
 merged = insert_dependencies_after_anchor(stripped, dep_lines)
 
@@ -86,6 +134,8 @@ end
 
 File.write(release_pod, merged)
 puts "Wrote #{release_pod}"
+
+ensure_pulsekit_wrapper(release_dir)
 
 # --- Package.swift (path-based binary targets at release repo root) ---
 

@@ -2,8 +2,6 @@ name: Create XC Framework and Release PR for Pulse iOS
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [opened, synchronize]
 
 env:
   RELEASE_REPO: dream-horizon-org/pulse-ios
@@ -104,9 +102,15 @@ jobs:
           fi
           echo "::notice::Verified release repo PulseKit.podspec spec.version=${VERSION}"
 
-          echo "::group::Validate release manifests"
-          pod ipc spec PulseKit.podspec >/dev/null
-          swift package dump-package >/dev/null
+          echo "::group::Validate release manifests (pod ipc spec)"
+          pod ipc spec PulseKit.podspec 2>&1
+          echo "::endgroup::"
+          echo "::group::Validate release manifests (swift package dump-package)"
+          if ! swift package dump-package > /tmp/spm-dump-package.json 2> /tmp/spm-dump-package.err; then
+            cat /tmp/spm-dump-package.err
+            exit 1
+          fi
+          echo "OK ($(wc -c < /tmp/spm-dump-package.json | tr -d ' ') bytes)"
           echo "::endgroup::"
           echo "::notice::Podspec + Package.swift validated locally"
 
@@ -127,7 +131,7 @@ jobs:
             --body "$(cat <<EOF
           ## Release PulseKit v${VERSION}
 
-          Automated release from [pulse-ios-sdk@${GITHUB_SHA::7}](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}).
+          Automated release from [pulse-ios-sdk@${GITHUB_SHA:0:7}](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}).
 
           ### Checklist
           - [ ] Review **PulseKit** + peer xcframeworks and PulseKit zip (full set from this build)
