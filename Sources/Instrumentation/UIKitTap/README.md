@@ -100,26 +100,15 @@ Text input controls (`UITextField`, `UITextView`, `UISearchBar`) never have thei
 
 | Attribute | Type | Example | Notes |
 |---|---|---|---|
-| `click.type` | String | `"good"` | Target found |
 | `app.widget.name` | String | `"UIButton"` | Runtime class name — consistent type identifier |
 | `app.click.context` | String | `"label=Add to Cart"` | Present only when a label is found and `captureContext` is true |
-| `app.widget.id` | String | `"checkout_button"` | From `accessibilityIdentifier` if set |
 | `app.screen.coordinate.x` | Int | `142` | Touch X in window coordinates |
 | `app.screen.coordinate.y` | Int | `380` | Touch Y in window coordinates |
-
-Dead clicks (taps on non-interactive elements) are also emitted with `click.type = "dead"` and omit widget fields.
-
-Rage clicks (multiple taps ≥3 within 2000 ms and 50 pt radius) are emitted with `click.is_rage = true` and `click.rageCount` indicating total taps. Suppresses individual click events during the rage window. Configurable via backend config (`PulseFeatureConfig.click.rage`).
-
-All click types include viewport normalization:
-- `device.screen.width` and `device.screen.height` (in points)
-- `app.screen.coordinate.nx` and `app.screen.coordinate.ny` (normalized 0.0–1.0)
-
-This allows analytics to compare tap locations across different device sizes.
+| `pulse.type` | String | `"app.click"` | Set automatically by the log processor chain |
 
 Additional attributes are automatically enriched by the processor chain: `screen.name`, `session.id`, network status, etc.
 
-> **Note:** iOS emits `app.widget.id` from `accessibilityIdentifier` when available, matching Android's resource ID pattern.
+> **No `app.widget.id`:** Android emits a numeric resource ID here. iOS has no equivalent auto-generated identifier.
 
 ## Coverage (UIKit)
 
