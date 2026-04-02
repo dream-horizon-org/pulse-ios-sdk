@@ -48,16 +48,6 @@ jobs:
           ./Scripts/build-xcframework.sh
           echo "::notice::XCFramework built successfully"
 
-      # CocoaPods / GitHub Release: zip + checksum for PulseKit only. All peer xcframeworks are copied too (same set as build-xcframework.sh).
-      - name: Zip PulseKit and compute checksum
-        run: |
-          cd build
-          zip -r -q PulseKit.xcframework.zip PulseKit.xcframework
-          CHECKSUM=$(swift package compute-checksum PulseKit.xcframework.zip)
-          echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
-          echo "::notice::Zip size: $(du -sh PulseKit.xcframework.zip | cut -f1)"
-          echo "::notice::Checksum: $CHECKSUM"
-
       - name: Checkout release repo
         uses: actions/checkout@v4
         with:
@@ -77,10 +67,8 @@ jobs:
           BRANCH="release/${VERSION}"
           git checkout -b "$BRANCH"
 
-          # PulseKit + zip (CocoaPods / GitHub Release asset).
           rm -rf PulseKit.xcframework
           cp -R "${WS}/build/PulseKit.xcframework" .
-          cp "${WS}/build/PulseKit.xcframework.zip" .
 
           # Peers: same list as build-xcframework.sh (print-peer-xcframework-entries.rb from PulseKit.podspec).
           while IFS= read -r entry || [[ -n "${entry}" ]]; do
@@ -91,7 +79,6 @@ jobs:
           done < <(ruby "${WS}/Scripts/print-peer-xcframework-entries.rb" "${WS}")
           echo "::notice::Copied PulseKit + all peer xcframeworks from build/"
 
-          # Bump podspec version + optional Package.swift `let version` / `let checksum` (when those lines exist).
           sed -i '' "s/spec.version.*=.*/spec.version      = \"${VERSION}\"/" PulseKit.podspec
 
           PODSPEC_VER=$(grep "spec.version" PulseKit.podspec | head -1 | sed "s/.*\"\(.*\)\"/\1/")
@@ -100,23 +87,6 @@ jobs:
             exit 1
           fi
           echo "::notice::Verified release repo PulseKit.podspec spec.version=${VERSION}"
-
-          if [ -f Package.swift ]; then
-            if grep -q 'let version' Package.swift; then
-              sed -i '' "s/let version = \"[^\"]*\"/let version = \"${VERSION}\"/" Package.swift
-            fi
-            if grep -q 'let checksum' Package.swift; then
-              sed -i '' "s/let checksum = \"[^\"]*\"/let checksum = \"${CHECKSUM}\"/" Package.swift
-            fi
-            if grep -q 'let version' Package.swift; then
-              SPM_VER=$(grep 'let version' Package.swift | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
-              if [ "${SPM_VER}" != "${VERSION}" ]; then
-                echo "::error::Package.swift let version (${SPM_VER}) != podspec (${VERSION})"
-                exit 1
-              fi
-              echo "::notice::Verified Package.swift let version=${VERSION}"
-            fi
-          fi
 
           git add -A
           git commit -m "Release PulseKit v${VERSION}"
@@ -136,9 +106,8 @@ jobs:
           ## Release PulseKit v${VERSION}
 
           ### What this PR contains
-          - Copies **\`PulseKit.xcframework\`**, peer **\`*.xcframework\`**, and **\`PulseKit.xcframework.zip\`**
+          - Copies **\`PulseKit.xcframework\`** and peer **\`*.xcframework\`** trees from the SDK build
           - Sets **\`PulseKit.podspec\` → \`spec.version\`** to \`${VERSION}\`
-          - If **\`Package.swift\`** defines **\`let version\`** (and **\`let checksum\`**), updates those to match this release
 
           ### Reviewer checklist
           - [ ] If upstream added or changed CocoaPods deps, align **\`spec.dependency\`** in **\`PulseKit.podspec\`**
@@ -146,7 +115,7 @@ jobs:
 
           ### On merge, the publish workflow will:
           1. Create git tag \`${VERSION}\`
-          2. Create GitHub Release with xcframework zip
+          2. Create GitHub Release (notes only — artifacts live in the repo at the tag)
           3. Publish to CocoaPods trunk
           EOF
           )"
@@ -160,5 +129,4 @@ jobs:
           echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| PulseKit checksum | \`${CHECKSUM:-N/A}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Release Repo | [${{ env.RELEASE_REPO }}](https://github.com/${{ env.RELEASE_REPO }}) |" >> $GITHUB_STEP_SUMMARY
