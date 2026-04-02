@@ -65,5 +65,9 @@ extension UIKitTapInstrumentationConfig: InstrumentationLifecycle {
         #endif
     }
 
-    internal func uninstall() {}
+    internal func uninstall() {
+        #if os(iOS) || os(tvOS)
+        UIWindowSwizzler.uninstall()
+        #endif
+    }
 }

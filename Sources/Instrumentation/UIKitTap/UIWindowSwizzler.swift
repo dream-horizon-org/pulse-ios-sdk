@@ -19,6 +19,7 @@ internal class UIWindowSwizzler {
     
     private static var buffer: ClickEventBuffer?
     private static var emitter: ClickEventEmitter?
+    private static var appLifecycleObserver: NSObjectProtocol?
     
     // Label extraction constants 
     private static let maxLabelSegments = 5
@@ -52,9 +53,11 @@ internal class UIWindowSwizzler {
                 }
             }
         )
-        
+
+        if appLifecycleObserver == nil {
+            registerForAppLifecycle()
+        }
         swizzleSendEvent()
-        registerForAppLifecycle()
         swizzled = true
     }
 
@@ -123,7 +126,7 @@ internal class UIWindowSwizzler {
     }
     
     private static func registerForAppLifecycle() {
-        NotificationCenter.default.addObserver(
+        appLifecycleObserver = NotificationCenter.default.addObserver(
             forName: UIApplication.willResignActiveNotification,
             object: nil,
             queue: .main
@@ -260,6 +263,21 @@ internal class UIWindowSwizzler {
             if segments.count >= maxLabelSegments { break }
         }
         return segments
+    }
+    static func uninstall() {
+        swizzleLock.lock()
+        defer { swizzleLock.unlock() }
+
+        buffer?.flush()
+        buffer = nil
+        emitter = nil
+        logger = nil
+        touchStartLocations.removeAll()
+
+        if let observer = appLifecycleObserver {
+            NotificationCenter.default.removeObserver(observer)
+            appLifecycleObserver = nil
+        }
     }
 
 }
