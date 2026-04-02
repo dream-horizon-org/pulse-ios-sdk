@@ -37,7 +37,7 @@ cd Examples/PulseIOSExample && pod install && cd ../..
 ./Scripts/build-xcframework.sh
 ```
 
-This creates `build/PulseKit.xcframework` plus peer dependency xcframeworks (`KSCrash`, `OpenTelemetryApi`, `OpenTelemetrySdk`, `SwiftProtobuf`); see `Scripts/build-xcframework.sh`.
+This creates `build/PulseKit.xcframework` plus peer dependency xcframeworks. 
 
 ### Step 2: Switch podspec to use the framework
 

@@ -1,7 +1,4 @@
 // swift-tools-version: 5.9
-//
-// Default: PulseKit from **source** via the repository root (`../..`).
-// For **prebuilt xcframeworks** under `../../build/`, see `README.md` and swap in the manifest shown there.
 
 import PackageDescription
 

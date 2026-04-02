@@ -27,10 +27,10 @@ pulse-ios-sdk (source)                          pulse-ios (release)
 │  release.yml        │
 │  • Read version     │
 │  • Build XCFramework│
-│  • Zip PulseKit +   │                     ┌─────────────────────────┐
-│    checksum; copy   │                     │  validate-pr.yml        │
-│    PulseKit + peers │                     │  • Version consistency  │
-│    (from podspec)   │                     │  • SPM build (sim+dev)  │
+│  • Copy PulseKit +  │                     ┌─────────────────────────┐
+│    peer xcframeworks│                     │  validate-pr.yml        │
+│    (from podspec)   │                     │  • Branch vs podspec    │
+│  • Bump podspec ver │                     │  • SPM build (sim+dev)  │
 │  • Push release/*   │ ──── creates PR ──► │  • Example app build    │
 │  • Create PR        │     in release repo │  • CocoaPods lint       │
 └─────────────────────┘                     └────────────┬────────────┘
@@ -39,7 +39,7 @@ pulse-ios-sdk (source)                          pulse-ios (release)
                                             ┌─────────────────────────┐
                                             │  publish.yml            │
                                             │  • Create git tag       │
-                                            │  • GitHub Release + zip │
+                                            │  • GitHub Release       │
                                             │  • CocoaPods trunk push │
                                             └─────────────────────────┘
 ```
@@ -66,21 +66,20 @@ All jobs must pass before merge is allowed.
 ## Stage 2: Release (source repo → release repo)
 
 **Workflow:** `release.yml`
-**Trigger:** Manual dispatch
+**Trigger:** See the workflow file (typically **`workflow_dispatch`**; additional triggers may be listed under `on:`).
 
 Peer frameworks are derived from **`PulseKit.podspec`** `spec.dependency` lines; **`Scripts/print-peer-xcframework-entries.rb`** resolves each pod’s **Xcode scheme** and **`PRODUCT_MODULE_NAME`** via `xcodebuild -showBuildSettings` (after **`pod install`**). The same script feeds `build-xcframework.sh` and the release job (which copies every built peer into the release repo).
 
 Steps:
 1. Read version from `PulseKit.podspec`
-2. Verify version doesn't already exist in the release repo (no duplicate tags)
+2. Verify that version does not already exist as a **git tag** in the release repo
 3. `pod install` in `Examples/PulseIOSExample/`
 4. Run `Scripts/build-xcframework.sh` — builds PulseKit + all peers under `build/`
-5. Zip **PulseKit** only and compute Swift Package Manager checksum (CocoaPods / release asset)
-6. Checkout the release repo (`dream-horizon-org/pulse-ios`)
-7. Create a `release/{version}` branch
-8. Copy **`PulseKit.xcframework`**, **`PulseKit.xcframework.zip`**, and **every peer** `*.xcframework` produced by the build (same list as `print-peer-xcframework-entries.rb`)
-9. Set **`spec.version`** in the release repo **`PulseKit.podspec`** only ( **`sed`** to match the source podspec version). **`Package.swift`** and **`spec.dependency`** are **not** rewritten by automation—update them on the release PR when peers or CocoaPods dependencies change.
-10. Push branch and create a PR in the release repo (PR body reminds reviewers to verify **`Package.swift`** binary targets and **`spec.dependency`** when needed)
+5. Checkout the release repo (`dream-horizon-org/pulse-ios`)
+6. Create a `release/{version}` branch
+7. Copy **`PulseKit.xcframework`** and **every peer** `*.xcframework` from `build/` (same list as `print-peer-xcframework-entries.rb`). **No zip** is produced or committed; CocoaPods and SPM consumers use the **xcframework directories** at the release tag.
+8. Set **`spec.version`** in the release repo **`PulseKit.podspec`** with **`sed`** to match the source podspec. **`Package.swift`** (binary targets, wrapper) and **`spec.dependency`** are **not** rewritten—update those on the release PR when peers or CocoaPods dependencies change.
+9. Push the branch and open a PR in the release repo (body includes a short reviewer checklist)
 
 ---
 
@@ -91,7 +90,7 @@ Steps:
 
 | Check | What it validates |
 |-------|-------------------|
-| Version consistency | `PulseKit.podspec` `spec.version` matches the release branch; optional `let version` in `Package.swift` if you keep it—maintain manually when automation does not touch SPM |
+| Version consistency | PR head ref is `release/{version}` and matches `PulseKit.podspec` `spec.version` |
 | Example app (Simulator) | Framework links, compiles, and public API is intact (SPM) |
 | Example app (Device) | Same validation for arm64 device architecture |
 | CocoaPods lint | `pod lib lint` — podspec is valid and publishable |
@@ -108,12 +107,12 @@ Steps:
 **Trigger:** `release/*` PR merged to `main`, or manual dispatch
 
 Steps:
-1. Extract version from podspec
-2. Create git tag `{version}`
-3. Create GitHub Release with `PulseKit.xcframework.zip` attached
-4. Publish to CocoaPods trunk via `pod trunk push`
+1. Extract version from the podspec (and verify expected **`.xcframework`** folders exist at repo root)
+2. Create git tag `{version}` on `main` (skip if tag already exists)
+3. Create a **GitHub Release** for that tag with install notes (no required **zip** asset; binaries ship as the tagged tree)
+4. Publish to CocoaPods trunk via `pod trunk push` (skip if that version is already on trunk)
 
-Idempotent — skips steps if tag/release already exist.
+Idempotent — skips tag/release/trunk steps when they already exist.
 
 ---
 
@@ -133,9 +132,8 @@ Idempotent — skips steps if tag/release already exist.
 
 | File | Purpose |
 |------|---------|
-| `PulseKit.xcframework/` | Prebuilt binary framework |
-| `PulseKit.xcframework.zip` | Zip for SPM binary target download |
-| `Package.swift` | SPM manifest (binary target + wrapper) |
+| `PulseKit.xcframework/` | Prebuilt binary framework (and peer `*.xcframework/` trees for SPM path targets) |
+| `Package.swift` | SPM manifest (path `.binaryTarget` entries + wrapper) |
 | `PulseKit.podspec` | CocoaPods spec (vendored framework) |
 | `Sources/PulseKitWrapper/Exports.swift` | `@_exported import PulseKit` |
 | `Example/Sources/PulseKitValidation.swift` | CI validation target |

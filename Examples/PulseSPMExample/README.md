@@ -1,6 +1,6 @@
 # PulseSPMExample
 
-Minimal SPM based example app to test Pulse source code and framework with SPM as package manager. This doesn't consits exhaustive list of all features to test.
+Minimal SPM based example app to test Pulse source code and framework with SPM as package manager. This doesn't consists exhaustive list of all features to test.
 
 ## How to build
 
@@ -17,12 +17,7 @@ The checked-in **`Package.swift`** depends on the **repository root** (`../..`) 
 
 1. From **`Examples/PulseIOSExample/`**, run **`pod install`** (needed for the workspace the script archives).
 2. From the **repository root**, run **`./Scripts/build-xcframework.sh`**.
-3. Confirm these exist under **`build/`**:
-   - `PulseKit.xcframework`
-   - `KSCrash.xcframework`
-   - `OpenTelemetryApi.xcframework`
-   - `OpenTelemetrySdk.xcframework`
-   - `SwiftProtobuf.xcframework`
+3. Confirm all the necassary frameworks are build as per depdencies added in PulseKit.podspec.
 
 **Step 2: Point the package at frameworks instead of the repo root**
 

@@ -1,64 +1,38 @@
-# Upload dSYMs to Pulse
+# Upload dSYMs with PulseKit
 
-Upload your app’s **dSYM** with **`pulse-upload-dsym.sh`**. Use **`bash`**. You need **`bash`**, **`curl`**, **`/usr/bin/zip`** (for folder dSYMs), your **upload URL**, and **API key**.
+PulseKit bundles **`pulse-upload-dsym.sh`** inside **`PulseKit.framework`**. It uploads your app’s **dSYM** to your Pulse backend so crashes can be symbolicated.
 
-Build your app in **Xcode at least once** so **`PulseKit.framework`** (with the **`.sh`** files inside) exists under Derived Data.
-
----
-
-## Local terminal (macOS)
-
-Replace **`YourApp`** with the **start of your Derived Data folder name**—usually the same as your Xcode project or main target (e.g. **`PulseIOSExample`**, **`PulseSPMExample`**).
-
-**1. Find the script**
-
-**CocoaPods** (intermediate copy):
-
-```bash
-find ~/Library/Developer/Xcode/DerivedData -path "*YourApp*/XCFrameworkIntermediates/PulseKit/PulseKit.framework/pulse-upload-dsym.sh" 2>/dev/null
-```
-
-**Swift Package Manager** (and as a fallback): PulseKit is also under **Build/Products**—either next to your **`.app`** or as a sibling **`PulseKit.framework`**:
-
-```bash
-find ~/Library/Developer/Xcode/DerivedData -path "*YourApp*/Build/Products/*/PulseKit.framework/pulse-upload-dsym.sh" 2>/dev/null
-find ~/Library/Developer/Xcode/DerivedData -path "*YourApp*/Build/Products/*/*.app/Frameworks/PulseKit.framework/pulse-upload-dsym.sh" 2>/dev/null
-```
-
-If you see **several paths** (Debug vs Release, simulator vs device, index vs main build), pick the one under **`…/Build/Products/…`** that matches the build you care about.
-
-**2. Run it** (paste the path from step 1, or use a variable)
-
-```bash
-SCRIPT="$(find ~/Library/Developer/Xcode/DerivedData -path "*YourApp*/Build/Products/*/PulseKit.framework/pulse-upload-dsym.sh" 2>/dev/null | grep -v '/Index.noindex/' | head -1)"
-# CocoaPods-only if the line above is empty:
-# SCRIPT="$(find ~/Library/Developer/Xcode/DerivedData -path "*YourApp*/XCFrameworkIntermediates/PulseKit/PulseKit.framework/pulse-upload-dsym.sh" 2>/dev/null | head -1)"
-bash "${SCRIPT}" \
-  --url="https://your-host/v1/symbolicate/file/upload" \
-  --api-key="YOUR_API_KEY" \
-  --dsym="/path/to/YourApp.app.dSYM" \
-  --app-version="1.0" \
-  --version-code="1" \
-  --type=dsym
-```
-
-If **`SCRIPT`** is empty, run step 1 again after building, or fix **`YourApp`** in the pattern.
-
-You can use **`PULSE_UPLOAD_API_URL`**, **`PULSE_UPLOAD_API_KEY`**, **`PULSE_UPLOAD_DSYM_PATH`** instead of **`--url`** / **`--api-key`** / **`--dsym`**. Flags override env when both are set.
-
-```bash
-bash "${SCRIPT}" --help
-```
+**Requirements:** `bash`, `curl`, and **`/usr/bin/zip`** (dSYMs are folders). You also need your **upload URL** and **API key** from Pulse.
 
 ---
 
-## Xcode Run Script
+## Where the script lives
 
-**Embedded framework** (typical for **SPM** and many app targets—run **after Embed Frameworks**):
+| Integration | Where to run it from |
+|-------------|----------------------|
+| **SPM** (or any setup that **embeds** `PulseKit.framework` in the app) | `${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PulseKit.framework/pulse-upload-dsym.sh` |
+| **CocoaPods** (`use_frameworks!`, xcframework) | Usually the **same** embedded path. If that file is missing during **archive**, use **`${PODS_XCFRAMEWORKS_BUILD_DIR}/PulseKit/PulseKit.framework/pulse-upload-dsym.sh`** |
+
+Build your app **once** in Xcode so `PulseKit.framework` exists; the script sits next to the other framework resources.
+
+---
+
+## Xcode: Run Script build phase
+
+1. Open your app target → **Build Phases** → **+** → **New Run Script Phase**.
+2. Place it **after** “Embed Frameworks” (or late in the list).
+3. Shell: **`/bin/bash`**.
+
+**Recommended body** (works for **SPM** and **CocoaPods** when the framework is embedded):
 
 ```bash
-bash "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PulseKit.framework/pulse-upload-dsym.sh" \
-  --url="https://your-host/v1/symbolicate/file/upload" \
+UPLOAD_SCRIPT="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PulseKit.framework/pulse-upload-dsym.sh"
+if [[ ! -f "${UPLOAD_SCRIPT}" && -n "${PODS_XCFRAMEWORKS_BUILD_DIR:-}" ]]; then
+  UPLOAD_SCRIPT="${PODS_XCFRAMEWORKS_BUILD_DIR}/PulseKit/PulseKit.framework/pulse-upload-dsym.sh"
+fi
+
+bash "${UPLOAD_SCRIPT}" \
+  --url="https://YOUR_HOST/v1/symbolicate/file/upload" \
   --api-key="${PULSE_API_KEY}" \
   --dsym="${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}" \
   --app-version="${MARKETING_VERSION}" \
@@ -66,18 +40,52 @@ bash "${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/PulseKit.framework/pulse-u
   --type=dsym
 ```
 
-**CocoaPods** intermediate path (when **`PODS_XCFRAMEWORKS_BUILD_DIR`** is set):
+- Replace the **`--url`** value with the URL Pulse gave you.
+- Define **`PULSE_API_KEY`** for the build (Xcode scheme **Environment Variables**, CI secret, or **User-Defined** build setting). Avoid committing real keys in the project file.
+
+**Optional:** instead of `--url` / `--api-key` / `--dsym`, you can set **`PULSE_UPLOAD_API_URL`**, **`PULSE_UPLOAD_API_KEY`**, **`PULSE_UPLOAD_DSYM_PATH`**. CLI flags win if both are set.
+
+**Skip uploads for Debug** (optional wrapper):
 
 ```bash
-bash "${PODS_XCFRAMEWORKS_BUILD_DIR}/PulseKit/PulseKit.framework/pulse-upload-dsym.sh" …
+if [[ "${CONFIGURATION}" != "Release" ]]; then exit 0; fi
+# …then the bash "${UPLOAD_SCRIPT}" … block above
 ```
 
 ---
 
-## Troubleshooting
+## Terminal: manual upload
 
-| Issue | Try |
-|-------|-----|
-| **Nothing from `find`** | Build the app in Xcode; check **`YourApp`** matches Derived Data (`~/Library/Developer/Xcode/DerivedData`). |
-| **Permission denied** | Use **`bash /path/to/pulse-upload-dsym.sh`**. |
-| **Wrong shell** | Use **`bash`**, not **`sh`**. |
+Use this for one-off uploads or CI that already has a **`.dSYM`** on disk.
+
+**1. Locate the script** (after a local build):
+
+```bash
+find ~/Library/Developer/Xcode/DerivedData -path "*PulseKit.framework/pulse-upload-dsym.sh" 2>/dev/null | grep -v Index.noindex | head -5
+```
+
+Pick a path that matches the same **configuration** (e.g. **Release**) and **platform** as the dSYM you are uploading.
+
+**2. Run:**
+
+```bash
+bash "/full/path/to/PulseKit.framework/pulse-upload-dsym.sh" \
+  --url="https://YOUR_HOST/v1/symbolicate/file/upload" \
+  --api-key="YOUR_API_KEY" \
+  --dsym="/full/path/to/YourApp.app.dSYM" \
+  --app-version="1.0.0" \
+  --version-code="123" \
+  --type=dsym
+```
+
+**Help:** `bash "/path/to/pulse-upload-dsym.sh" --help`
+
+---
+
+## If something fails
+
+| Symptom | What to check |
+|--------|----------------|
+| **No script path** | Build the app target that links PulseKit; confirm **`PulseKit.framework`** is inside the built **`.app`** (SPM/CocoaPods both embed it for typical iOS app targets). |
+| **Script not found in Run Script** | For CocoaPods archives, rely on the **`PODS_XCFRAMEWORKS_BUILD_DIR`** fallback above. |
+| **Errors when running** | Invoke with **`bash …`**, not `sh`. |
