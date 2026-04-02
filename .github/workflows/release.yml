@@ -91,7 +91,7 @@ jobs:
           done < <(ruby "${WS}/Scripts/print-peer-xcframework-entries.rb" "${WS}")
           echo "::notice::Copied PulseKit + all peer xcframeworks from build/"
 
-          # Only bump podspec version here. Reviewers update Package.swift binary targets + spec.dependency manually when peers change.
+          # Bump podspec version + optional Package.swift `let version` / `let checksum` (when those lines exist).
           sed -i '' "s/spec.version.*=.*/spec.version      = \"${VERSION}\"/" PulseKit.podspec
 
           PODSPEC_VER=$(grep "spec.version" PulseKit.podspec | head -1 | sed "s/.*\"\(.*\)\"/\1/")
@@ -100,6 +100,23 @@ jobs:
             exit 1
           fi
           echo "::notice::Verified release repo PulseKit.podspec spec.version=${VERSION}"
+
+          if [ -f Package.swift ]; then
+            if grep -q 'let version' Package.swift; then
+              sed -i '' "s/let version = \"[^\"]*\"/let version = \"${VERSION}\"/" Package.swift
+            fi
+            if grep -q 'let checksum' Package.swift; then
+              sed -i '' "s/let checksum = \"[^\"]*\"/let checksum = \"${CHECKSUM}\"/" Package.swift
+            fi
+            if grep -q 'let version' Package.swift; then
+              SPM_VER=$(grep 'let version' Package.swift | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+              if [ "${SPM_VER}" != "${VERSION}" ]; then
+                echo "::error::Package.swift let version (${SPM_VER}) != podspec (${VERSION})"
+                exit 1
+              fi
+              echo "::notice::Verified Package.swift let version=${VERSION}"
+            fi
+          fi
 
           git add -A
           git commit -m "Release PulseKit v${VERSION}"
@@ -118,16 +135,14 @@ jobs:
             --body "$(cat <<EOF
           ## Release PulseKit v${VERSION}
 
-          Automated release from [pulse-ios-sdk@${GITHUB_SHA:0:7}](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}).
-
           ### What this PR contains
-          This automation **only** copies the built **\`*.xcframework\`** trees + **\`PulseKit.xcframework.zip\`** and sets **\`PulseKit.podspec\` → \`spec.version\`** to \`${VERSION}\`. It does **not** rewrite **\`Package.swift\`** or **\`spec.dependency\`**.
+          - Copies **\`PulseKit.xcframework\`**, peer **\`*.xcframework\`**, and **\`PulseKit.xcframework.zip\`**
+          - Sets **\`PulseKit.podspec\` → \`spec.version\`** to \`${VERSION}\`
+          - If **\`Package.swift\`** defines **\`let version\`** (and **\`let checksum\`**), updates those to match this release
 
-          ### Checklist (manual when needed)
-          - [ ] Review **PulseKit** + peer xcframeworks and **PulseKit** zip
-          - [ ] If **pulse-ios-sdk** \`PulseKit.podspec\` gained or changed **\`spec.dependency\`**, update **\`spec.dependency\`** in this repo’s **\`PulseKit.podspec\`** to match (exact pins / versions)
-          - [ ] If there are **new or renamed** peer frameworks on this branch, update **\`Package.swift\`** **\`.binaryTarget\`** entries (and **\`PulseKitWrapper\` dependencies**) so SPM stays in sync
-          - [ ] **PulseKit** zip checksum for reference / release notes if you use it: \`${CHECKSUM}\`
+          ### Reviewer checklist
+          - [ ] If upstream added or changed CocoaPods deps, align **\`spec.dependency\`** in **\`PulseKit.podspec\`**
+          - [ ] If peers changed, align **\`Package.swift\`** **\`.binaryTarget\`** list and **\`PulseKitWrapper\`** dependencies
 
           ### On merge, the publish workflow will:
           1. Create git tag \`${VERSION}\`
