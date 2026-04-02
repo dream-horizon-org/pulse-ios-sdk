@@ -33,11 +33,11 @@ Tests the pre-built binary framework — the same artifact shipped to consumers.
 # From repo root — pod install is required first (provides the workspace)
 cd Examples/PulseIOSExample && pod install && cd ../..
 
-# Build the framework
-./scripts/build-xcframework.sh
+# Build the frameworks
+./Scripts/build-xcframework.sh
 ```
 
-This creates `build/PulseKit.xcframework`.
+This creates `build/PulseKit.xcframework` plus peer dependency xcframeworks. 
 
 ### Step 2: Switch podspec to use the framework
 

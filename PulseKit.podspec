@@ -1,6 +1,6 @@
 Pod::Spec.new do |spec|
   spec.name = "PulseKit"
-  spec.version = "0.0.1-beta.4"
+  spec.version = "0.0.1-beta.1"
   spec.summary = "Pulse iOS SDK - Simplified OpenTelemetry for iOS"
   spec.description = <<-DESC
     Pulse iOS SDK is a production-ready SDK for instrumenting iOS 
@@ -56,12 +56,19 @@ Pod::Spec.new do |spec|
   spec.module_name = "PulseKit"
 
   spec.ios.frameworks = "CoreTelephony", "CoreLocation"
-  
-  spec.dependency 'OpenTelemetry-Swift-Api', '~> 2.2'
-  spec.dependency 'OpenTelemetry-Swift-Sdk', '~> 2.2'
-  spec.dependency 'SwiftProtobuf', '~> 1.28'
-  spec.dependency 'KSCrash', '~> 2.5'
-  spec.dependency 'libwebp', '~> 1.5'
+
+  spec.dependency 'OpenTelemetry-Swift-Api', '2.2.0'
+  spec.dependency 'OpenTelemetry-Swift-Sdk', '2.2.0'
+  spec.dependency 'SwiftProtobuf', '1.34.1'
+  spec.dependency 'KSCrash', '2.5.1'
+  spec.dependency 'libwebp', '1.5.0'
+
+  spec.resources = [
+    "Scripts/PulseUploadSourcemaps/*.sh"
+  ]
+  spec.preserve_paths = [
+    "Scripts/PulseUploadSourcemaps/**/*"
+  ]
 
   spec.pod_target_xcconfig = { "OTHER_SWIFT_FLAGS" => "-module-name PulseKit -package-name pulse_kit" }
 end
