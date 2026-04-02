@@ -2,6 +2,8 @@ name: Create XC Framework and Release PR for Pulse iOS
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize]
 
 env:
   RELEASE_REPO: dream-horizon-org/pulse-ios
