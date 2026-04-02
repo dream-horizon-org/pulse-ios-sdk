@@ -7,6 +7,7 @@
 # VS Code
 .vscode/
 
+.cursor/
 ## User settings
 xcuserdata/
 
