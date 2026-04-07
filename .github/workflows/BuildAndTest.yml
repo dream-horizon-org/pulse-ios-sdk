@@ -148,10 +148,32 @@ jobs:
         path = "PulseKit.podspec"
         text = File.read(path)
 
-        text.sub!(/  spec\.source_files = \[[\s\S]*?\]\s*\n/m, "")
-        text.sub!(/  spec\.exclude_files = \[[\s\S]*?\]\s*\n/m, "")
+        def strip_spec_array_attr(text, attr)
+          lines = text.lines
+          out = []
+          i = 0
+          re_start = /^  spec\.#{Regexp.escape(attr)} = \[$/
+          re_close = /^  \]\s*$/
+          while i < lines.size
+            if lines[i].match?(re_start)
+              i += 1
+              while i < lines.size && !lines[i].match?(re_close)
+                i += 1
+              end
+              i += 1 if i < lines.size
+              next
+            end
+            out << lines[i]
+            i += 1
+          end
+          out.join
+        end
+
+        text = strip_spec_array_attr(text, "source_files")
+        text = strip_spec_array_attr(text, "exclude_files")
         text.gsub!(/^  spec\.dependency .+\n/, "")
-        text.sub!(/^  spec\.pod_target_xcconfig = .+\n/m, "")
+        # Single-line only — do not use /m here; .+ would swallow the rest of the file including `end`
+        text.sub!(/^  spec\.pod_target_xcconfig = [^\n]+\n/, "")
 
         vendored = [
           "  spec.vendored_frameworks = [",
