@@ -12,7 +12,7 @@ public struct InteractionInstrumentationConfiguration {
     /// Default: "http://10.0.2.2:8080/v1/interactions/all-active-interactions"
     public var configUrlProvider: () -> String
 
-    /// HTTP headers for the config fetch request (e.g. X-API-KEY / projectId)
+    /// HTTP headers for the config fetch request (e.g. X-API-KEY)
     public var headers: [String: String]
 
     /// Custom attribute extractor for adding additional attributes to interaction spans
@@ -22,6 +22,9 @@ public struct InteractionInstrumentationConfiguration {
 
     /// Internal: Use mock fetcher instead of real API (for testing only)
     internal var useMockFetcher: Bool = false
+
+    /// When using the mock fetcher, optional configs to return (defaults to built-in mock data when nil)
+    internal var mockConfigs: [InteractionConfig]? = nil
 
     public init(
         configUrlProvider: @escaping () -> String = {

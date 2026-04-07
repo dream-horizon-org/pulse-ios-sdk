@@ -34,12 +34,16 @@ public class InteractionInstrumentation {
     
     private lazy var interactionManager: InteractionManager = {
         let configFetcher: InteractionConfigFetcher = configuration.useMockFetcher
-            ? InteractionConfigMockFetcher()
+            ? InteractionConfigMockFetcher(customConfigs: configuration.mockConfigs)
             : InteractionConfigRestFetcher(urlProvider: configuration.configUrlProvider, headers: configuration.headers)
         return InteractionManager(interactionFetcher: configFetcher)
     }()
     
     private var stateObservationTask: Task<Void, Never>?
+
+    /// Interaction IDs for which a completion span was already emitted.
+    private let handledInteractionIdsLock = NSLock()
+    private var handledInteractionIds = Set<String>()
     
     /// Attribute extractors for adding custom attributes to interaction spans
     private var attributeExtractors: [(Interaction) -> [String: AttributeValue]] = []
@@ -71,9 +75,15 @@ public class InteractionInstrumentation {
     /// Handle interaction state changes and create spans
     private func handleInteractionStates(_ states: [InteractionRunningStatus]) {
         for state in states {
-            if case .ongoingMatch(_, _, let config, let interaction) = state,
+            if case .ongoingMatch(_, let interactionId, let config, let interaction) = state,
                let interaction = interaction {
-                // Interaction completed (success or error)
+                handledInteractionIdsLock.lock()
+                let alreadyHandled = handledInteractionIds.contains(interactionId)
+                if !alreadyHandled {
+                    handledInteractionIds.insert(interactionId)
+                }
+                handledInteractionIdsLock.unlock()
+                guard !alreadyHandled else { continue }
                 createInteractionSpan(interaction: interaction, config: config)
             }
         }
@@ -211,6 +221,9 @@ public class InteractionInstrumentation {
     public func uninstall() {
         stateObservationTask?.cancel()
         stateObservationTask = nil
+        handledInteractionIdsLock.lock()
+        handledInteractionIds.removeAll()
+        handledInteractionIdsLock.unlock()
         attributeExtractors.removeAll()
         InteractionInstrumentation.sharedInstance = nil
     }

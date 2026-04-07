@@ -275,6 +275,42 @@ public struct PulseFeatureConfig: Codable, Equatable {
     public let featureName: PulseFeatureName
     public let sessionSampleRate: Float
     public let sdks: [PulseSdkName]
+    public let config: [String: AnyCodable]?
+    
+    enum CodingKeys: String, CodingKey {
+        case featureName
+        case sessionSampleRate
+        case sdks
+        case config
+    }
+    
+    public init(
+        featureName: PulseFeatureName,
+        sessionSampleRate: Float,
+        sdks: [PulseSdkName],
+        config: [String: AnyCodable]? = nil
+    ) {
+        self.featureName = featureName
+        self.sessionSampleRate = sessionSampleRate
+        self.sdks = sdks
+        self.config = config
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        featureName = try container.decode(PulseFeatureName.self, forKey: .featureName)
+        sessionSampleRate = try container.decode(Float.self, forKey: .sessionSampleRate)
+        sdks = try container.decode([PulseSdkName].self, forKey: .sdks)
+        config = try? container.decodeIfPresent([String: AnyCodable].self, forKey: .config)
+    }
+    
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(featureName, forKey: .featureName)
+        try container.encode(sessionSampleRate, forKey: .sessionSampleRate)
+        try container.encode(sdks, forKey: .sdks)
+        try container.encodeIfPresent(config, forKey: .config)
+    }
 }
 
 // MARK: - Enums (JSON string values match API compatibility)
@@ -319,6 +355,7 @@ public enum PulseFeatureName: String, Codable, CaseIterable {
     case rn_screen_load
     case rn_screen_interactive
     case ios_crash
+    case session_replay
     case unknown
 }
 

@@ -20,9 +20,13 @@ public enum PulseAttributes {
     public static let exceptionType = "exception.type"
     public static let exceptionStacktrace = "exception.stacktrace"
 
+    /// GraphQL span attributes (set when URL contains "graphql" and name/type are derivable).
+    public static let graphqlOperationName = "graphql.operation.name"
+    public static let graphqlOperationType = "graphql.operation.type"
+
     /// Project identifier; used as resource attribute "project.id" and in HTTP header X-API-KEY.
     public static let projectId = "project.id"
-    internal static let projectIdHeaderKey = "X-Tenant-ID"
+    internal static let apiKeyHeaderKey = "X-API-KEY"
 
     public static func pulseUserParameter(_ key: String) -> String {
         return "\(pulseUserPrefix).\(key)"
@@ -50,11 +54,14 @@ public enum PulseAttributes {
         public static let frozen = "frozen"
         public static let slow = "slow"
         public static let touch = "touch"
+        public static let appClick = "app.click"
         public static let networkChange = "network_change"
         public static let appInstallationStart = "pulse.app.installation.start"
         /// App session lifecycle (matches Otel semantic convention event names)
         public static let appSessionStart = "session.start"
         public static let appSessionEnd = "session.end"
+        /// Session replay
+        public static let sessionReplay = "session_replay"
         public static func isNetworkType(_ pulseType: String) -> Bool {
             return pulseType == network || pulseType.hasPrefix("\(network).")
         }

@@ -15,11 +15,12 @@ jobs:
       - name: Checkout source repo
         uses: actions/checkout@v4
 
-      - name: Read version from podspec
+      # Release version is whatever is in **this** repo’s PulseKit.podspec. Bump it in a commit here before dispatching this workflow; the PR in the release repo will match it.
+      - name: Read version from PulseKit.podspec (source repo)
         run: |
           VERSION=$(grep "spec.version" PulseKit.podspec | head -1 | sed "s/.*\"\(.*\)\"/\1/")
           echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "::notice::Release version: $VERSION"
+          echo "::notice::Release version (from source podspec): $VERSION"
 
       - name: Check version doesn't already exist in release repo
         env:
@@ -42,17 +43,8 @@ jobs:
 
       - name: Build XCFramework
         run: |
-          ./scripts/build-xcframework.sh
+          ./Scripts/build-xcframework.sh
           echo "::notice::XCFramework built successfully"
-
-      - name: Create zip and compute checksum
-        run: |
-          cd build
-          zip -r -q PulseKit.xcframework.zip PulseKit.xcframework
-          CHECKSUM=$(swift package compute-checksum PulseKit.xcframework.zip)
-          echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
-          echo "::notice::Zip size: $(du -sh PulseKit.xcframework.zip | cut -f1)"
-          echo "::notice::Checksum: $CHECKSUM"
 
       - name: Checkout release repo
         uses: actions/checkout@v4
@@ -63,7 +55,9 @@ jobs:
 
       - name: Prepare release branch
         run: |
-          cd release-repo
+          set -euo pipefail
+          WS="${GITHUB_WORKSPACE}"
+          cd "${WS}/release-repo"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -72,13 +66,25 @@ jobs:
           git checkout -b "$BRANCH"
 
           rm -rf PulseKit.xcframework
-          cp -R ../build/PulseKit.xcframework .
+          cp -R "${WS}/build/PulseKit.xcframework" .
 
-          cp ../build/PulseKit.xcframework.zip .
+          # Peers: same list as build-xcframework.sh (print-peer-xcframework-entries.rb from PulseKit.podspec).
+          while IFS= read -r entry || [[ -n "${entry}" ]]; do
+            [[ -z "${entry}" ]] && continue
+            name="${entry#*:}"
+            rm -rf "${name}.xcframework"
+            cp -R "${WS}/build/${name}.xcframework" .
+          done < <(ruby "${WS}/Scripts/print-peer-xcframework-entries.rb" "${WS}")
+          echo "::notice::Copied PulseKit + all peer xcframeworks from build/"
 
           sed -i '' "s/spec.version.*=.*/spec.version      = \"${VERSION}\"/" PulseKit.podspec
-          sed -i '' "s/let version = \"[^\"]*\"/let version = \"${VERSION}\"/" Package.swift
-          sed -i '' "s/let checksum = \"[^\"]*\"/let checksum = \"${CHECKSUM}\"/" Package.swift
+
+          PODSPEC_VER=$(grep "spec.version" PulseKit.podspec | head -1 | sed "s/.*\"\(.*\)\"/\1/")
+          if [ "${PODSPEC_VER}" != "${VERSION}" ]; then
+            echo "::error::PulseKit.podspec spec.version after sed is '${PODSPEC_VER}', expected '${VERSION}'"
+            exit 1
+          fi
+          echo "::notice::Verified release repo PulseKit.podspec spec.version=${VERSION}"
 
           git add -A
           git commit -m "Release PulseKit v${VERSION}"
@@ -97,16 +103,17 @@ jobs:
             --body "$(cat <<EOF
           ## Release PulseKit v${VERSION}
 
-          Automated release from [pulse-ios-sdk@${GITHUB_SHA::7}](https://github.com/${{ github.repository }}/commit/${GITHUB_SHA}).
+          ### What this PR contains
+          - Copies **\`PulseKit.xcframework\`** and peer **\`*.xcframework\`** from the source code.
+          - Sets **\`PulseKit.podspec\` → \`spec.version\`** to \`${VERSION}\`
 
-          ### Checklist
-          - [ ] Review xcframework contents
-          - [ ] Verify podspec version: \`${VERSION}\`
-          - [ ] Verify Package.swift checksum: \`${CHECKSUM}\`
+          ### Reviewer checklist
+          - [ ] **\`PulseKit.podspec\` → \`spec.vendored_frameworks\`** matches every **\`*.xcframework\`** in this PR (add/remove/update paths if a dependency was added, removed, or renamed)
+          - [ ] **\`Package.swift\` → \`.binaryTarget\`** list and **\`PulseKitWrapper\`** dependencies match the same set (add/remove/update if a dependency was added, removed, or renamed)
 
           ### On merge, the publish workflow will:
           1. Create git tag \`${VERSION}\`
-          2. Create GitHub Release with xcframework zip
+          2. Create GitHub Release (notes only — artifacts live in the repo at the tag)
           3. Publish to CocoaPods trunk
           EOF
           )"
@@ -120,5 +127,4 @@ jobs:
           echo "| Detail | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| Version | \`$VERSION\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| Checksum | \`${CHECKSUM:-N/A}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Release Repo | [${{ env.RELEASE_REPO }}](https://github.com/${{ env.RELEASE_REPO }}) |" >> $GITHUB_STEP_SUMMARY

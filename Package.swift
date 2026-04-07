@@ -34,7 +34,8 @@ let package = Package(
     .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.33.3"),
     .package(url: "https://github.com/apple/swift-log.git", from: "1.6.4"),
     .package(url: "https://github.com/apple/swift-metrics.git", from: "2.7.1"),
-    .package(url: "https://github.com/kstenerud/KSCrash.git", .upToNextMajor(from: "2.5.1"))
+    .package(url: "https://github.com/kstenerud/KSCrash.git", .upToNextMajor(from: "2.5.1")),
+    .package(url: "https://github.com/SDWebImage/libwebp-Xcode.git", from: "1.5.0"),
   ],
   targets: [
     .target(
@@ -332,11 +333,13 @@ extension Package {
             .product(name: "Recording", package: "KSCrash"),
             .product(name: "Filters", package: "KSCrash"),
             "OpenTelemetryProtocolExporterHttp",
-            "PersistenceExporter"
+            "PersistenceExporter",
+            .product(name: "libwebp", package: "libwebp-Xcode")
           ],
           path: "Sources",
           exclude: [
             "PulseKit/README.md",
+            "PulseKit/Consent/README.md",
             "PulseKit/Sampling/README.md",
             "Instrumentation/Sessions/README.md",
             "Instrumentation/Crashes/README.md",
@@ -346,7 +349,9 @@ extension Package {
             "Instrumentation/SignPostIntegration/README.md",
             "Instrumentation/SDKResourceExtension/README.md",
             "Instrumentation/Location/README.md",
-            "Instrumentation/AppLifecycle/README.md"
+            "Instrumentation/AppLifecycle/README.md",
+            "Instrumentation/UIKitTap/README.md",
+            "Instrumentation/SessionReplay/README.md"
           ],
           sources: [
             "PulseKit",
@@ -358,7 +363,9 @@ extension Package {
             "Instrumentation/SignPostIntegration",
             "Instrumentation/SDKResourceExtension",
             "Instrumentation/Location",
-            "Instrumentation/AppLifecycle"
+            "Instrumentation/AppLifecycle",
+            "Instrumentation/UIKitTap",
+            "Instrumentation/SessionReplay"
           ],
           linkerSettings: [.linkedFramework("CoreTelephony", .when(platforms: [.iOS]))]
         ),
@@ -382,6 +389,7 @@ extension Package {
           dependencies: [
             "PulseKit",
             "SharedTestUtils",
+            .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core"),
           ],
           path: "Tests/InstrumentationTests/URLSessionTests"
         ),
@@ -389,6 +397,7 @@ extension Package {
           name: "InteractionInstrumentationTests",
           dependencies: [
             "PulseKit",
+            "InMemoryExporter",
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/InteractionTests"
@@ -417,6 +426,22 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/InstrumentationTests/AppLifecycleTests"
+        ),
+        .testTarget(
+          name: "UIKitTapTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/UIKitTapTests"
+        ),
+        .testTarget(
+          name: "SessionReplayTests",
+          dependencies: [
+            "PulseKit",
+            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
+          ],
+          path: "Tests/InstrumentationTests/SessionReplayTests"
         ),
         .testTarget(
           name: "ResourceExtensionTests",

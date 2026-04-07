@@ -36,7 +36,7 @@ public final class PulseSdkConfigCoordinator {
     /// When useLocalMockConfig is true, skips network fetch entirely.
     /// - Parameters:
     ///   - configEndpointUrl: Final config URL (already resolved by PulseKit from endpointBaseUrl when nil; e.g. `{base:8080}/v1/configs/active/`).
-    ///   - endpointHeaders: Headers sent with the GET request (e.g. X-API-KEY / project id).
+    ///   - endpointHeaders: Headers sent with the GET request (e.g. X-API-KEY / api key).
     ///   - currentConfigVersion: Version of the config already loaded at init (avoids loading from storage again).
     public func startBackgroundFetch(
         configEndpointUrl: String,

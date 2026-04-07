@@ -17,7 +17,16 @@ internal class PulseSignalProcessor {
         var isEndRequired: Bool = false
         
         private static let appStartSpanName = "AppStart"
-        
+        //TODO: substitute deprecated attributes 
+        private static let urlAttributeKeys = [
+            SemanticAttributes.httpUrl.rawValue,       // "http.url"
+            SemanticAttributes.httpTarget.rawValue,    // "http.target"
+        ]
+
+        private static func isNetworkSpan(_ attributes: [String: AttributeValue]) -> Bool {
+            return attributes[SemanticAttributes.httpMethod.rawValue] != nil
+        }
+
         func onStart(parentContext: SpanContext?, span: ReadableSpan) {
             let spanData = span.toSpanData()
             guard spanData.attributes[PulseAttributes.pulseType] == nil else {
@@ -26,16 +35,15 @@ internal class PulseSignalProcessor {
             
             let pulseType: String?
             var attributesToSet: [String: AttributeValue] = [:]
-            
-            if spanData.attributes[SemanticAttributes.httpMethod.rawValue] != nil {
-                // URL normalization for network spans
-                // pulse.type for network spans is set in URLSessionLogger since spans become immutable after end() is called
+            if PulseSpanTypeAttributesAppender.isNetworkSpan(spanData.attributes) {
                 pulseType = nil
-                if let httpUrlAttr = spanData.attributes[SemanticAttributes.httpUrl.rawValue],
-                   case .string(let originalUrl) = httpUrlAttr {
-                    let normalizedUrl = PulseSpanTypeAttributesAppender.normalizeUrl(originalUrl)
-                    if normalizedUrl != originalUrl {
-                        attributesToSet[SemanticAttributes.httpUrl.rawValue] = AttributeValue.string(normalizedUrl)
+                for key in PulseSpanTypeAttributesAppender.urlAttributeKeys {
+                    if let attr = spanData.attributes[key],
+                       case .string(let originalValue) = attr {
+                        let redacted = PulseSpanTypeAttributesAppender.normalizeUrl(originalValue)
+                        if redacted != originalValue {
+                            attributesToSet[key] = AttributeValue.string(redacted)
+                        } 
                     }
                 }
             }
@@ -144,8 +152,8 @@ internal class PulseSignalProcessor {
                         pulseType = nil
                     }
                     
-                case "app.screen.click", "app.widget.click", "event.app.widget.click":
-                    pulseType = PulseAttributes.PulseTypeValues.touch
+                case "app.widget.click":
+                    pulseType = PulseAttributes.PulseTypeValues.appClick
                     
                 case "network.change":
                     pulseType = PulseAttributes.PulseTypeValues.networkChange
