@@ -104,12 +104,12 @@ jobs:
           ## Release PulseKit v${VERSION}
 
           ### What this PR contains
-          - Copies **\`PulseKit.xcframework\`** and peer **\`*.xcframework\`** trees from the SDK build
+          - Copies **\`PulseKit.xcframework\`** and peer **\`*.xcframework\`** from the source code.
           - Sets **\`PulseKit.podspec\` → \`spec.version\`** to \`${VERSION}\`
 
           ### Reviewer checklist
-          - [ ] If upstream added or changed CocoaPods deps, align **\`spec.dependency\`** in **\`PulseKit.podspec\`**
-          - [ ] If peers changed, align **\`Package.swift\`** **\`.binaryTarget\`** list and **\`PulseKitWrapper\`** dependencies
+          - [ ] **\`PulseKit.podspec\` → \`spec.vendored_frameworks\`** matches every **\`*.xcframework\`** in this PR (add/remove/update paths if a dependency was added, removed, or renamed)
+          - [ ] **\`Package.swift\` → \`.binaryTarget\`** list and **\`PulseKitWrapper\`** dependencies match the same set (add/remove/update if a dependency was added, removed, or renamed)
 
           ### On merge, the publish workflow will:
           1. Create git tag \`${VERSION}\`
