@@ -121,21 +121,79 @@ jobs:
         ./Scripts/build-xcframework.sh
     - name: Verify XCFramework output
       run: |
-        if [ ! -d "build/PulseKit.xcframework" ]; then
-          echo "::error::PulseKit.xcframework was not created"
-          exit 1
-        fi
-        echo "XCFramework size: $(du -sh build/PulseKit.xcframework | cut -f1)"
+        for fw in PulseKit KSCrash OpenTelemetryApi OpenTelemetrySdk SwiftProtobuf libwebp; do
+          if [ ! -d "build/${fw}.xcframework" ]; then
+            echo "::error::build/${fw}.xcframework was not created"
+            exit 1
+          fi
+        done
+        echo "PulseKit.xcframework size: $(du -sh build/PulseKit.xcframework | cut -f1)"
         echo "Architectures:"
         find build/PulseKit.xcframework -name "PulseKit" -type f | while read f; do
           echo "  $f: $(file "$f" | sed 's/.*: //')"
         done
     - name: Test XCFramework with Example App
       run: |
-        # Swap podspec to use vendored framework instead of source files
-        sed -i '' '/spec.source_files/,/\]/d' PulseKit.podspec
-        sed -i '' '/spec.exclude_files/,/\]/d' PulseKit.podspec
-        sed -i '' 's|.*spec.pod_target_xcconfig.*|  spec.vendored_frameworks = "build/PulseKit.xcframework"|' PulseKit.podspec
+        set -euo pipefail
+        # Same peer set as pulse-ios-sdk-release / consumer PulseKit.podspec (build/ paths)
+        for fw in PulseKit KSCrash OpenTelemetryApi OpenTelemetrySdk SwiftProtobuf libwebp; do
+          if [ ! -d "build/${fw}.xcframework" ]; then
+            echo "::error::Missing build/${fw}.xcframework (run build-xcframework.sh first)"
+            exit 1
+          fi
+        done
+
+        # Swap podspec to consumer-style: all vendored xcframeworks, no source/trunk deps
+        ruby <<'RUBY'
+        path = "PulseKit.podspec"
+        text = File.read(path)
+
+        def strip_spec_array_attr(text, attr)
+          lines = text.lines
+          out = []
+          i = 0
+          re_start = /^  spec\.#{Regexp.escape(attr)} = \[$/
+          re_close = /^  \]\s*$/
+          while i < lines.size
+            if lines[i].match?(re_start)
+              i += 1
+              while i < lines.size && !lines[i].match?(re_close)
+                i += 1
+              end
+              i += 1 if i < lines.size
+              next
+            end
+            out << lines[i]
+            i += 1
+          end
+          out.join
+        end
+
+        text = strip_spec_array_attr(text, "source_files")
+        text = strip_spec_array_attr(text, "exclude_files")
+        text.gsub!(/^  spec\.dependency .+\n/, "")
+        # Single-line only — do not use /m here; .+ would swallow the rest of the file including `end`
+        text.sub!(/^  spec\.pod_target_xcconfig = [^\n]+\n/, "")
+
+        vendored = [
+          "  spec.vendored_frameworks = [",
+          '    "build/PulseKit.xcframework",',
+          '    "build/KSCrash.xcframework",',
+          '    "build/OpenTelemetryApi.xcframework",',
+          '    "build/OpenTelemetrySdk.xcframework",',
+          '    "build/SwiftProtobuf.xcframework",',
+          '    "build/libwebp.xcframework",',
+          "  ]",
+          "",
+        ].join("\n")
+
+        marker = "  spec.module_name = \"PulseKit\"\n\n"
+        abort "PulseKit.podspec: missing module_name anchor" unless text.include?(marker)
+        abort "PulseKit.podspec: already has vendored_frameworks" if text.include?("spec.vendored_frameworks")
+        text.sub!(marker, marker + vendored)
+
+        File.write(path, text)
+        RUBY
 
         echo "::group::Modified PulseKit.podspec"
         cat PulseKit.podspec
