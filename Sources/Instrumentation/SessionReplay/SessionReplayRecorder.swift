@@ -306,7 +306,9 @@ public class SessionReplayRecorder {
                         frame: frame,
                         windowStatus: &windowStatus,
                         projectId: pid,
-                        userId: self.resolvedUserId()
+                        userId: self.resolvedUserId(),
+                        appVersion: self.getAppVersion(),
+                        aspectRatio: self.getCurrentAspectRatio()
                     )
                     self.updateWindowStatus(window: window, status: windowStatus)
 
@@ -334,8 +336,9 @@ public class SessionReplayRecorder {
                     userId: self.resolvedUserId(),
                     properties: SessionReplayProperties(
                         sessionId: sessionId,
-                        snapshotSource: "ios",
-                        snapshotData: allEvents
+                        snapshotSource: "iOS",
+                        snapshotData: allEvents,
+                        appVersion: self.getAppVersion()
                     )
                 )
 
@@ -436,28 +439,29 @@ public class SessionReplayRecorder {
     
     #if os(iOS) || os(tvOS)
     private func getCurrentScreenName(from window: UIWindow) -> String {
-        assert(Thread.isMainThread, "getCurrentScreenName must run on the main thread")
-        if let rootViewController = window.rootViewController {
-            return getTopViewControllerName(from: rootViewController)
-        }
-        return ""
+        return VisibleScreenTracker.shared.currentlyVisibleScreen
     }
     
-    private func getTopViewControllerName(from viewController: UIViewController) -> String {
-        if let presented = viewController.presentedViewController {
-            return getTopViewControllerName(from: presented)
+    private func getAppVersion() -> String? {
+        if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+           !version.isEmpty {
+            return version
         }
-        if let nav = viewController as? UINavigationController,
-           let top = nav.topViewController {
-            return getTopViewControllerName(from: top)
-        }
-        if let tab = viewController as? UITabBarController,
-           let selected = tab.selectedViewController {
-            return getTopViewControllerName(from: selected)
-        }
-        return viewController.title ?? String(describing: type(of: viewController))
+        return nil
     }
     
+    private func getCurrentAspectRatio() -> String? {
+        #if os(iOS) || os(tvOS)
+        var aspectRatio: String?
+        DispatchQueue.main.sync {
+            aspectRatio = PulseUtils.currentViewportAspectRatio()
+        }
+        return aspectRatio
+        #else
+        return nil
+        #endif
+    }
+
     #endif
     
     private func setupLifecycleObservers() {

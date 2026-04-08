@@ -28,6 +28,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             endpointHeaders: nil,
             globalAttributes: globalAttributes,
             instrumentations: { config in
+                // Enable UIKit tap instrumentation with context capture
+                config.uiKitTap { tapConfig in
+                    tapConfig.enabled(true)
+                    tapConfig.captureContext(true)
+                }
+
                 // Enable Session Replay
                 config.sessionReplay { replayConfig in
                     replayConfig.enabled(true)

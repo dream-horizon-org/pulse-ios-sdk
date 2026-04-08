@@ -7,6 +7,7 @@ import Foundation
 #if os(iOS) || os(tvOS)
 import UIKit
 import ObjectiveC
+import QuartzCore
 import OpenTelemetryApi
 
 internal class UIWindowSwizzler {
@@ -14,8 +15,13 @@ internal class UIWindowSwizzler {
     private static let swizzleLock = NSLock()
     private static var logger: OpenTelemetryApi.Logger?
     private static var captureContext: Bool = true
-
-    // Label extraction constants — matches Android values exactly
+    private static var rageConfig: RageConfig = RageConfig()
+    
+    private static var buffer: ClickEventBuffer?
+    private static var emitter: ClickEventEmitter?
+    private static var appLifecycleObserver: NSObjectProtocol?
+    
+    // Label extraction constants 
     private static let maxLabelSegments = 5
     private static let maxLabelLength = 200
     private static let labelDelimiter = " | "
@@ -23,17 +29,34 @@ internal class UIWindowSwizzler {
 
     // Scroll vs tap detection: if a touch moves more than this many points from
     // its start position, it is treated as a scroll/pan and NOT reported as a tap.
-    // Mirrors Android's touchSlop mechanism.
     private static let tapSlopDistance: CGFloat = 10
     // Touch start positions keyed by UITouch identity — always accessed on main thread.
     private static var touchStartLocations: [ObjectIdentifier: CGPoint] = [:]
 
-    static func swizzle(logger: OpenTelemetryApi.Logger, captureContext: Bool) {
+    static func swizzle(logger: OpenTelemetryApi.Logger, captureContext: Bool, rageConfig: RageConfig) {
         swizzleLock.lock()
         defer { swizzleLock.unlock() }
         guard !swizzled else { return }
         Self.logger = logger
         Self.captureContext = captureContext
+        Self.rageConfig = rageConfig
+
+        emitter = ClickEventEmitter(logger: logger)
+        buffer = ClickEventBuffer(
+            rageConfig: rageConfig,
+            onRage: { emitter?.emitRageClick($0) },
+            onEmit: { [weak emitter] click in
+                if click.hasTarget {
+                    emitter?.emitGoodClick(click)
+                } else {
+                    emitter?.emitDeadClick(click)
+                }
+            }
+        )
+
+        if appLifecycleObserver == nil {
+            registerForAppLifecycle()
+        }
         swizzleSendEvent()
         swizzled = true
     }
@@ -65,7 +88,7 @@ internal class UIWindowSwizzler {
                 touchStartLocations.removeValue(forKey: ObjectIdentifier(touch))
             }
 
-            let clickTarget: (view: UIView, location: CGPoint)? = {
+            let clickTarget: (view: UIView?, location: CGPoint)? = {
                 guard let touch = touches.first(where: { $0.phase == .ended }) else { return nil }
                 let endLocation = touch.location(in: window)
                 let key = ObjectIdentifier(touch)
@@ -81,9 +104,8 @@ internal class UIWindowSwizzler {
                     }
                 }
 
-                guard let target = findClickTarget(in: window, at: endLocation) else {
-                    return nil
-                }
+                let target = findClickTarget(in: window, at: endLocation)
+
                 return (target, endLocation)
             }()
 
@@ -95,12 +117,47 @@ internal class UIWindowSwizzler {
 
             // Emit after dispatch so touch responsiveness is not affected
             if let (target, location) = clickTarget {
-                emitClickEvent(for: target, at: location)
+                emitClickEvent(target: target, at: location, in: window)
             }
         }
 
         let swizzledIMP = imp_implementationWithBlock(unsafeBitCast(block, to: AnyObject.self))
         originalIMP = method_setImplementation(method, swizzledIMP)
+    }
+    
+    private static func registerForAppLifecycle() {
+        appLifecycleObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            buffer?.flush()
+        }
+    }
+
+    // MARK: - Click Event Emission
+
+    private static func emitClickEvent(target: UIView?, at point: CGPoint, in window: UIWindow) {
+        let widgetName = target.map { String(describing: type(of: $0)) } ?? ""
+        let widgetId = target?.accessibilityIdentifier ?? ""
+        
+        let label: String? = captureContext && target != nil ? extractLabel(from: target!) : nil
+        let context = label.flatMap(PulseAttributes.AppClickContext.buildContext)
+        
+        let pending = PendingClick(
+            x: Float(point.x),
+            y: Float(point.y),
+            timestampMs: Int64(CACurrentMediaTime() * 1000), // monotonic clock for buffer timing
+            tapEpochMs: Int64(Date().timeIntervalSince1970 * 1000),
+            hasTarget: target != nil,
+            widgetName: widgetName.isEmpty ? nil : widgetName,
+            widgetId: widgetId.isEmpty ? nil : widgetId,
+            clickContext: context,
+            viewportWidthPt: Int(window.bounds.width),
+            viewportHeightPt: Int(window.bounds.height)
+        )
+        
+        buffer?.record(pending)
     }
 
     // MARK: - Hit Testing
@@ -117,6 +174,7 @@ internal class UIWindowSwizzler {
     }
 
     internal static func isClickTarget(_ view: UIView) -> Bool {
+        if view is UIWindow { return false }
         if view is UIScrollView { return false }
         if view is UIControl { return true }
         if view is UITableViewCell || view is UICollectionViewCell { return true }
@@ -140,52 +198,13 @@ internal class UIWindowSwizzler {
         return false
     }
 
-    // MARK: - Event Emission
-
-    private static func emitClickEvent(for view: UIView, at point: CGPoint) {
-        guard let logger = logger else { return }
-        emitClickEvent(for: view, at: point, logger: logger, captureContext: captureContext)
-    }
-
-    internal static func emitClickEvent(
-        for view: UIView,
-        at point: CGPoint,
-        logger: OpenTelemetryApi.Logger,
-        captureContext: Bool
-    ) {
-        // app.widget.name = class name (consistent type, like Android's "Button"/"Switch")
-        let widgetName = String(describing: type(of: view))
-
-        var attributes: [String: AttributeValue] = [
-            "app.screen.coordinate.x": .int(Int(point.x)),
-            "app.screen.coordinate.y": .int(Int(point.y)),
-            "app.widget.name": .string(widgetName),
-        ]
-        // app.click.context = label text when available
-        let label: String? = captureContext
-            ? (extractLabel(from: view) ?? view.accessibilityLabel)
-            : nil
-        if let label = label {
-            attributes["app.click.context"] = .string("label=\(label)")
-        }
-
-        logger.logRecordBuilder()
-            .setEventName("app.widget.click")
-            .setAttributes(attributes)
-            .emit()
-
-        let contextLog = label.map { " | context: \"label=\($0)\"" } ?? ""
-        PulseLogger.log("app.widget.click → name: \"\(widgetName)\"\(contextLog) | (\(Int(point.x)), \(Int(point.y)))")
-    }
-
     // MARK: - Label Extraction
 
     /// Priority: UILabel.text → direct UILabel child → accessibilityLabel → recursive text scan.
-    /// Matches Android: TextView.text → contentDescription → recursive ViewGroup label scan.
+    /// TextView.text → contentDescription → recursive ViewGroup label scan.
     /// Only runs when captureContext is true.
     internal static func extractLabel(from view: UIView) -> String? {
         // PII safety for text input controls: only use developer-set accessibilityLabel
-        // (equivalent to Android's contentDescription on EditText). Skip UILabel scan and
         // recursive descent — their internal subviews may render placeholder/system text
         // that is NOT developer intent, and .text contains user-entered PII.
         if view is UITextField || view is UITextView || view is UISearchBar {
@@ -244,6 +263,21 @@ internal class UIWindowSwizzler {
             if segments.count >= maxLabelSegments { break }
         }
         return segments
+    }
+    static func uninstall() {
+        swizzleLock.lock()
+        defer { swizzleLock.unlock() }
+
+        buffer?.flush()
+        buffer = nil
+        emitter = nil
+        logger = nil
+        touchStartLocations.removeAll()
+
+        if let observer = appLifecycleObserver {
+            NotificationCenter.default.removeObserver(observer)
+            appLifecycleObserver = nil
+        }
     }
 
 }

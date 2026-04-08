@@ -76,7 +76,7 @@ Because of that, this SDK applies **only the same UIKit rules** as everywhere el
 
 ## Label extraction
 
-When `captureContext` is enabled (default), the SDK extracts a human-readable label from the **resolved** tap target using the following priority:
+When `captureContext` is enabled, the SDK extracts a human-readable label from the **resolved** tap target using the following priority:
 
 ```
 UISegmentedControl.titleForSegment(at: selectedSegmentIndex)   ← selected segment only
@@ -100,15 +100,24 @@ Text input controls (`UITextField`, `UITextView`, `UISearchBar`) never have thei
 
 | Attribute | Type | Example | Notes |
 |---|---|---|---|
+| `click.type` | String | `"good"` / `"dead"` | Good when a target is resolved, dead when no interactive target is found |
+| `click.is_rage` | Bool | `true` | Present for rage events |
+| `click.rageCount` | Int | `5` | Present for rage events, total taps in the rage cluster |
 | `app.widget.name` | String | `"UIButton"` | Runtime class name — consistent type identifier |
+| `app.widget.id` | String | `"checkout_button"` | From `accessibilityIdentifier` when set |
 | `app.click.context` | String | `"label=Add to Cart"` | Present only when a label is found and `captureContext` is true |
 | `app.screen.coordinate.x` | Int | `142` | Touch X in window coordinates |
 | `app.screen.coordinate.y` | Int | `380` | Touch Y in window coordinates |
-| `pulse.type` | String | `"app.click"` | Set automatically by the log processor chain |
+| `device.screen.width` | Int | `375` | Viewport width in points |
+| `device.screen.height` | Int | `812` | Viewport height in points |
+| `app.screen.coordinate.nx` | Double | `0.378` | Normalized X (`x / width`) |
+| `app.screen.coordinate.ny` | Double | `0.468` | Normalized Y (`y / height`) |
 
-Additional attributes are automatically enriched by the processor chain: `screen.name`, `session.id`, network status, etc.
+Additional attributes are automatically enriched by the processor chain: `screen.name`, `session.id`, network status, aspect ratio, etc.
 
-> **No `app.widget.id`:** Android emits a numeric resource ID here. iOS has no equivalent auto-generated identifier.
+Notes:
+- Dead clicks intentionally omit widget fields because no target view was resolved.
+- Rage clicks use the same `app.widget.click` event and include `click.is_rage = true`.
 
 ## Coverage (UIKit)
 
@@ -134,8 +143,13 @@ Pulse.shared.initialize(
     projectId: "...",
     instrumentations: { config in
         config.uiKitTap { tap in
-            tap.enabled(true)          // default: true
-            tap.captureContext(true)   // default: true — set false to skip label extraction
+            tap.enabled(true)          // default: false
+            tap.captureContext(true)   // default: false
+            tap.rage { rage in         // defaults: 2000 ms / 3 taps / 50 pt radius
+                rage.timeWindowMs = 2000
+                rage.rageThreshold = 3
+                rage.radiusPt = 50
+            }
         }
     }
 )
@@ -143,4 +157,4 @@ Pulse.shared.initialize(
 
 ### `captureContext: false`
 
-Skips all view traversal (no recursive label scan, no `UILabel` inspection). Only `app.widget.name` (class name) and coordinates are emitted. Useful for apps with very large or deeply nested view hierarchies where the label scan has measurable overhead.
+Skips all view traversal for context extraction (no recursive label scan, no `UILabel` inspection). Click classification still works (`good`/`dead`/`rage`) and coordinates are still emitted. Useful for apps with very large or deeply nested view hierarchies where label scanning has measurable overhead.

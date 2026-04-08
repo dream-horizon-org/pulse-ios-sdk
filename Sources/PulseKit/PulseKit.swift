@@ -1,6 +1,9 @@
 import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
+#if os(iOS) || os(tvOS)
+import UIKit
+#endif
 #if canImport(OpenTelemetryProtocolExporterHttp)
 import OpenTelemetryProtocolExporterHttp
 #endif
@@ -218,6 +221,8 @@ public class Pulse {
                         }
                     }
                 }
+                
+                applyClickFeatureConfig(from: sdkConfig, to: &config, currentSdkName: currentSdkName)
             }
 
             let (tracerProvider, loggerProvider, openTelemetry) = buildOpenTelemetrySDK(
@@ -311,8 +316,30 @@ public class Pulse {
                 config.crash { $0.enabled(false) }
             case .session_replay:
                 config.sessionReplay { $0.enabled(false) }
+            case .click:
+                config.uiKitTap { $0.enabled(false) }
             case .unknown: break
             }
+        }
+    }
+
+    /// Extracts and merges click feature configuration from backend SDK config.
+    private func applyClickFeatureConfig(from sdkConfig: PulseSdkConfig, to config: inout InstrumentationConfiguration, currentSdkName: PulseSdkName) {
+        let clickFeature = sdkConfig.features.first { feature in
+            feature.featureName == .click &&
+            feature.sdks.contains(currentSdkName) &&
+            feature.sessionSampleRate > 0
+        }
+        
+        if let feature = clickFeature {
+            let remoteConfig = ClickFeatureRemoteConfig.from(featureConfig: feature)
+            var resolvedRage = config.uiKitTap.rage
+            if let remote = remoteConfig?.rage {
+                resolvedRage.timeWindowMs = remote.timeWindowMs ?? resolvedRage.timeWindowMs
+                resolvedRage.rageThreshold = remote.threshold ?? resolvedRage.rageThreshold
+                resolvedRage.radiusPt = remote.radius ?? resolvedRage.radiusPt
+            }
+            config.uiKitTap { $0.rage { r in r = resolvedRage } }
         }
     }
 

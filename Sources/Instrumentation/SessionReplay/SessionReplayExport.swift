@@ -25,6 +25,14 @@ struct MetaEventData: Encodable {
     let href: String
     let width: Int
     let height: Int
+    let aspectRatio: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case href
+        case width
+        case height
+        case aspectRatio = "aspect_ratio"
+    }
 }
 
 struct SessionReplayFullSnapshotEvent: Encodable {
@@ -77,11 +85,13 @@ struct SessionReplayProperties: Encodable {
     let sessionId: String
     let snapshotSource: String
     let snapshotData: [SessionReplayEvent]
+    let appVersion: String?
 
     enum CodingKeys: String, CodingKey {
         case sessionId = "session_id"
         case snapshotSource = "snapshot_source"
         case snapshotData = "snapshot_data"
+        case appVersion = "app_version"
     }
 }
 
@@ -118,7 +128,9 @@ class SessionReplayEventTransformer {
         frame: SessionReplayFrame,
         windowStatus: inout WindowSnapshotStatus,
         projectId: String,
-        userId: String
+        userId: String,
+        appVersion: String? = nil,
+        aspectRatio: String? = nil
     ) -> [SessionReplayEvent] {
         var events: [SessionReplayEvent] = []
         
@@ -127,7 +139,7 @@ class SessionReplayEventTransformer {
         }
         
         if !windowStatus.sentMetaEvent {
-            events.append(.meta(makeMetaEvent(from: frame)))
+            events.append(.meta(makeMetaEvent(from: frame, aspectRatio: aspectRatio)))
             windowStatus.sentMetaEvent = true
         }
         
@@ -147,10 +159,15 @@ class SessionReplayEventTransformer {
         return events
     }
 
-    private func makeMetaEvent(from frame: SessionReplayFrame) -> SessionReplayMetaEvent {
-        SessionReplayMetaEvent(
+    private func makeMetaEvent(from frame: SessionReplayFrame, aspectRatio: String? = nil) -> SessionReplayMetaEvent {
+        return SessionReplayMetaEvent(
             timestamp: unixMs(from: frame.timestamp),
-            data: MetaEventData(href: frame.screenName, width: frame.width, height: frame.height)
+            data: MetaEventData(
+                href: frame.screenName,
+                width: frame.width,
+                height: frame.height,
+                aspectRatio: aspectRatio
+            )
         )
     }
 

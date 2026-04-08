@@ -365,6 +365,7 @@ public enum PulseFeatureName: String, Codable, CaseIterable {
     case rn_screen_interactive
     case ios_crash
     case session_replay
+    case click
     case unknown
 }
 

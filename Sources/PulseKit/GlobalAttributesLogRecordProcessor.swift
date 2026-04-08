@@ -34,6 +34,13 @@ internal class GlobalAttributesLogRecordProcessor: LogRecordProcessor {
                 enhancedRecord.setAttribute(key: key, value: value)
             }
         }
+
+        if let aspectRatio = PulseUtils.currentViewportAspectRatio() {
+            enhancedRecord.setAttribute(
+                key: PulseAttributes.deviceScreenAspectRatio,
+                value: .string(aspectRatio)
+            )
+        }
         
         // Add installation ID (persists across app launches until uninstall)
         enhancedRecord.setAttribute(

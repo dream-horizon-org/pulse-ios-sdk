@@ -197,7 +197,39 @@ class TapDemoViewController: UIViewController {
         // The outer page scroll view can also be scrolled.
         // Expected: scrolling fires ZERO app.widget.click events.
         addSectionHeader("Scroll detection (negative test)")
-        addWarning("Scroll anywhere on this screen or the collection above.\nExpected → ZERO app.widget.click events fired during or after scroll.")
+        addWarning("Scroll anywhere on this screen or the collection above.\nExpected → ZERO app.widget.click events fired during or after scroll.\n\nNote: Taps on blank areas (not on any element) emit click.type='dead'.")
+        
+        // ── 11.5. Dead Click Demo ───────────────────────────────────────────────
+        // Dead clicks: taps on NON-interactive areas (no target view, no gesture recognizer)
+        // Expected: click.type='dead' with NO widget.name or context
+        addSectionHeader("Dead Click Demo — Tap Empty Spaces")
+        addNote("Tap ANYWHERE in the gray box below (not a button, no gesture). SDK logs [DEAD_CLICK] with coords.")
+        
+        let deadClickDemoContainer = UIView()
+        deadClickDemoContainer.backgroundColor = .systemGray5
+        deadClickDemoContainer.layer.cornerRadius = 12
+        deadClickDemoContainer.layer.borderColor = UIColor.systemRed.withAlphaComponent(0.3).cgColor
+        deadClickDemoContainer.layer.borderWidth = 2
+        deadClickDemoContainer.clipsToBounds = true
+        
+        let deadClickLabel = UILabel()
+        deadClickLabel.text = "← Tap anywhere here\n(dead click zone)"
+        deadClickLabel.font = .systemFont(ofSize: 14, weight: .semibold)
+        deadClickLabel.textColor = .systemRed
+        deadClickLabel.numberOfLines = 0
+        deadClickLabel.textAlignment = .center
+        deadClickLabel.isUserInteractionEnabled = false
+        
+        deadClickDemoContainer.addSubview(deadClickLabel)
+        deadClickLabel.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            deadClickLabel.centerXAnchor.constraint(equalTo: deadClickDemoContainer.centerXAnchor),
+            deadClickLabel.centerYAnchor.constraint(equalTo: deadClickDemoContainer.centerYAnchor),
+        ])
+        
+        addElement(deadClickDemoContainer, height: 100)
+        
+        addNote("Check debug logs: [DEAD_CLICK] type=dead | coords=(...) | norm=(...) | viewport=...")
 
         // ── 12. UITextField — WITH accessibilityLabel (content description) ────
         // Expected: label=Email Address (developer-set, not PII)
@@ -250,12 +282,33 @@ class TapDemoViewController: UIViewController {
         emptyCard.addGestureRecognizer(emptyTap)
         emptyCard.isUserInteractionEnabled = true
         addElement(emptyCard, height: 60)
+        
+        // ── 16. Rage Click Demo ─────────────────────────────────────────────────
+        // Rage clicks: 3+ taps within 2000ms + 50pt radius
+        // Expected: click.is_rage=true, click.rageCount=N
+        addSectionHeader("Rage Click Demo — Rapid Taps")
+        addNote("TAP RAPIDLY (3+ times quickly) in the red button below. SDK logs [RAGE_CLICK] when threshold hit.")
+        
+        let rageButton = UIButton(type: .system)
+        rageButton.setTitle("🔥 Tap me rapidly!", for: .normal)
+        rageButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .bold)
+        rageButton.backgroundColor = .systemRed
+        rageButton.setTitleColor(.white, for: .normal)
+        rageButton.layer.cornerRadius = 12
+        rageButton.addTarget(self, action: #selector(rageButtonTapped(_:)), for: .touchUpInside)
+        addElement(rageButton, height: 60)
+        
+        addWarning("Tap the red button 3+ times in quick succession (within 2 seconds, same location). SDK will emit [RAGE_CLICK] with rage_count.\nAll individual taps during rage window are suppressed.")
     }
-
+    
     // MARK: - Actions
 
     @objc private func buttonTapped(_ sender: UIButton) {
         print("[TapDemo] UIButton tapped — SDK should have logged app.widget.click above this line")
+    }
+
+    @objc private func rageButtonTapped(_ sender: UIButton) {
+        print("[TapDemo] Rage button tapped — if 3+ taps rapid, SDK logs [RAGE_CLICK]")
     }
 
     @objc private func cardTapped(_ sender: UITapGestureRecognizer) {
