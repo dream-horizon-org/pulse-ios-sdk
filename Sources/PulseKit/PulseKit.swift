@@ -44,6 +44,7 @@ public class Pulse {
     private var openTelemetry: OpenTelemetry?
     private var _consentSpanProcessor: ConsentSpanProcessor?
     private var _consentLogProcessor: ConsentLogProcessor?
+    private var _consentMetricExporter: ConsentMetricExporter?
     private var meterProvider: MeterProviderSdk?
     private var instrumentationConfig: InstrumentationConfiguration?
     
@@ -393,7 +394,6 @@ public class Pulse {
             ?? URL(string: "\(base)/v1/logs")!
         let customEventUrl = currentSdkConfig.map { URL(string: $0.signals.customEventCollectorUrl)! }
             ?? (customEventCollectorUrl.flatMap { URL(string: $0) } ?? URL(string: "\(base)/v1/logs")!)
-        //TODO: wrap with beforeSendMetric: beforeSendMetric.map { BeforeSendMetricExporter(callback: $0, delegate: otlpMetricExporter) } ?? otlpMetricExporter when metrics is added
         let otlpSpanExporter = OtlpHttpTraceExporter(endpoint: tracesUrl, envVarHeaders: envVarHeaders)
         let spanExporterAfterBeforeSend: SpanExporter = beforeSendSpan.map {
             BeforeSendSpanExporter(callback: $0, delegate: otlpSpanExporter)
@@ -427,15 +427,19 @@ public class Pulse {
             finalLogExporter = logsExporter
         }
 
-        // Metric pipeline: OtlpHttpMetricExporter -> [PulseLoggingMetricExporter] -> SampledMetricExporter -> PersistenceMetricExporter -> PeriodicMetricReader -> MeterProviderSdk
+        // Metric pipeline: OtlpHttpMetricExporter -> BeforeSendMetricExporter? -> PulseLoggingMetricExporter? -> SampledMetricExporter? -> PersistenceMetricExporter -> ConsentMetricExporter -> PeriodicMetricReader -> MeterProviderSdk
         // PulseLoggingMetricExporter is behind enableMetricExportLogging (dev-only) to avoid prod logs.
+        // ConsentMetricExporter wraps persistence so pending consent does not write metrics to disk.
         let metricsUrl = currentSdkConfig.map { URL(string: $0.signals.metricCollectorUrl)! }
             ?? URL(string: "\(base)/v1/metrics")!
         let otlpMetricExporter = OtlpHttpMetricExporter(endpoint: metricsUrl, envVarHeaders: envVarHeaders)
+        let metricExporterAfterBeforeSend: MetricExporter = beforeSendMetric.map {
+            BeforeSendMetricExporter(callback: $0, delegate: otlpMetricExporter)
+        } ?? otlpMetricExporter
         let baseMetricExporterForPipeline: MetricExporter =
             Self.enableMetricExportLogging
-                ? PulseLoggingMetricExporter(delegate: otlpMetricExporter)
-                : otlpMetricExporter
+                ? PulseLoggingMetricExporter(delegate: metricExporterAfterBeforeSend)
+                : metricExporterAfterBeforeSend
 
         let finalMetricExporter: MetricExporter
         if let processors = _samplingSignalProcessors {
@@ -444,11 +448,16 @@ public class Pulse {
             finalMetricExporter = baseMetricExporterForPipeline
         }
 
-        let (persistentSpanExporter, persistentLogExporter, persistentMetricExporter) = PersistenceUtils.createPersistentExporters(
+        let (persistentSpanExporter, persistentLogExporter, persistentMetricInner) = PersistenceUtils.createPersistentExporters(
             spanExporter: finalSpanExporter,
             logExporter: finalLogExporter,
             metricExporter: finalMetricExporter
         )
+        let consentMetricExporter = ConsentMetricExporter(
+            delegate: persistentMetricInner,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentMetricExporter = consentMetricExporter
 
         let builtMeterProvider = MeterProviderSdk.builder()
             .setResource(resource: resource)
@@ -457,7 +466,7 @@ public class Pulse {
                 view: View.builder().build()
             )
             .registerMetricReader(
-                reader: PeriodicMetricReaderBuilder(exporter: persistentMetricExporter)
+                reader: PeriodicMetricReaderBuilder(exporter: consentMetricExporter)
                     .setInterval(timeInterval: 60)
                     .build()
             )
@@ -656,6 +665,7 @@ public class Pulse {
             case .denied:
                 _consentSpanProcessor?.clearBuffer()
                 _consentLogProcessor?.clearBuffer()
+                _consentMetricExporter?.clearBuffer()
                 shouldShutdown = true
             case .pending:
                 if current == .allowed {
@@ -668,6 +678,7 @@ public class Pulse {
         if shouldFlush {
             _consentSpanProcessor?.flushBuffer()
             _consentLogProcessor?.flushBuffer()
+            _consentMetricExporter?.flushBuffer()
         }
         if let work = sessionReplayMainWork {
             if Thread.isMainThread {
@@ -699,6 +710,7 @@ public class Pulse {
             meterProvider = nil
             _consentSpanProcessor = nil
             _consentLogProcessor = nil
+            _consentMetricExporter = nil
             _isShutdown = true
         }
     }
