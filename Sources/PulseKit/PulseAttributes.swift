@@ -31,7 +31,7 @@ public enum PulseAttributes {
     // Click instrumentation attributes
     public static let clickType = "click.type"
     public static let clickIsRage = "click.is_rage"
-    public static let clickRageCount = "click.rageCount"
+    public static let clickRageCount = "click.rage_count"
     public static let deviceScreenWidth = "device.screen.width"
     public static let deviceScreenHeight = "device.screen.height"
     public static let deviceScreenAspectRatio = "device.screen.aspect_ratio"
