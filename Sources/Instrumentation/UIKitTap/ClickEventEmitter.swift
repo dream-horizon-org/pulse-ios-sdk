@@ -30,12 +30,6 @@ internal class ClickEventEmitter {
         
         applyViewportAttrs(&attrs, click.viewportWidthPt, click.viewportHeightPt, click.x, click.y)
         
-        // Log good click for debugging
-        let normX = Double(click.x) / Double(click.viewportWidthPt)
-        let normY = Double(click.y) / Double(click.viewportHeightPt)
-        let contextStr = click.clickContext ?? "none"
-        PulseLogger.log("[GOOD_CLICK] type=good | widget=\(click.widgetName ?? "unknown") | coords=(\(Int(click.x)),\(Int(click.y))) | norm=(\(String(format: "%.3f", normX)),\(String(format: "%.3f", normY))) | context=\(contextStr)")
-        
         let timestamp = Date(timeIntervalSince1970: TimeInterval(click.tapEpochMs) / 1000.0)
         let record = logger.logRecordBuilder()
             .setEventName("app.widget.click")
@@ -52,11 +46,6 @@ internal class ClickEventEmitter {
         ]
         
         applyViewportAttrs(&attrs, click.viewportWidthPt, click.viewportHeightPt, click.x, click.y)
-        
-        // Log dead click for debugging
-        let normX = Double(click.x) / Double(click.viewportWidthPt)
-        let normY = Double(click.y) / Double(click.viewportHeightPt)
-        PulseLogger.log("[DEAD_CLICK] type=dead | coords=(\(Int(click.x)),\(Int(click.y))) | norm=(\(String(format: "%.3f", normX)),\(String(format: "%.3f", normY))) | viewport=\(click.viewportWidthPt)x\(click.viewportHeightPt)")
         
         let timestamp = Date(timeIntervalSince1970: TimeInterval(click.tapEpochMs) / 1000.0)
         let record = logger.logRecordBuilder()
@@ -87,12 +76,6 @@ internal class ClickEventEmitter {
         }
         
         applyViewportAttrs(&attrs, rage.viewportWidthPt, rage.viewportHeightPt, rage.x, rage.y)
-        
-        // Log rage click for debugging
-        let normX = Double(rage.x) / Double(rage.viewportWidthPt)
-        let normY = Double(rage.y) / Double(rage.viewportHeightPt)
-        let rageTypeStr = rage.hasTarget ? "good" : "dead"
-        PulseLogger.log("[RAGE_CLICK] type=\(rageTypeStr) | rage_count=\(rage.count) | widget=\(rage.widgetName ?? "unknown") | coords=(\(Int(rage.x)),\(Int(rage.y))) | norm=(\(String(format: "%.3f", normX)),\(String(format: "%.3f", normY)))")
         
         let timestamp = Date(timeIntervalSince1970: TimeInterval(rage.tapEpochMs) / 1000.0)
         let record = logger.logRecordBuilder()

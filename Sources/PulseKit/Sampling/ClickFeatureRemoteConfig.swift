@@ -14,7 +14,7 @@ internal struct ClickFeatureRemoteConfig: Decodable {
     
     struct RageConfig: Decodable {
         let timeWindowMs: Int?
-        let rageThreshold: Int?
+        let threshold: Int?
         let radius: Float?
     }
     

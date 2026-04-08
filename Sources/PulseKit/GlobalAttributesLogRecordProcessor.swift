@@ -35,7 +35,7 @@ internal class GlobalAttributesLogRecordProcessor: LogRecordProcessor {
             }
         }
 
-        if let aspectRatio = pulse.currentViewportAspectRatio() {
+        if let aspectRatio = PulseUtils.currentViewportAspectRatio() {
             enhancedRecord.setAttribute(
                 key: PulseAttributes.deviceScreenAspectRatio,
                 value: .string(aspectRatio)
