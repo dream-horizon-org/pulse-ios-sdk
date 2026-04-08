@@ -37,7 +37,7 @@ internal final class InteractionEventsTracker {
     private var timerTask: Task<Void, Never>?
     
     /// Whether interaction is closed
-    private var isInteractionClosed: Bool?
+    private var isInteractionClosed: Bool = true
     
     /// Name of the interaction (from config)
     let name: String
@@ -71,8 +71,8 @@ internal final class InteractionEventsTracker {
         
         // Generate new interaction ID if needed
         let interactionId: String
-        if isInteractionClosed == true {
-            isInteractionClosed = nil
+        if isInteractionClosed {
+            isInteractionClosed = false
             interactionId = UUID().uuidString
         } else {
             if case .ongoingMatch(_, let ongoingId, _, _) = interactionRunningStatus {
@@ -89,6 +89,7 @@ internal final class InteractionEventsTracker {
             localMarkers: localMarkers,
             interactionConfig: interactionConfig
         ) else {
+            isInteractionClosed = true
             return
         }
         

@@ -297,6 +297,32 @@ extension InteractionManagerTests {
         _ = assertSingleFinalInteraction(previousIdToMatch: ongoingId)
     }
     
+    func testAfterCompletedInteractionStrayEvent2ThenEvent1Event2UsesNewInteractionId() async {
+        let config = try! InteractionTestUtils.createFakeInteractionConfig(
+            eventSequence: [
+                InteractionTestUtils.createFakeInteractionEvent(name: "event1"),
+                InteractionTestUtils.createFakeInteractionEvent(name: "event2")
+            ]
+        )
+        await initMockInteractionManager(config)
+        
+        addEventWithNanoTimeFromBoot("event1")
+        addEventWithNanoTimeFromBoot("event2")
+        let (firstCompletionId, _) = assertSingleFinalInteraction()
+        
+        addEventWithNanoTimeFromBoot("event2")
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+        
+        addEventWithNanoTimeFromBoot("event1")
+        let secondRunOngoingId = assertSingleOngoingInteraction()
+        XCTAssertNotEqual(secondRunOngoingId, firstCompletionId)
+        
+        addEventWithNanoTimeFromBoot("event2")
+        let (secondCompletionId, _) = assertSingleFinalInteraction()
+        XCTAssertNotEqual(secondCompletionId, firstCompletionId)
+        XCTAssertEqual(secondCompletionId, secondRunOngoingId)
+    }
+    
     func testWithEventsInSameOrderWithReverseTime() async {
         let config = try! InteractionTestUtils.createFakeInteractionConfig(
             eventSequence: [
