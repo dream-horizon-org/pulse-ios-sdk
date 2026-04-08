@@ -20,7 +20,7 @@ internal class PulseUtils {
     static func currentViewportAspectRatio() -> String? {
         #if os(iOS) || os(tvOS)
         var aspectRatio: String?
-        DispatchQueue.main.sync {
+        DispatchQueue.main.async {
             aspectRatio = currentViewportAspectRatioOnMainThread()
         }
         return aspectRatio
