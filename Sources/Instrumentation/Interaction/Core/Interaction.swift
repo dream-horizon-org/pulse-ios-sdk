@@ -41,13 +41,13 @@ public struct Interaction: Equatable {
         return isError
     }
     
-    /// Get time span in nanoseconds (first event to second event)
+    /// Nanoseconds from earliest to latest matched event in `events`.
     public var timeSpanInNanos: (start: Int64, end: Int64)? {
         let steps = events
-        guard steps.count >= 2 else {
+        guard steps.count >= 2, let first = steps.first, let last = steps.last else {
             return nil
         }
-        return (steps[0].timeInNano, steps[1].timeInNano)
+        return (first.timeInNano, last.timeInNano)
     }
     
     // Equatable conformance
