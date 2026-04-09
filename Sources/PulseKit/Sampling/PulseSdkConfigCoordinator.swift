@@ -12,19 +12,28 @@ import Foundation
 /// Receives the final config URL from PulseKit (PulseKit applies default when app passes nil).
 public final class PulseSdkConfigCoordinator {
     private let storage: PulseSdkConfigStorage
+    /// When true, bypasses storage and network; returns hardcoded mock config for dev/testing.
+    /// Do NOT enable in production.
+    private let useLocalMockConfig: Bool
 
-    public init(storage: PulseSdkConfigStorage = PulseSdkConfigStorage()) {
+    public init(storage: PulseSdkConfigStorage = PulseSdkConfigStorage(), useLocalMockConfig: Bool = false) {
         self.storage = storage
+        self.useLocalMockConfig = useLocalMockConfig
     }
 
     /// Loads and returns the current config from persistence (sync). Returns nil if none stored or decode failed.
     /// On decode failure we do not crash; we return nil and log, then the app uses Pulse.initialize defaults.
+    /// When useLocalMockConfig is true, returns PulseMockConfigProvider.fullMockConfig() and ignores storage.
     public func loadCurrentConfig() -> PulseSdkConfig? {
+        if useLocalMockConfig {
+            return PulseMockConfigProvider.fullMockConfig()
+        }
         return storage.load()
     }
 
     /// Starts a background fetch for config and persists only when version changed (apply on next launch).
     /// Dispatchers.IO, fetch via PulseSdkConfigRestProvider, persist only if newConfig != null && newConfig.version != currentVersion.
+    /// When useLocalMockConfig is true, skips network fetch entirely.
     /// - Parameters:
     ///   - configEndpointUrl: Final config URL (already resolved by PulseKit from endpointBaseUrl when nil; e.g. `{base:8080}/v1/configs/active/`).
     ///   - endpointHeaders: Headers sent with the GET request (e.g. X-API-KEY / api key).
@@ -34,6 +43,7 @@ public final class PulseSdkConfigCoordinator {
         endpointHeaders: [String: String],
         currentConfigVersion: Int?
     ) {
+        if useLocalMockConfig { return }
         let currentVersion = currentConfigVersion
         let configEndpointUrlFinal = configEndpointUrl
         let endpointHeadersForConfig = endpointHeaders

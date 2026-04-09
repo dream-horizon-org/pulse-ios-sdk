@@ -40,6 +40,33 @@ final class PulseSdkConfigCoordinatorTests: XCTestCase {
         XCTAssertEqual(result?.version, 3)
     }
 
+    func testCoordinatorUsesLocalMockWhenFlagTrue() {
+        let mockCoordinator = PulseSdkConfigCoordinator(storage: storage, useLocalMockConfig: true)
+        let result = mockCoordinator.loadCurrentConfig()
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.version, 999)
+        XCTAssertEqual(result?.description, "Local mock config for dev/testing")
+        XCTAssertFalse(result?.signals.metricsToAdd.isEmpty ?? true)
+    }
+
+    func testCoordinatorUsesStorageWhenFlagFalse() {
+        let config = makeMinimalConfig(version: 42)
+        storage.saveSync(config)
+        let result = coordinator.loadCurrentConfig()
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result?.version, 42)
+    }
+
+    func testCoordinatorSkipsBackgroundFetchWhenMockEnabled() {
+        let mockCoordinator = PulseSdkConfigCoordinator(storage: storage, useLocalMockConfig: true)
+        // Should not throw or crash; fetch is no-op
+        mockCoordinator.startBackgroundFetch(
+            configEndpointUrl: "https://example.com/config",
+            endpointHeaders: [:],
+            currentConfigVersion: nil as Int?
+        )
+    }
+
     private func makeMinimalConfig(version: Int) -> PulseSdkConfig {
         PulseSdkConfig(
             version: version,
@@ -47,8 +74,7 @@ final class PulseSdkConfigCoordinatorTests: XCTestCase {
             sampling: PulseSamplingConfig(
                 default: PulseDefaultSamplingConfig(sessionSampleRate: 0.5),
                 rules: [],
-                criticalEventPolicies: nil,
-                criticalSessionPolicies: nil
+                signalsToSample: []
             ),
             signals: PulseSignalConfig(
                 scheduleDurationMs: 60_000,
@@ -58,7 +84,7 @@ final class PulseSdkConfigCoordinatorTests: XCTestCase {
                 customEventCollectorUrl: "https://custom",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                filters: PulseSignalFilter(mode: .blacklist, values: [])
+                metricsToAdd: []
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "https://coll",

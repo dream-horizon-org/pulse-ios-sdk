@@ -2,7 +2,7 @@
  * Copyright The OpenTelemetry Authors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Sampling exporters: session sampling, critical events, filters, attribute drop/add (Batch 4, LLD §8).
+ * Sampling exporters: add → metrics → drop → targeted sampling (signalsToSample) → session sampling (Batch 4, LLD §8).
  */
 
 import Foundation
@@ -12,6 +12,13 @@ import Security
 
 // MARK: - PulseSamplingSignalProcessors
 
+/// Closure that records a value into a metric instrument.
+/// - Parameters:
+///   - value: The signal name (for .name target) or attribute value (for .attribute target). For counters with .name target, value is ignored and 1 is added.
+///   - attributeKeyForSuffix: When addPropNameAsSuffix is true, the attribute key to suffix to the metric name (e.g. "http.method"). Nil otherwise.
+///   - pointAttributes: Attributes to attach to the metric data point (from attributesToPick).
+public typealias DataRecorder = (Any?, _ attributeKeyForSuffix: String?, _ pointAttributes: [String: AttributeValue]) -> Void
+
 /// Holds SampledSpanExporter, SampledLogExporter, SampledMetricExporter and getEnabledFeatures.
 public final class PulseSamplingSignalProcessors {
     private let sdkConfig: PulseSdkConfig
@@ -19,7 +26,15 @@ public final class PulseSamplingSignalProcessors {
     private let signalMatcher: PulseSignalMatcher
     private let sessionParser: PulseSessionParser
     private let sessionSamplingDecision: PulseSessionSamplingDecision
+    private let randomGenerator: () -> Float
     private let regexCache = SamplingRegexCache()
+    private var meterProviderForMetricsToAdd: (any MeterProvider)?
+
+    /// Injects the MeterProvider for metrics-to-add (called by PulseKit after building the metric pipeline).
+    /// When nil, createMeter uses a standalone provider; metrics are recorded but not exported.
+    internal func setMeterProviderForMetricsToAdd(_ provider: (any MeterProvider)?) {
+        meterProviderForMetricsToAdd = provider
+    }
 
     public init(
         deviceContext: PulseDeviceContext = .current,
@@ -27,18 +42,21 @@ public final class PulseSamplingSignalProcessors {
         currentSdkName: PulseSdkName,
         signalMatcher: PulseSignalMatcher = PulseSignalsAttrMatcher(),
         sessionParser: PulseSessionParser = PulseSessionConfigParser(),
-        randomGenerator: (() -> Float)? = nil
+        randomGenerator: (() -> Float)? = nil,
+        meterProviderForMetricsToAdd: (any MeterProvider)? = nil
     ) {
         self.sdkConfig = sdkConfig
         self.currentSdkName = currentSdkName
         self.signalMatcher = signalMatcher
         self.sessionParser = sessionParser
+        self.randomGenerator = randomGenerator ?? { Float.random(in: 0...1) }
+        self.meterProviderForMetricsToAdd = meterProviderForMetricsToAdd
         sessionSamplingDecision = PulseSessionSamplingDecision(
             deviceContext: deviceContext,
             samplingConfig: sdkConfig.sampling,
             currentSdkName: currentSdkName,
             parser: sessionParser,
-            randomGenerator: randomGenerator
+            randomGenerator: self.randomGenerator
         )
     }
 
@@ -53,6 +71,206 @@ public final class PulseSamplingSignalProcessors {
     private func getAddedAttributesConfig(scope: PulseSignalScope) -> [PulseAttributesToAddEntry] {
         sdkConfig.signals.attributesToAdd.filter {
             $0.condition.scopes.contains(scope) && $0.condition.sdks.contains(currentSdkName)
+        }
+    }
+
+    /// Returns metricsToAdd entries that apply to the given scope and SDK, each paired with its DataRecorder.
+    internal func getMetricsToAddConfig(scope: PulseSignalScope) -> [(PulseMetricsToAddEntry, DataRecorder)] {
+        sdkConfig.signals.metricsToAdd
+            .filter { $0.condition.scopes.contains(scope) && $0.condition.sdks.contains(currentSdkName) }
+            .map { ($0, createMeter(entry: $0)) }
+    }
+
+    private func createMeter(entry: PulseMetricsToAddEntry) -> DataRecorder {
+        let provider = meterProviderForMetricsToAdd ?? MeterProviderSdk.builder().build() as any MeterProvider
+        let meter = provider.meterBuilder(name: "com.pulse.signal.processors.metric").build()
+        let baseSanitizedName = PulseOtelUtils.sanitizeMetricName(name: entry.name)
+
+        // For .attribute with addPropNameAsSuffix, we need a cache of recorders per metric name.
+        let useAddPropNameAsSuffix: Bool
+        if case .attribute(_, let suffix) = entry.target {
+            useAddPropNameAsSuffix = suffix
+        } else {
+            useAddPropNameAsSuffix = false
+        }
+
+        if useAddPropNameAsSuffix {
+            var cache: [String: (Any?, [String: AttributeValue]) -> Void] = [:]
+            let lock = NSLock()
+            return { value, attrKey, attrs in
+                guard let attrKey = attrKey else { return }
+                let fullName = baseSanitizedName + "." + PulseOtelUtils.sanitizeMetricName(name: attrKey)
+                let recorder: (Any?, [String: AttributeValue]) -> Void = lock.withLock {
+                    if let cached = cache[fullName] { return cached }
+                    let inner = self.createInstrumentRecorder(entry: entry, meter: meter, sanitizedName: fullName)
+                    cache[fullName] = inner
+                    return inner
+                }
+                recorder(value, attrs)
+            }
+        }
+
+        let recorder = createInstrumentRecorder(entry: entry, meter: meter, sanitizedName: baseSanitizedName)
+        return { value, _, attrs in recorder(value, attrs) }
+    }
+
+    /// Creates a closure that records (value, attrs) into an instrument with the given name.
+    private func createInstrumentRecorder(
+        entry: PulseMetricsToAddEntry,
+        meter: any Meter,
+        sanitizedName: String
+    ) -> (Any?, [String: AttributeValue]) -> Void {
+        switch entry.type {
+        case .counter:
+            var counter = meter.counterBuilder(name: sanitizedName).build()
+            return { _, attrs in counter.add(value: 1, attributes: attrs) }
+        case .gauge(let isFraction):
+            if isFraction {
+                var gauge = meter.gaugeBuilder(name: sanitizedName).build()
+                return { value, attrs in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let d = Double(s) else { return }
+                    gauge.record(value: d, attributes: attrs)
+                }
+            } else {
+                var gauge = meter.gaugeBuilder(name: sanitizedName).ofLongs().build()
+                return { value, attrs in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let l = Int64(s) else { return }
+                    gauge.record(value: Int(l), attributes: attrs)
+                }
+            }
+        case .histogram(let bucket, let isFraction):
+            let builder = meter.histogramBuilder(name: sanitizedName)
+            if let buckets = bucket, !buckets.isEmpty {
+                _ = builder.setExplicitBucketBoundariesAdvice(buckets)
+            }
+            if isFraction {
+                var histogram = builder.build()
+                return { value, attrs in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let d = Double(s) else { return }
+                    histogram.record(value: d, attributes: attrs)
+                }
+            } else {
+                var histogram = builder.ofLongs().build()
+                return { value, attrs in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let l = Int64(s) else { return }
+                    histogram.record(value: Int(l), attributes: attrs)
+                }
+            }
+        case .sum(let isFraction, let isMonotonic):
+            if isMonotonic {
+                if isFraction {
+                    var counter = meter.counterBuilder(name: sanitizedName).ofDoubles().build()
+                    return { value, attrs in
+                        guard let val = value else { return }
+                        let s = String(describing: val)
+                        guard let d = Double(s) else { return }
+                        counter.add(value: d, attributes: attrs)
+                    }
+                } else {
+                    var counter = meter.counterBuilder(name: sanitizedName).build()
+                    return { value, attrs in
+                        guard let val = value else { return }
+                        let s = String(describing: val)
+                        guard let l = Int64(s) else { return }
+                        counter.add(value: Int(l), attributes: attrs)
+                    }
+                }
+            }
+            if isFraction {
+                var sum = meter.upDownCounterBuilder(name: sanitizedName).ofDoubles().build()
+                return { value, attrs in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let d = Double(s) else { return }
+                    sum.add(value: d, attributes: attrs)
+                }
+            } else {
+                var sum = meter.upDownCounterBuilder(name: sanitizedName).build()
+                return { value, attrs in
+                    guard let val = value else { return }
+                    let s = String(describing: val)
+                    guard let l = Int64(s) else { return }
+                    sum.add(value: Int(l), attributes: attrs)
+                }
+            }
+        }
+    }
+
+    private func stringFromAny(_ value: Any?) -> String {
+        guard let value = value else { return "" }
+        if let s = value as? String { return s }
+        if let b = value as? Bool { return String(b) }
+        if let i = value as? Int { return String(i) }
+        if let d = value as? Double { return String(d) }
+        if let arr = value as? [String] { return arr.joined(separator: ",") }
+        return String(describing: value)
+    }
+
+    /// Builds attributes for a metric data point from signal attributes, matching keys against attributesToPick conditions.
+    private func buildAttributesToPick(
+        from signalAttributes: [String: AttributeValue],
+        entry: PulseMetricsToAddEntry
+    ) -> [String: AttributeValue] {
+        guard !entry.attributesToPick.isEmpty else { return [:] }
+        var result: [String: AttributeValue] = [:]
+        for (key, value) in signalAttributes {
+            let keyMatches = entry.attributesToPick.contains { condition in
+                condition.props.contains { prop in
+                    regexCache.matches(string: key, pattern: prop.name)
+                }
+            }
+            if keyMatches {
+                result[key] = value
+            }
+        }
+        return result
+    }
+
+    /// Records metrics for signals that match metricsToAdd conditions.
+    private func recordMetricsForSignal(
+        scope: PulseSignalScope,
+        name: String?,
+        props: [String: Any?],
+        signalAttributes: [String: AttributeValue],
+        metricsToAdd: [(PulseMetricsToAddEntry, DataRecorder)]
+    ) {
+        guard !metricsToAdd.isEmpty else { return }
+        for (entry, recorder) in metricsToAdd {
+            guard signalMatcher.matches(
+                scope: scope,
+                name: name,
+                props: props,
+                condition: entry.condition,
+                sdkName: currentSdkName
+            ) else { continue }
+            let pointAttributes = buildAttributesToPick(from: signalAttributes, entry: entry)
+            let signalKind = scope == .traces ? "span" : "log"
+            let signalName = name ?? "?"
+            switch entry.target {
+            case .name:
+                PulseLogger.log("Metric derived: \(entry.name) <- \(signalKind) \"\(signalName)\"")
+                recorder(name ?? "", nil, pointAttributes)
+            case .attribute(let attrCondition, let addPropNameAsSuffix):
+                for (attrKey, attrValue) in props {
+                    let keyMatches = attrCondition.props.contains { prop in
+                        regexCache.matches(string: attrKey, pattern: prop.name)
+                    }
+                    if keyMatches {
+                        let suffix = addPropNameAsSuffix ? attrKey : nil
+                        let metricName = suffix.map { "\(entry.name).\($0)" } ?? entry.name
+                        PulseLogger.log("Metric derived: \(metricName) <- \(signalKind) \"\(signalName)\" (attr: \(attrKey))")
+                        recorder(attrValue, suffix, pointAttributes)
+                    }
+                }
+            }
         }
     }
 
@@ -75,20 +293,37 @@ public final class PulseSamplingSignalProcessors {
             parent?.getAddedAttributesConfig(scope: .traces) ?? []
         }
 
+        private var metricsToAdd: [(PulseMetricsToAddEntry, DataRecorder)] {
+            parent?.getMetricsToAddConfig(scope: .traces) ?? []
+        }
+
         public func export(spans: [SpanData], explicitTimeout: TimeInterval?) -> SpanExporterResultCode {
             guard let parent = parent else { return delegateExporter.export(spans: spans, explicitTimeout: explicitTimeout) }
-            let sampledSpans = parent.sampleSpansInSession(spans)
-            guard !sampledSpans.isEmpty else { return .success }
-            let filtered = sampledSpans.compactMap { span -> SpanData? in
-                let propsMap = PulseSamplingSignalProcessors.attributesToMap(span.attributes)
-                guard parent.shouldExportSignal(
-                    scope: .traces,
-                    name: span.name,
-                    props: propsMap,
-                    filters: parent.sdkConfig.signals.filters
-                ) else { return nil }
+            // Pipeline order per spec: add → metrics → drop → targeted sampling → session sampling
+            let filtered = spans.compactMap { span -> SpanData? in
                 var currentAttrs = span.attributes
                 var result = span
+                // 1. Add attributes (enrich)
+                if !attributesToAdd.isEmpty {
+                    if let added = parent.addAttributes(
+                        signalName: span.name,
+                        signalAttributes: currentAttrs,
+                        scope: .traces,
+                        attributesToAdd: attributesToAdd
+                    ) {
+                        result = spanWithAttributes(result, added)
+                        currentAttrs = added
+                    }
+                }
+                // 2. Emit metrics (observe signal before attribute drops)
+                parent.recordMetricsForSignal(
+                    scope: .traces,
+                    name: span.name,
+                    props: PulseSamplingSignalProcessors.attributesToMap(result.attributes),
+                    signalAttributes: result.attributes,
+                    metricsToAdd: metricsToAdd
+                )
+                // 3. Drop attributes
                 if !attributesToDrop.isEmpty {
                     if let dropped = parent.filterAttributes(
                         signalName: span.name,
@@ -101,16 +336,13 @@ public final class PulseSamplingSignalProcessors {
                         currentAttrs = dropped
                     }
                 }
-                if !attributesToAdd.isEmpty {
-                    if let added = parent.addAttributes(
-                        signalName: span.name,
-                        signalAttributes: currentAttrs,
-                        scope: .traces,
-                        attributesToAdd: attributesToAdd
-                    ) {
-                        result = spanWithAttributes(result, added)
-                    }
-                }
+                // 4. Targeted signal sampling / filter (decide export)
+                let propsMap = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
+                guard parent.shouldExportSignal(
+                    scope: .traces,
+                    name: span.name,
+                    props: propsMap
+                ) else { return nil }
                 return result
             }
             return delegateExporter.export(spans: filtered, explicitTimeout: explicitTimeout)
@@ -151,23 +383,43 @@ public final class PulseSamplingSignalProcessors {
             parent?.getAddedAttributesConfig(scope: .logs) ?? []
         }
 
+        private var metricsToAdd: [(PulseMetricsToAddEntry, DataRecorder)] {
+            parent?.getMetricsToAddConfig(scope: .logs) ?? []
+        }
+
         public func export(logRecords: [ReadableLogRecord], explicitTimeout: TimeInterval?) -> ExportResult {
             guard let parent = parent else {
                 return delegateExporter.export(logRecords: logRecords, explicitTimeout: explicitTimeout)
             }
-            let sampledLogs = parent.sampleLogsInSession(logRecords)
-            guard !sampledLogs.isEmpty else { return .success }
-            let filtered = sampledLogs.compactMap { record -> ReadableLogRecord? in
+            // Pipeline order per spec: add → metrics → drop → targeted sampling → session sampling
+            let filtered = logRecords.compactMap { record -> ReadableLogRecord? in
                 let logName = logNameFromRecord(record)
-                let propsMap = PulseSamplingSignalProcessors.attributesToMap(record.attributes)
-                guard parent.shouldExportSignal(
-                    scope: .logs,
-                    name: logName,
-                    props: propsMap,
-                    filters: parent.sdkConfig.signals.filters
-                ) else { return nil }
                 var currentAttrs = record.attributes
                 var result = record
+                // 1. Add attributes (enrich)
+                if !attributesToAdd.isEmpty {
+                    if let added = parent.addAttributes(
+                        signalName: logName,
+                        signalAttributes: currentAttrs,
+                        scope: .logs,
+                        attributesToAdd: attributesToAdd
+                    ) {
+                        result = logRecordWithAttributes(record, added)
+                        currentAttrs = added
+                    }
+                }
+                // 2. Emit metrics (observe signal before attribute drops)
+                if !metricsToAdd.isEmpty {
+                    let propsMap = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
+                    parent.recordMetricsForSignal(
+                        scope: .logs,
+                        name: logName,
+                        props: propsMap,
+                        signalAttributes: result.attributes,
+                        metricsToAdd: metricsToAdd
+                    )
+                }
+                // 3. Drop attributes
                 if !attributesToDrop.isEmpty {
                     if let dropped = parent.filterAttributes(
                         signalName: logName,
@@ -180,16 +432,13 @@ public final class PulseSamplingSignalProcessors {
                         currentAttrs = dropped
                     }
                 }
-                if !attributesToAdd.isEmpty {
-                    if let added = parent.addAttributes(
-                        signalName: logName,
-                        signalAttributes: currentAttrs,
-                        scope: .logs,
-                        attributesToAdd: attributesToAdd
-                    ) {
-                        result = logRecordWithAttributes(result, added)
-                    }
-                }
+                // 4. Targeted signal sampling / filter (decide export)
+                let propsMap = PulseSamplingSignalProcessors.attributesToMap(result.attributes)
+                guard parent.shouldExportSignal(
+                    scope: .logs,
+                    name: logName,
+                    props: propsMap
+                ) else { return nil }
                 return result
             }
             return delegateExporter.export(logRecords: filtered, explicitTimeout: explicitTimeout)
@@ -225,29 +474,15 @@ public final class PulseSamplingSignalProcessors {
     // MARK: - SampledMetricExporter
 
     public final class SampledMetricExporter: MetricExporter {
-        private weak var parent: PulseSamplingSignalProcessors?
         private let delegateExporter: MetricExporter
 
         init(parent: PulseSamplingSignalProcessors, delegateExporter: MetricExporter) {
-            self.parent = parent
             self.delegateExporter = delegateExporter
         }
 
         public func export(metrics: [MetricData]) -> ExportResult {
-            guard let parent = parent else {
-                return delegateExporter.export(metrics: metrics)
-            }
-            let sampledMetrics = parent.sampleMetricsInSession(metrics)
-            guard !sampledMetrics.isEmpty else { return .success }
-            let filtered = sampledMetrics.filter { metric in
-                parent.shouldExportSignal(
-                    scope: .metrics,
-                    name: metric.name,
-                    props: [:],
-                    filters: parent.sdkConfig.signals.filters
-                )
-            }
-            return delegateExporter.export(metrics: filtered)
+            // Metrics are only derived (metricsToAdd) currently — no sampling, pass through
+            return delegateExporter.export(metrics: metrics)
         }
 
         public func flush() -> ExportResult {
@@ -322,14 +557,16 @@ public final class PulseSamplingSignalProcessors {
         if sessionSamplingDecision.shouldSampleThisSession {
             return signals
         }
-        let policies = sdkConfig.sampling.criticalEventPolicies ?? sdkConfig.sampling.criticalSessionPolicies
-        guard let alwaysSend = policies?.alwaysSend, !alwaysSend.isEmpty else {
+        let alwaysSendConditions = sdkConfig.sampling.signalsToSample
+            .filter { $0.sampleRate >= 1 }
+            .map(\.condition)
+        guard !alwaysSendConditions.isEmpty else {
             return []
         }
         return signals.filter { signal in
             let (name, props) = signalValues(signal)
             let scope = scopeForM(signal)
-            return alwaysSend.contains { condition in
+            return alwaysSendConditions.contains { condition in
                 signalMatcher.matches(
                     scope: scope,
                     name: name.isEmpty ? nil : name,
@@ -347,38 +584,43 @@ public final class PulseSamplingSignalProcessors {
         return .metrics
     }
 
-    // MARK: - Filter (whitelist/blacklist)
+    // MARK: - Targeted signal sampling (signalsToSample)
 
+    /// Returns true if the signal should be exported.
+    /// Order: targeted (signalsToSample) first, then session sampling as fallback.
+    /// When signalsToSample has a matching entry: use its sampleRate.
+    /// When no match (or signalsToSample empty): session sampling decides (keep all if sampled, else drop).
     private func shouldExportSignal(
         scope: PulseSignalScope,
         name: String?,
-        props: [String: Any?],
-        filters: PulseSignalFilter
+        props: [String: Any?]
     ) -> Bool {
-        if name == nil || (name?.isEmpty == true) {
-            return true
+        let signalsToSample = sdkConfig.sampling.signalsToSample
+        if signalsToSample.isEmpty {
+            return sessionSamplingDecision.shouldSampleThisSession
         }
-        let values = filters.values
-        let shouldMatchAny = filters.mode == .whitelist
-        if shouldMatchAny {
-            var passed = false
-            for condition in values {
-                if signalMatcher.matches(scope: scope, name: name, props: props, condition: condition, sdkName: currentSdkName) {
-                    passed = true
-                    break
-                }
-            }
-            return passed
-        } else {
-            var passed = true
-            for condition in values {
-                if signalMatcher.matches(scope: scope, name: name, props: props, condition: condition, sdkName: currentSdkName) {
-                    passed = false
-                    break
-                }
-            }
-            return passed
+        return shouldExportBySignalsToSample(scope: scope, name: name, props: props)
+    }
+
+    private func shouldExportBySignalsToSample(
+        scope: PulseSignalScope,
+        name: String?,
+        props: [String: Any?]
+    ) -> Bool {
+        for entry in sdkConfig.sampling.signalsToSample {
+            guard signalMatcher.matches(
+                scope: scope,
+                name: name,
+                props: props,
+                condition: entry.condition,
+                sdkName: currentSdkName
+            ) else { continue }
+            if entry.sampleRate <= 0 { return false }
+            if entry.sampleRate >= 1 { return true }
+            return sessionSamplingDecision.sessionRandomValue < entry.sampleRate
         }
+        // No match: session sampling applies (step 5)
+        return sessionSamplingDecision.shouldSampleThisSession
     }
 
     // MARK: - Attribute drop

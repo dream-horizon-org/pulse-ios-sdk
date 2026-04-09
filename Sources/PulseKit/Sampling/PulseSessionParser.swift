@@ -77,9 +77,15 @@ public struct AlwaysOffSessionParser: PulseSessionParser {
 // MARK: - Session sampling decision
 
 /// Holds the session sampling decision: computed once per session (random draw + parser).
+/// The same random value is reused for both session sampling and per-signal signalsToSample
+/// to ensure consistent sampling within a session.
 public final class PulseSessionSamplingDecision {
     private let _shouldSample: Bool
     private let lock = NSLock()
+
+    /// Random value in [0, 1] drawn once per session. Reused for session sampling and
+    /// per-signal signalsToSample probabilistic comparisons.
+    public let sessionRandomValue: Float
 
     public var shouldSampleThisSession: Bool {
         lock.lock()
@@ -108,6 +114,7 @@ public final class PulseSessionSamplingDecision {
             currentSdkName: currentSdkName
         )
         let randomValue = randomGenerator?() ?? Self.secureRandomFloatInZeroToOne()
+        sessionRandomValue = randomValue
         _shouldSample = randomValue <= samplingRate
     }
 

@@ -15,6 +15,14 @@ internal enum PulseKitConstants {
 }
 
 public class Pulse {
+    /// When true, wraps the metric exporter with PulseLoggingMetricExporter to print exported metrics in the console.
+    /// Automatically true in Debug builds, false in Release.
+    #if DEBUG
+    private static let enableMetricExportLogging = true
+    #else
+    private static let enableMetricExportLogging = false
+    #endif
+
     public static let shared = Pulse()
 
     // Thread-safe initialization
@@ -39,6 +47,8 @@ public class Pulse {
     private var openTelemetry: OpenTelemetry?
     private var _consentSpanProcessor: ConsentSpanProcessor?
     private var _consentLogProcessor: ConsentLogProcessor?
+    private var _consentMetricExporter: ConsentMetricExporter?
+    private var meterProvider: MeterProviderSdk?
     private var instrumentationConfig: InstrumentationConfiguration?
     
     // User session emitter
@@ -152,7 +162,8 @@ public class Pulse {
             let endpointHeadersWithProject = (endpointHeaders ?? [:]).merging(apiKeyHeader) { _, new in new }
 
             // Config: load from persistence (sync)
-            let configCoordinator = PulseSdkConfigCoordinator()
+            let useLocalMockConfig = false
+            let configCoordinator = PulseSdkConfigCoordinator(useLocalMockConfig: useLocalMockConfig)
             configStorageQueue.sync {
                 _currentSdkConfig = configCoordinator.loadCurrentConfig()
             }
@@ -294,6 +305,7 @@ public class Pulse {
     private func applyDisabledFeatures(enabledFeatures: [PulseFeatureName], config: inout InstrumentationConfiguration) {
         for feature in PulseFeatureName.allCases {
             guard !enabledFeatures.contains(feature) else { continue }
+            print("Disabling feature: \(feature)")
             switch feature {
             case .java_crash: break
             case .js_crash: break
@@ -409,7 +421,6 @@ public class Pulse {
             ?? URL(string: "\(base)/v1/logs")!
         let customEventUrl = currentSdkConfig.map { URL(string: $0.signals.customEventCollectorUrl)! }
             ?? (customEventCollectorUrl.flatMap { URL(string: $0) } ?? URL(string: "\(base)/v1/logs")!)
-        //TODO: wrap with beforeSendMetric: beforeSendMetric.map { BeforeSendMetricExporter(callback: $0, delegate: otlpMetricExporter) } ?? otlpMetricExporter when metrics is added
         let otlpSpanExporter = OtlpHttpTraceExporter(endpoint: tracesUrl, envVarHeaders: envVarHeaders)
         let spanExporterAfterBeforeSend: SpanExporter = beforeSendSpan.map {
             BeforeSendSpanExporter(callback: $0, delegate: otlpSpanExporter)
@@ -443,10 +454,55 @@ public class Pulse {
             finalLogExporter = logsExporter
         }
 
-        let (persistentSpanExporter, persistentLogExporter) = PersistenceUtils.createPersistentExporters(
+        // Metric pipeline: OtlpHttpMetricExporter -> BeforeSendMetricExporter? -> PulseLoggingMetricExporter? -> SampledMetricExporter? -> PersistenceMetricExporter -> ConsentMetricExporter -> PeriodicMetricReader -> MeterProviderSdk
+        // PulseLoggingMetricExporter is behind enableMetricExportLogging (dev-only) to avoid prod logs.
+        // ConsentMetricExporter wraps persistence so pending consent does not write metrics to disk.
+        let metricsUrl = currentSdkConfig.map { URL(string: $0.signals.metricCollectorUrl)! }
+            ?? URL(string: "\(base)/v1/metrics")!
+        let otlpMetricExporter = OtlpHttpMetricExporter(endpoint: metricsUrl, envVarHeaders: envVarHeaders)
+        let metricExporterAfterBeforeSend: MetricExporter = beforeSendMetric.map {
+            BeforeSendMetricExporter(callback: $0, delegate: otlpMetricExporter)
+        } ?? otlpMetricExporter
+        let baseMetricExporterForPipeline: MetricExporter =
+            Self.enableMetricExportLogging
+                ? PulseLoggingMetricExporter(delegate: metricExporterAfterBeforeSend)
+                : metricExporterAfterBeforeSend
+
+        let finalMetricExporter: MetricExporter
+        if let processors = _samplingSignalProcessors {
+            finalMetricExporter = processors.makeSampledMetricExporter(delegateExporter: baseMetricExporterForPipeline)
+        } else {
+            finalMetricExporter = baseMetricExporterForPipeline
+        }
+
+        let (persistentSpanExporter, persistentLogExporter, persistentMetricInner) = PersistenceUtils.createPersistentExporters(
             spanExporter: finalSpanExporter,
-            logExporter: finalLogExporter
+            logExporter: finalLogExporter,
+            metricExporter: finalMetricExporter
         )
+        let consentMetricExporter = ConsentMetricExporter(
+            delegate: persistentMetricInner,
+            getState: { [weak self] in self?.currentDataCollectionState ?? .pending }
+        )
+        self._consentMetricExporter = consentMetricExporter
+
+        let builtMeterProvider = MeterProviderSdk.builder()
+            .setResource(resource: resource)
+            .registerView(
+                selector: InstrumentSelector.builder().setInstrument(name: ".*").build(),
+                view: View.builder().build()
+            )
+            .registerMetricReader(
+                reader: PeriodicMetricReaderBuilder(exporter: consentMetricExporter)
+                    .setInterval(timeInterval: 60)
+                    .build()
+            )
+            .build()
+
+        self.meterProvider = builtMeterProvider
+        OpenTelemetry.registerMeterProvider(meterProvider: builtMeterProvider)
+
+        _samplingSignalProcessors?.setMeterProviderForMetricsToAdd(builtMeterProvider)
 
         let innerBatchSpanProcessor = BatchSpanProcessor(
             spanExporter: persistentSpanExporter,
@@ -636,6 +692,7 @@ public class Pulse {
             case .denied:
                 _consentSpanProcessor?.clearBuffer()
                 _consentLogProcessor?.clearBuffer()
+                _consentMetricExporter?.clearBuffer()
                 shouldShutdown = true
             case .pending:
                 if current == .allowed {
@@ -648,6 +705,7 @@ public class Pulse {
         if shouldFlush {
             _consentSpanProcessor?.flushBuffer()
             _consentLogProcessor?.flushBuffer()
+            _consentMetricExporter?.flushBuffer()
         }
         if let work = sessionReplayMainWork {
             if Thread.isMainThread {
@@ -672,9 +730,14 @@ public class Pulse {
 
             _consentSpanProcessor?.shutdown(explicitTimeout: nil)
             _ = _consentLogProcessor?.shutdown()
+            _ = meterProvider?.shutdown()
             PersistenceUtils.clearStorage()
 
             openTelemetry = nil
+            meterProvider = nil
+            _consentSpanProcessor = nil
+            _consentLogProcessor = nil
+            _consentMetricExporter = nil
             _isShutdown = true
         }
     }
@@ -823,6 +886,82 @@ public class Pulse {
         builderAction(&properties)
         setUserProperties(properties)
     }
+
+    // MARK: - Metric Test Helpers (internal — will be removed before release)
+
+    private func getPulseMeter() -> MeterSdk? {
+        return meterProvider?.meterBuilder(name: "com.pulse.signal.processors.metric").build()
+    }
+
+    /// Long Counter (monotonic, integer) — matches Android Counter(!isFraction, isMonotonic)
+    public func trackLongCounterMetric(name: String, value: Int = 1, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var counter = getPulseMeter()?.counterBuilder(name: name).build() else { return }
+        counter.add(value: value, attributes: attributes)
+    }
+
+    /// Double Counter (monotonic, fraction) — matches Android Counter(isFraction, isMonotonic)
+    public func trackDoubleCounterMetric(name: String, value: Double = 1.0, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var counter = getPulseMeter()?.counterBuilder(name: name).ofDoubles().build() else { return }
+        counter.add(value: value, attributes: attributes)
+    }
+
+    /// Long UpDownCounter (non-monotonic, integer) — matches Android Counter(!isFraction, !isMonotonic)
+    public func trackLongUpDownCounterMetric(name: String, value: Int, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var upDown = getPulseMeter()?.upDownCounterBuilder(name: name).build() else { return }
+        upDown.add(value: value, attributes: attributes)
+    }
+
+    /// Double UpDownCounter (non-monotonic, fraction) — matches Android Counter(isFraction, !isMonotonic)
+    public func trackDoubleUpDownCounterMetric(name: String, value: Double, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var upDown = getPulseMeter()?.upDownCounterBuilder(name: name).ofDoubles().build() else { return }
+        upDown.add(value: value, attributes: attributes)
+    }
+
+    /// Double Gauge — matches Android Gauge(isFraction)
+    public func trackDoubleGaugeMetric(name: String, value: Double, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var gauge = getPulseMeter()?.gaugeBuilder(name: name).build() else { return }
+        gauge.record(value: value, attributes: attributes)
+    }
+
+    /// Long Gauge — matches Android Gauge(!isFraction)
+    public func trackLongGaugeMetric(name: String, value: Int, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var gauge = getPulseMeter()?.gaugeBuilder(name: name).ofLongs().build() else { return }
+        gauge.record(value: value, attributes: attributes)
+    }
+
+    /// Double Histogram — matches Android Histogram(isFraction)
+    public func trackDoubleHistogramMetric(name: String, value: Double, bucketBoundaries: [Double]? = nil, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, let meter = getPulseMeter() else { return }
+        let builder = meter.histogramBuilder(name: name)
+        if let boundaries = bucketBoundaries {
+            _ = builder.setExplicitBucketBoundariesAdvice(boundaries)
+        }
+        var histogram = builder.build()
+        histogram.record(value: value, attributes: attributes)
+    }
+
+    /// Long Histogram — matches Android Histogram(!isFraction)
+    public func trackLongHistogramMetric(name: String, value: Int, bucketBoundaries: [Double]? = nil, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, let meter = getPulseMeter() else { return }
+        let builder = meter.histogramBuilder(name: name)
+        if let boundaries = bucketBoundaries {
+            _ = builder.setExplicitBucketBoundariesAdvice(boundaries)
+        }
+        var histogram = builder.ofLongs().build()
+        histogram.record(value: value, attributes: attributes)
+    }
+
+    /// Double Sum (UpDownCounter) — matches Android Sum(isFraction)
+    public func trackDoubleSumMetric(name: String, value: Double, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var sum = getPulseMeter()?.upDownCounterBuilder(name: name).ofDoubles().build() else { return }
+        sum.add(value: value, attributes: attributes)
+    }
+
+    /// Long Sum (UpDownCounter) — matches Android Sum(!isFraction)
+    public func trackLongSumMetric(name: String, value: Int, attributes: [String: AttributeValue] = [:]) {
+        guard isActive, var sum = getPulseMeter()?.upDownCounterBuilder(name: name).build() else { return }
+        sum.add(value: value, attributes: attributes)
+    }
 }
 
 // MARK: - Batch Processor Constants
@@ -832,6 +971,51 @@ internal enum BatchProcessorDefaults {
     static let maxQueueSize: Int = 2048
     static let maxExportBatchSize: Int = 512
     static let exportTimeout: TimeInterval = 30
+}
+
+// MARK: - Debug Metric Logging (remove before release)
+
+internal class PulseLoggingMetricExporter: MetricExporter {
+    private let delegate: MetricExporter
+
+    init(delegate: MetricExporter) {
+        self.delegate = delegate
+    }
+
+    func export(metrics: [MetricData]) -> ExportResult {
+        if !metrics.isEmpty {
+            print("┌─── [PulseMetrics] Exporting \(metrics.count) metric(s) ───")
+            for metric in metrics {
+                print("│ Name: \(metric.name)")
+                print("│ Type: \(metric.type) | Unit: \(metric.unit) | Monotonic: \(metric.isMonotonic)")
+                print("│ Scope: \(metric.instrumentationScopeInfo.name)")
+                for point in metric.data.points {
+                    let attrs = point.attributes.map { "\($0.key)=\($0.value)" }.joined(separator: ", ")
+                    let valueStr: String
+                    switch point {
+                    case let lp as LongPointData:
+                        valueStr = "\(lp.value)"
+                    case let dp as DoublePointData:
+                        valueStr = "\(dp.value)"
+                    case let hp as HistogramPointData:
+                        valueStr = "count=\(hp.count) sum=\(hp.sum) min=\(hp.min) max=\(hp.max) boundaries=\(hp.boundaries)"
+                    default:
+                        valueStr = "(unknown point type)"
+                    }
+                    print("│   Point: value=\(valueStr) | attrs=[\(attrs)]")
+                }
+                print("│")
+            }
+            print("└─── [PulseMetrics] Exported ───")
+        }
+        return delegate.export(metrics: metrics)
+    }
+
+    func flush() -> ExportResult { delegate.flush() }
+    func shutdown() -> ExportResult { delegate.shutdown() }
+    func getAggregationTemporality(for instrument: InstrumentType) -> AggregationTemporality {
+        delegate.getAggregationTemporality(for: instrument)
+    }
 }
 
 

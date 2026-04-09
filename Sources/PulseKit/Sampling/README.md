@@ -158,6 +158,40 @@ Add attributes to spans/logs when the condition matches. Each entry has **condit
 
 Implemented in `SampledSpanExporter` and `SampledLogExporter` via `getAddedAttributesConfig(scope:)`.
 
+### signals.metricsToAdd
+
+Derives metrics from spans and logs that match the condition. Each entry specifies a **target** (what to record) and a **condition** (which signals to match).
+
+**Target types**
+
+- **name** – Use the signal name (span name or log body) as the data point; counters add 1 per match.
+- **attribute** – Record the numeric value of an attribute (e.g. `response_time_ms`) as a histogram or gauge. If the condition matches multiple attribute values, **all those values are aggregated** into the same metric.
+
+**shouldAddPropNameAsSuffix** (attribute target only)
+
+- **false (default)** – One metric for all matching attribute values. All values are aggregated into `<name>`.
+- **true** – A separate metric per matched attribute **key**. Metric names become `<name>.<key_name_of_the_prop_matched>`. Example: condition matching `http.method` and `http.status_code` emits `http_count.http.method` and `http_count.http.status_code`.
+
+The API accepts both `shouldAddPropNameAsSuffix` and `addPropNameAsSuffix`; the canonical key is `shouldAddPropNameAsSuffix`.
+
+**Metric type × shouldAddPropNameAsSuffix behavior**
+
+| Type | shouldAddPropNameAsSuffix: false | shouldAddPropNameAsSuffix: true |
+|------|----------------------------------|---------------------------------|
+| **Counter** | One metric `<name>`. Each match adds 1 (counts occurrences). E.g. 3 spans with `http.duration` → `http_req_count` = 3. | One metric per attr key `<name>.<key>`. Each match adds 1. E.g. spans with `http.method` (GET) and `http.status_code` (200) → `http_count.http.method` = 1, `http_count.http.status_code` = 1. If 2 spans have `http.method` → `http_count.http.method` = 2. |
+| **Gauge** | One metric `<name>`. Each match records the attr value (e.g. battery level). Multiple values from different spans/logs all feed the same gauge. | One metric per attr key `<name>.<key>`. E.g. `battery_level.battery.percent` and `battery_level.battery.temp` if condition matches both keys. |
+| **Histogram** | One metric `<name>`. Each match records the attr value as a bucket entry. E.g. 3 spans with `http.duration`: 100, 200, 300 → one histogram with 3 observations. | One metric per attr key `<name>.<key>`. E.g. `http_duration.http.duration` (same as false if only one key matches). If condition matches `http.duration` and `response.size` → `latency.http.duration` and `latency.response.size`. |
+| **Sum** | One metric `<name>`. Each match adds the attr value. E.g. 3 spans with `bytes_sent`: 100, 200, 50 → sum = 350. | One metric per attr key `<name>.<key>`. E.g. `bytes.http.request.content_length` and `bytes.http.response.content_length`. |
+
+**Examples**
+
+- **Counter, suffix false:** `name: "span_count"`, target: name → counts all matching spans in one metric.
+- **Counter, suffix true:** `name: "http_count"`, target: attribute matching `http.method` and `http.status_code` → `http_count.http.method` (count of spans with http.method), `http_count.http.status_code` (count of spans with http.status_code).
+- **Histogram, suffix false:** `name: "http_duration"`, target: attribute `http.duration` → one histogram aggregating all duration values from matching spans.
+- **Histogram, suffix true:** `name: "latency"`, target: attribute matching `http.duration` and `db.duration` → `latency.http.duration`, `latency.db.duration`.
+
+See `PulseMetricsToAddModels.swift` for target/type structure and `PulseSamplingSignalProcessors.recordMetricsForSignal` for implementation.
+
 ### signals.features and getEnabledFeatures()
 
 `PulseSamplingSignalProcessors.getEnabledFeatures()` returns feature names where:

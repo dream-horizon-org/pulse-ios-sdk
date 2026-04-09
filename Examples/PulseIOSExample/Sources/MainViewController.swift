@@ -113,6 +113,75 @@ class MainViewController: UIViewController {
         
         stackView.addArrangedSubview(createSeparator())
         
+        // ── Metric Testing ──
+        stackView.addArrangedSubview(createSectionHeader("Metric Testing"))
+        
+        let metricHint = UILabel()
+        metricHint.text = "Tests all OTel metric instrument types.\nMetrics flush every 60s via PeriodicMetricReader."
+        metricHint.font = .systemFont(ofSize: 12)
+        metricHint.textColor = .secondaryLabel
+        metricHint.textAlignment = .center
+        metricHint.numberOfLines = 0
+        stackView.addArrangedSubview(metricHint)
+        
+        stackView.addArrangedSubview(createButton(
+            title: "Counter (Long, monotonic)",
+            action: #selector(metricLongCounterTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Counter (Double, monotonic)",
+            action: #selector(metricDoubleCounterTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "UpDownCounter (Long)",
+            action: #selector(metricLongUpDownCounterTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "UpDownCounter (Double)",
+            action: #selector(metricDoubleUpDownCounterTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Gauge (Double)",
+            action: #selector(metricDoubleGaugeTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Gauge (Long)",
+            action: #selector(metricLongGaugeTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Histogram (Double)",
+            action: #selector(metricDoubleHistogramTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Histogram (Long + buckets)",
+            action: #selector(metricLongHistogramWithBucketsTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Sum (Double UpDown)",
+            action: #selector(metricDoubleSumTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "Sum (Long UpDown)",
+            action: #selector(metricLongSumTapped),
+            color: .systemPurple
+        ))
+        stackView.addArrangedSubview(createButton(
+            title: "🔥 Fire All Metrics At Once",
+            action: #selector(metricFireAllTapped),
+            color: .systemPink
+        ))
+        
+        stackView.addArrangedSubview(createSeparator())
+        
         // ── Crash Testing ──
         stackView.addArrangedSubview(createSectionHeader("Crash Testing (will kill app!)"))
         
@@ -446,7 +515,7 @@ class MainViewController: UIViewController {
     
     @objc private func networkRequestTapped() {
         print("━━━ networkRequestTapped ━━━")
-        guard let url = URL(string: "https://httpbin.org/get") else { return }
+        guard let url = URL(string: "https://httpbin.org/get1") else { return }
         let task = URLSession.shared.dataTask(with: url) { data, response, error in
             DispatchQueue.main.async {
                 if let error = error {
@@ -521,6 +590,8 @@ class MainViewController: UIViewController {
             .setAttribute(key: "http.method", value: "GET")
             .setAttribute(key: "http.url", value: "https://api.example.com/data")
             .setAttribute(key: "custom.user_id", value: "user-12345")
+            .setAttribute(key: "http.request_content_length", value: 0)
+            .setAttribute(key: "http.response_content_length", value: 4096)
             .startSpan()
         
         print("  Span started: example.operation")
@@ -542,6 +613,7 @@ class MainViewController: UIViewController {
         print("  Event added: response.received")
         
         span.setAttribute(key: "http.status_code", value: 200)
+        span.setAttribute(key: "http.duration", value: 150.0)
         span.end()
         print("  Span ended: example.operation")
         
@@ -575,6 +647,7 @@ class MainViewController: UIViewController {
         
         print("  Child span 1: spanId=\(childSpan1.context.spanId) parent=\(parentSpan.context.spanId)")
         Thread.sleep(forTimeInterval: 0.1)
+        childSpan1.setAttribute(key: "db.duration", value: 45.0)
         childSpan1.end()
         print("  Child span 1 ended: child.db_query")
         
@@ -648,6 +721,99 @@ class MainViewController: UIViewController {
         namedThread.start()
         
         showAlert(title: "Thread Logs", message: "5 logs emitted from different threads (check console)")
+    }
+    
+    // MARK: - Metric Testing
+    
+    @objc private func metricLongCounterTapped() {
+        print("━━━ metricLongCounterTapped ━━━")
+        Pulse.shared.trackLongCounterMetric(name: "test.long_counter", value: 1, attributes: ["screen": .string("main"), "action": .string("tap")])
+        print("  LongCounter 'test.long_counter' += 1")
+        showAlert(title: "Long Counter", message: "Incremented test.long_counter by 1")
+    }
+    
+    @objc private func metricDoubleCounterTapped() {
+        print("━━━ metricDoubleCounterTapped ━━━")
+        Pulse.shared.trackDoubleCounterMetric(name: "test.double_counter", value: 1.5, attributes: ["screen": .string("main")])
+        print("  DoubleCounter 'test.double_counter' += 1.5")
+        showAlert(title: "Double Counter", message: "Incremented test.double_counter by 1.5")
+    }
+    
+    @objc private func metricLongUpDownCounterTapped() {
+        print("━━━ metricLongUpDownCounterTapped ━━━")
+        Pulse.shared.trackLongUpDownCounterMetric(name: "test.long_updown", value: -1, attributes: ["resource": .string("connections")])
+        print("  LongUpDownCounter 'test.long_updown' += -1")
+        showAlert(title: "Long UpDownCounter", message: "test.long_updown adjusted by -1")
+    }
+    
+    @objc private func metricDoubleUpDownCounterTapped() {
+        print("━━━ metricDoubleUpDownCounterTapped ━━━")
+        Pulse.shared.trackDoubleUpDownCounterMetric(name: "test.double_updown", value: -2.5, attributes: ["resource": .string("memory_mb")])
+        print("  DoubleUpDownCounter 'test.double_updown' += -2.5")
+        showAlert(title: "Double UpDownCounter", message: "test.double_updown adjusted by -2.5")
+    }
+    
+    @objc private func metricDoubleGaugeTapped() {
+        print("━━━ metricDoubleGaugeTapped ━━━")
+        let memoryMB = Double(ProcessInfo.processInfo.physicalMemory) / 1_048_576.0
+        Pulse.shared.trackDoubleGaugeMetric(name: "test.double_gauge", value: memoryMB, attributes: ["unit": .string("MB")])
+        print("  DoubleGauge 'test.double_gauge' = \(String(format: "%.1f", memoryMB)) MB")
+        showAlert(title: "Double Gauge", message: "test.double_gauge set to \(String(format: "%.1f", memoryMB)) MB")
+    }
+    
+    @objc private func metricLongGaugeTapped() {
+        print("━━━ metricLongGaugeTapped ━━━")
+        let activeThreads = Thread.isMainThread ? 1 : 0
+        Pulse.shared.trackLongGaugeMetric(name: "test.long_gauge", value: activeThreads, attributes: ["type": .string("thread_count")])
+        print("  LongGauge 'test.long_gauge' = \(activeThreads)")
+        showAlert(title: "Long Gauge", message: "test.long_gauge set to \(activeThreads)")
+    }
+    
+    @objc private func metricDoubleHistogramTapped() {
+        print("━━━ metricDoubleHistogramTapped ━━━")
+        let duration = Double.random(in: 50...500)
+        Pulse.shared.trackDoubleHistogramMetric(name: "test.double_histogram", value: duration, attributes: ["operation": .string("api_call")])
+        print("  DoubleHistogram 'test.double_histogram' recorded \(String(format: "%.1f", duration)) ms")
+        showAlert(title: "Double Histogram", message: "test.double_histogram recorded \(String(format: "%.1f", duration)) ms")
+    }
+    
+    @objc private func metricLongHistogramWithBucketsTapped() {
+        print("━━━ metricLongHistogramWithBucketsTapped ━━━")
+        let bytes = Int.random(in: 64...2048)
+        Pulse.shared.trackLongHistogramMetric(name: "test.long_histogram_buckets", value: bytes, bucketBoundaries: [10.0, 50.0, 100.0, 250.0, 500.0, 1000.0], attributes: ["operation": .string("payload_size")])
+        print("  LongHistogram 'test.long_histogram_buckets' recorded \(bytes) bytes (buckets: 10,50,100,250,500,1000)")
+        showAlert(title: "Long Histogram + Buckets", message: "test.long_histogram_buckets recorded \(bytes) bytes")
+    }
+    
+    @objc private func metricDoubleSumTapped() {
+        print("━━━ metricDoubleSumTapped ━━━")
+        let delta = Double.random(in: -10...10)
+        Pulse.shared.trackDoubleSumMetric(name: "test.double_sum", value: delta, attributes: ["source": .string("sum_test")])
+        print("  DoubleSum (UpDownCounter) 'test.double_sum' += \(String(format: "%.2f", delta))")
+        showAlert(title: "Double Sum", message: "test.double_sum adjusted by \(String(format: "%.2f", delta))")
+    }
+    
+    @objc private func metricLongSumTapped() {
+        print("━━━ metricLongSumTapped ━━━")
+        let delta = Int.random(in: -5...5)
+        Pulse.shared.trackLongSumMetric(name: "test.long_sum", value: delta, attributes: ["source": .string("sum_test")])
+        print("  LongSum (UpDownCounter) 'test.long_sum' += \(delta)")
+        showAlert(title: "Long Sum", message: "test.long_sum adjusted by \(delta)")
+    }
+    
+    @objc private func metricFireAllTapped() {
+        print("━━━ metricFireAllTapped ━━━")
+        metricLongCounterTapped()
+        metricDoubleCounterTapped()
+        metricLongUpDownCounterTapped()
+        metricDoubleUpDownCounterTapped()
+        metricDoubleGaugeTapped()
+        metricLongGaugeTapped()
+        metricDoubleHistogramTapped()
+        metricLongHistogramWithBucketsTapped()
+        metricDoubleSumTapped()
+        metricLongSumTapped()
+        print("━━━ All 10 metric types fired ━━━")
     }
     
     // MARK: - Crash Testing
