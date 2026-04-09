@@ -120,7 +120,7 @@ public final class PulseSamplingSignalProcessors {
         meter: any Meter,
         sanitizedName: String
     ) -> (Any?, [String: AttributeValue]) -> Void {
-        switch entry.data {
+        switch entry.type {
         case .counter:
             var counter = meter.counterBuilder(name: sanitizedName).build()
             return { _, attrs in counter.add(value: 1, attributes: attrs) }

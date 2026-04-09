@@ -49,7 +49,7 @@ public enum PulseMockConfigProvider {
                 customEventCollectorUrl: "http://127.0.0.1:4318/v1/logs",
                 attributesToDrop: [],
                 attributesToAdd: [],
-                metricsToAdd: makeMockMetricsToAdd(activeCase: active),
+                metricsToAdd: makeMockMetricsToAdd(activeCase: .histogramAttrSuffixTrue),
             ),
             interaction: PulseInteractionConfig(
                 collectorUrl: "http://127.0.0.1:8080/v1/interaction-configs/",
@@ -87,11 +87,11 @@ public enum PulseMockConfigProvider {
             switch `case` {
             case .counterTargetNameSpan:
                 return [
-                    PulseMetricsToAddEntry(name: "span_count", target: .name, condition: baseCondition, data: .counter)
+                    PulseMetricsToAddEntry(name: "span_count", target: .name, condition: baseCondition, type: .counter)
                 ]
             case .counterTargetNameLog:
                 return [
-                    PulseMetricsToAddEntry(name: "log_count", target: .name, condition: logCondition, data: .counter)
+                    PulseMetricsToAddEntry(name: "log_count", target: .name, condition: logCondition, type: .counter)
                 ]
             case .counterAttrSuffixFalse:
                 // Uses http.status_code – span must have this attribute (e.g. example spans with status 200)
@@ -108,7 +108,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: false
                         ),
                         condition: baseCondition,
-                        data: .counter
+                        type: .counter
                     )
                 ]
             case .counterAttrSuffixTrue:
@@ -128,7 +128,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: true
                         ),
                         condition: baseCondition,
-                        data: .counter
+                        type: .counter
                     )
                 ]
             case .counterAttrSuffixFalseButMutlipleAttr:
@@ -148,7 +148,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: false
                         ),
                         condition: baseCondition,
-                        data: .counter
+                        type: .counter
                     )
                 ]
             case .gaugeAttrSuffixFalse:
@@ -165,7 +165,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: false
                         ),
                         condition: baseCondition,
-                        data: .gauge(isFraction: true)
+                        type: .gauge(isFraction: true)
                     )
                 ]
             case .gaugeAttrSuffixTrue:
@@ -185,7 +185,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: true
                         ),
                         condition: baseCondition,
-                        data: .gauge(isFraction: true)
+                        type: .gauge(isFraction: true)
                     )
                 ]
             case .histogramAttrSuffixFalse:
@@ -196,14 +196,14 @@ public enum PulseMockConfigProvider {
                         target: .attribute(
                             condition: PulseSignalMatchCondition(
                                 name: ".*",
-                                props: [PulseProp(name: "http\\.duration", value: ".*")],
+                                props: [PulseProp(name: "http\\.status_code", value: ".*")],
                                 scopes: [.traces],
                                 sdks: [.pulse_ios_swift, .pulse_ios_rn]
                             ),
                             addPropNameAsSuffix: false
                         ),
                         condition: baseCondition,
-                        data: .histogram(bucket: [50, 100, 250, 500, 1000], isFraction: true)
+                        type: .histogram(bucket: [50, 100, 250, 500, 1000], isFraction: true)
                     )
                 ]
             case .histogramAttrSuffixTrue:
@@ -215,8 +215,7 @@ public enum PulseMockConfigProvider {
                             condition: PulseSignalMatchCondition(
                                 name: ".*",
                                 props: [
-                                    PulseProp(name: "http\\.duration", value: ".*"),
-                                    PulseProp(name: "db\\.duration", value: ".*")
+                                    PulseProp(name: "http\\.status_code", value: ".*")
                                 ],
                                 scopes: [.traces],
                                 sdks: [.pulse_ios_swift, .pulse_ios_rn]
@@ -224,7 +223,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: true
                         ),
                         condition: baseCondition,
-                        data: .histogram(bucket: [10, 50, 100], isFraction: true)
+                        type: .histogram(bucket: [10, 50, 100], isFraction: true)
                     )
                 ]
             case .sumAttrSuffixFalse:
@@ -242,7 +241,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: false
                         ),
                         condition: baseCondition,
-                        data: .sum(isFraction: false, isMonotonic: true)
+                        type: .sum(isFraction: false, isMonotonic: true)
                     )
                 ]
             case .sumAttrSuffixTrue:
@@ -263,7 +262,7 @@ public enum PulseMockConfigProvider {
                             addPropNameAsSuffix: true
                         ),
                         condition: baseCondition,
-                        data: .sum(isFraction: false, isMonotonic: true)
+                        type: .sum(isFraction: false, isMonotonic: true)
                     )
                 ]
             }

@@ -14,12 +14,12 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     func testDecodeCounterMetricsData() throws {
         let json = """
-        {"counter":{}}
+        {"type":"counter"}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsData.self, from: data)
         if case .counter = decoded {
-            // OK - no params
+            // OK
         } else {
             XCTFail("Expected counter, got \(decoded)")
         }
@@ -27,7 +27,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     func testDecodeGaugeMetricsData() throws {
         let json = """
-        {"gauge":{"isFraction":true}}
+        {"type":"gauge","isFraction":true}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsData.self, from: data)
@@ -40,7 +40,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     func testDecodeHistogramMetricsDataWithBuckets() throws {
         let json = """
-        {"histogram":{"bucket":[50,100,250,500,1000],"isFraction":true}}
+        {"type":"histogram","bucket":[50,100,250,500,1000],"isFraction":true}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsData.self, from: data)
@@ -54,7 +54,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     func testDecodeHistogramMetricsDataNoBuckets() throws {
         let json = """
-        {"histogram":{"bucket":null,"isFraction":false}}
+        {"type":"histogram","isFraction":false}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsData.self, from: data)
@@ -68,13 +68,13 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     func testDecodeSumMetricsData() throws {
         let json = """
-        {"sum":{"isFraction":false}}
+        {"type":"sum","isFraction":false}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsData.self, from: data)
         if case .sum(let isFraction, let isMonotonic) = decoded {
             XCTAssertFalse(isFraction)
-            XCTAssertTrue(isMonotonic, "Defaults to true when omitted")
+            XCTAssertFalse(isMonotonic, "Backend MetricsType.Sum defaults isMonotonic to false when omitted")
         } else {
             XCTFail("Expected sum, got \(decoded)")
         }
@@ -82,9 +82,9 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     // MARK: - PulseMetricsToAddTarget
 
-    func testDecodeMetricsToAddTargetName() throws {
+    func testDecodeMetricsToAddTargetTypeName() throws {
         let json = """
-        "name"
+        {"type":"name"}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsToAddTarget.self, from: data)
@@ -97,7 +97,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     func testDecodeMetricsToAddTargetAttribute() throws {
         let json = """
-        {"attribute":{"condition":{"name":".*","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"addPropNameAsSuffix":true}}
+        {"type":"attribute","condition":{"name":".*","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"shouldAddPropNameAsSuffix":true}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsToAddTarget.self, from: data)
@@ -109,27 +109,14 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
         }
     }
 
-    func testDecodeMetricsToAddTargetTypeName() throws {
-        let json = """
-        {"type":"name"}
-        """
-        let data = json.data(using: .utf8)!
-        let decoded = try JSONDecoder().decode(PulseMetricsToAddTarget.self, from: data)
-        if case .name = decoded {
-            // OK - new schema format
-        } else {
-            XCTFail("Expected .name from {\"type\":\"name\"}, got \(decoded)")
-        }
-    }
-
     func testDecodeMetricsToAddTargetShouldAddPropNameAsSuffix() throws {
         let json = """
-        {"type":"attribute","attribute":{"condition":{"name":"key","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"shouldAddPropNameAsSuffix":true}}
+        {"type":"attribute","condition":{"name":"key","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"shouldAddPropNameAsSuffix":true}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsToAddTarget.self, from: data)
         if case .attribute(_, let addPropNameAsSuffix) = decoded {
-            XCTAssertTrue(addPropNameAsSuffix, "shouldAddPropNameAsSuffix should be decoded")
+            XCTAssertTrue(addPropNameAsSuffix)
         } else {
             XCTFail("Expected .attribute, got \(decoded)")
         }
@@ -137,7 +124,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
 
     func testDecodeSumWithIsMonotonic() throws {
         let json = """
-        {"sum":{"isFraction":false,"isMonotonic":true}}
+        {"type":"sum","isFraction":false,"isMonotonic":true}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsData.self, from: data)
@@ -149,7 +136,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
         }
 
         let json2 = """
-        {"sum":{"isFraction":true,"isMonotonic":false}}
+        {"type":"sum","isFraction":true,"isMonotonic":false}
         """
         let data2 = json2.data(using: .utf8)!
         let decoded2 = try JSONDecoder().decode(PulseMetricsData.self, from: data2)
@@ -161,9 +148,9 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
         }
     }
 
-    func testDecodeMetricsToAddTargetAttributeAddPropNameAsSuffixDefaultsFalse() throws {
+    func testDecodeMetricsToAddTargetAttributeShouldAddPropNameAsSuffixDefaultsFalse() throws {
         let json = """
-        {"attribute":{"condition":{"name":"attr_key","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]}}}
+        {"type":"attribute","condition":{"name":"attr_key","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]}}
         """
         let data = json.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(PulseMetricsToAddTarget.self, from: data)
@@ -180,9 +167,9 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
         let json = """
         {
             "name":"my_metric",
-            "target":"name",
+            "target":{"type":"name"},
             "condition":{"name":"Created","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},
-            "type":{"counter":{}}
+            "type":{"type":"counter"}
         }
         """
         let data = json.data(using: .utf8)!
@@ -190,7 +177,32 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
         XCTAssertEqual(decoded.name, "my_metric")
         if case .name = decoded.target { } else { XCTFail("Expected target .name") }
         XCTAssertEqual(decoded.condition.name, "Created")
-        if case .counter = decoded.data { } else { XCTFail("Expected data .counter") }
+        if case .counter = decoded.type { } else { XCTFail("Expected type .counter") }
+        XCTAssertTrue(decoded.attributesToPick.isEmpty)
+    }
+
+    func testDecodeMetricsToAddEntryBackendShape() throws {
+        let json = """
+        {
+            "name": "span_count",
+            "target": { "type": "name" },
+            "condition": {
+                "name": ".*",
+                "props": [],
+                "scopes": ["traces"],
+                "sdks": ["pulse_ios_swift", "pulse_ios_rn"]
+            },
+            "type": { "type": "counter" },
+            "attributesToPick": null
+        }
+        """
+        let data = json.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(PulseMetricsToAddEntry.self, from: data)
+        XCTAssertEqual(decoded.name, "span_count")
+        if case .name = decoded.target { } else { XCTFail("Expected target .name") }
+        XCTAssertEqual(decoded.condition.name, ".*")
+        XCTAssertEqual(decoded.condition.sdks, [.pulse_ios_swift, .pulse_ios_rn])
+        if case .counter = decoded.type { } else { XCTFail("Expected type .counter") }
         XCTAssertTrue(decoded.attributesToPick.isEmpty)
     }
 
@@ -198,9 +210,9 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
         let json = """
         {
             "name":"my_metric",
-            "target":"name",
+            "target":{"type":"name"},
             "condition":{"name":".*","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},
-            "type":{"counter":{}},
+            "type":{"type":"counter"},
             "attributesToPick":[{"name":"http.method","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]}]
         }
         """
@@ -222,7 +234,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
             "customEventCollectorUrl":"https://custom",
             "attributesToDrop":[],
             "attributesToAdd":[],
-            "metricsToAdd":[{"name":"test_counter","target":"name","condition":{"name":".*","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"type":{"counter":{}}}]
+            "metricsToAdd":[{"name":"test_counter","target":{"type":"name"},"condition":{"name":".*","props":[],"scopes":["traces"],"sdks":["pulse_ios_swift"]},"type":{"type":"counter"}}]
         }
         """
         let data = json.data(using: .utf8)!
@@ -268,7 +280,7 @@ final class PulseMetricsToAddModelsTests: XCTestCase {
                 scopes: [.traces],
                 sdks: [.pulse_ios_swift]
             ),
-            data: .histogram(bucket: [50, 100, 250], isFraction: true),
+            type: .histogram(bucket: [50, 100, 250], isFraction: true),
             attributesToPick: [
                 PulseSignalMatchCondition(
                     name: "http.method",

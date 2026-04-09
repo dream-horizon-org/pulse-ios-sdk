@@ -2,9 +2,6 @@
  * Copyright The OpenTelemetry Authors
  * SPDX-License-Identifier: Apache-2.0
  *
- * Pulse sampling config models. JSON keys match API compatibility.
- * Validation: required fields are non-optional so decoding fails when the API payload is missing
- * them. Optional lists use (try? decode) ?? [].
  */
 
 import Foundation
@@ -139,7 +136,7 @@ public struct PulseSignalConfig: Codable, Equatable {
     public let customEventCollectorUrl: String
     public let attributesToDrop: [PulseAttributesToDropEntry]
     public let attributesToAdd: [PulseAttributesToAddEntry]
-    /// Metrics to derive based on signal matching and target. Confluence spec includes attributesToPick, addPropNameAsSuffix.
+    /// Metrics to derive based on signal matching and target (includes attributesToPick).
     public let metricsToAdd: [PulseMetricsToAddEntry]
 
     enum CodingKeys: String, CodingKey {

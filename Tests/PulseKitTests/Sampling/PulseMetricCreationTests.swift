@@ -56,7 +56,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 scopes: [.traces],
                 sdks: [.pulse_ios_swift]
             ),
-            data: .counter,
+            type: .counter,
             attributesToPick: []
         )
         let config = makeSdkConfig(metricsToAdd: [entry])
@@ -82,7 +82,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 scopes: [.traces],
                 sdks: [.pulse_android_java]
             ),
-            data: .counter,
+            type: .counter,
             attributesToPick: []
         )
         let config = makeSdkConfig(metricsToAdd: [entry])
@@ -109,7 +109,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -143,7 +143,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -172,7 +172,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -195,7 +195,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .gauge(isFraction: true),
+                type: .gauge(isFraction: true),
                 attributesToPick: []
             ),
         ])
@@ -224,7 +224,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .gauge(isFraction: false),
+                type: .gauge(isFraction: false),
                 attributesToPick: []
             ),
         ])
@@ -253,7 +253,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .histogram(bucket: [1.0, 5.0, 10.0], isFraction: true),
+                type: .histogram(bucket: [1.0, 5.0, 10.0], isFraction: true),
                 attributesToPick: []
             ),
         ])
@@ -276,7 +276,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .histogram(bucket: nil, isFraction: true),
+                type: .histogram(bucket: nil, isFraction: true),
                 attributesToPick: []
             ),
         ])
@@ -299,7 +299,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .sum(isFraction: true, isMonotonic: false),
+                type: .sum(isFraction: true, isMonotonic: false),
                 attributesToPick: []
             ),
         ])
@@ -330,7 +330,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -356,7 +356,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.logs],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -382,7 +382,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -412,7 +412,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     addPropNameAsSuffix: false
                 ),
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.logs], sdks: [.pulse_ios_swift]),
-                data: .gauge(isFraction: true),
+                type: .gauge(isFraction: true),
                 attributesToPick: []
             ),
         ])
@@ -444,7 +444,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     addPropNameAsSuffix: true
                 ),
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.logs], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -473,7 +473,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.logs],
                     sdks: [.pulse_ios_swift]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -498,7 +498,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     scopes: [.traces],
                     sdks: [.pulse_android_java]
                 ),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -518,7 +518,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "span_sum_monotonic",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .sum(isFraction: false, isMonotonic: true),
+                type: .sum(isFraction: false, isMonotonic: true),
                 attributesToPick: []
             ),
         ])
@@ -540,7 +540,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "hist_long",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .histogram(bucket: [10, 50, 100], isFraction: false),
+                type: .histogram(bucket: [10, 50, 100], isFraction: false),
                 attributesToPick: []
             ),
         ])
@@ -558,14 +558,14 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "span_counter_a",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: "http.*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
             PulseMetricsToAddEntry(
                 name: "span_counter_b",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -596,7 +596,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     addPropNameAsSuffix: false
                 ),
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .histogram(bucket: nil, isFraction: true),
+                type: .histogram(bucket: nil, isFraction: true),
                 attributesToPick: []
             ),
         ])
@@ -629,7 +629,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "http_method_counter",
                 target: .name,
                 condition: conditionWithProp,
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -656,7 +656,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "get_request_count",
                 target: .name,
                 condition: conditionWithProp,
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -690,7 +690,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "metric_when_sampled",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -727,7 +727,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     addPropNameAsSuffix: true
                 ),
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -764,7 +764,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     addPropNameAsSuffix: true
                 ),
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -800,7 +800,7 @@ final class PulseMetricCreationTests: XCTestCase {
                     addPropNameAsSuffix: false
                 ),
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .histogram(bucket: nil, isFraction: true),
+                type: .histogram(bucket: nil, isFraction: true),
                 attributesToPick: []
             ),
         ])
@@ -820,7 +820,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "span_with_method",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: [
                     PulseSignalMatchCondition(
                         name: ".*",
@@ -855,7 +855,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "simple_counter",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: []
             ),
         ])
@@ -878,7 +878,7 @@ final class PulseMetricCreationTests: XCTestCase {
                 name: "multi_attr",
                 target: .name,
                 condition: PulseSignalMatchCondition(name: ".*", props: [], scopes: [.traces], sdks: [.pulse_ios_swift]),
-                data: .counter,
+                type: .counter,
                 attributesToPick: [
                     PulseSignalMatchCondition(
                         name: ".*",
