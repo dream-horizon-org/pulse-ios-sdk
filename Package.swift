@@ -23,9 +23,7 @@ let package = Package(
     .library(name: "PersistenceExporter", targets: ["PersistenceExporter"]),
     .library(name: "InMemoryExporter", targets: ["InMemoryExporter"]),
     .library(name: "OTelSwiftLog", targets: ["OTelSwiftLog"]),
-    .library(name: "BaggagePropagationProcessor", targets: ["BaggagePropagationProcessor"]),
-    .executable(name: "loggingTracer", targets: ["LoggingTracer"]),
-    .executable(name: "StableMetricSample", targets: ["StableMetricSample"])
+    .library(name: "BaggagePropagationProcessor", targets: ["BaggagePropagationProcessor"])
   ],
   dependencies: [
     .package(url: "https://github.com/open-telemetry/opentelemetry-swift-core.git", from: "2.3.0"),
@@ -163,32 +161,6 @@ let package = Package(
         "BaggagePropagationProcessor",
         "InMemoryExporter"
       ]
-    ),
-    .executableTarget(
-      name: "LoggingTracer",
-      dependencies: [
-        .product(name: "OpenTelemetryApi", package: "opentelemetry-swift-core")
-      ],
-      path: "Examples/Logging Tracer"
-    ),
-    .executableTarget(
-      name: "LogsSample",
-      dependencies: [
-        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-        "OpenTelemetryProtocolExporterGrpc",
-        .product(name: "GRPC", package: "grpc-swift")
-      ],
-      path: "Examples/Logs Sample"
-    ),
-    .executableTarget(
-      name: "StableMetricSample",
-      dependencies: [
-        .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-        "OpenTelemetryProtocolExporterGrpc",
-        .product(name: "StdoutExporter", package: "opentelemetry-swift-core")
-      ],
-      path: "Examples/Stable Metric Sample",
-      exclude: ["README.md"]
     )
   ]
 ).addPlatformSpecific()
@@ -229,10 +201,7 @@ extension Package {
       )
       products.append(contentsOf: [
         .library(name: "JaegerExporter", targets: ["JaegerExporter"]),
-        .executable(name: "simpleExporter", targets: ["SimpleExporter"]),
         .library(name: "ZipkinExporter", targets: ["ZipkinExporter"]),
-        .executable(name: "OTLPExporter", targets: ["OTLPExporter"]),
-        .executable(name: "OTLPHTTPExporter", targets: ["OTLPHTTPExporter"]),
         .library(name: "MetricKitInstrumentation", targets: ["MetricKitInstrumentation"]),
         .library(name: "PulseKit", targets: ["PulseKit"])
       ])
@@ -253,27 +222,6 @@ extension Package {
           dependencies: ["JaegerExporter"],
           path: "Tests/ExportersTests/Jaeger"
         ),
-        .executableTarget(
-          name: "SimpleExporter",
-          dependencies: [
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
-            "JaegerExporter",
-            "ZipkinExporter",
-            "PulseKit"
-          ],
-          path: "Examples/Simple Exporter",
-          exclude: ["README.md"]
-        ),
-        .executableTarget(
-          name: "NetworkSample",
-          dependencies: [
-            "PulseKit",
-            .product(name: "StdoutExporter", package: "opentelemetry-swift-core")
-          ],
-          path: "Examples/Network Sample",
-          exclude: ["README.md"]
-        ),
         .target(
           name: "ZipkinExporter",
           dependencies: [
@@ -285,27 +233,6 @@ extension Package {
           name: "ZipkinExporterTests",
           dependencies: ["ZipkinExporter"],
           path: "Tests/ExportersTests/Zipkin"
-        ),
-        .executableTarget(
-          name: "OTLPExporter",
-          dependencies: [
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            "OpenTelemetryProtocolExporterGrpc",
-            .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
-            "ZipkinExporter", "PulseKit"
-          ],
-          path: "Examples/OTLP Exporter",
-          exclude: ["README.md", "prometheus.yaml", "collector-config.yaml", "docker-compose.yaml", "images"]
-        ),
-        .executableTarget(
-          name: "OTLPHTTPExporter",
-          dependencies: [
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            "OpenTelemetryProtocolExporterHttp", .product(name: "StdoutExporter", package: "opentelemetry-swift-core"),
-            "ZipkinExporter", "PulseKit",
-          ],
-          path: "Examples/OTLP HTTP Exporter",
-          exclude: ["README.md", "collector-config.yaml", "docker-compose.yaml", "prometheus.yaml", "images"]
         ),
         .target(
           name: "MetricKitInstrumentation",
@@ -458,14 +385,6 @@ extension Package {
             .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core")
           ],
           path: "Tests/PulseKitTests"
-        ),
-        .executableTarget(
-          name: "PrometheusSample",
-          dependencies: [
-            .product(name: "OpenTelemetrySdk", package: "opentelemetry-swift-core"),
-            "PrometheusExporter"],
-          path: "Examples/Prometheus Sample",
-          exclude: ["README.md"]
         )
       ])
     #endif
