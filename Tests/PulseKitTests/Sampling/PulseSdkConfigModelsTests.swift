@@ -139,7 +139,7 @@ final class PulseSdkConfigModelsTests: XCTestCase {
                             "type": "counter"
                         }
                     }
-                ],
+                ]
             },
             "interaction": {
                 "collectorUrl": "https://coll",
