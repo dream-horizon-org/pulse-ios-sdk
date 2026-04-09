@@ -8,9 +8,9 @@ import XCTest
 
 final class InteractionTimeSpanTests: XCTestCase {
     func testTimeSpanInNanos_threeEvents_usesFirstAndLast_notFirstAndSecond() {
-        let t0: Int64 = 1_700_000_000_000_000_000
-        let t1 = t0 + 2_000_000_000
-        let t2 = t0 + 9_000_000_000
+        let t0: Int64 = 1
+        let t1 = t0 + 1
+        let t2 = t0 + 2
 
         let events = [
             InteractionLocalEvent(name: "a", timeInNano: t0),
@@ -32,8 +32,8 @@ final class InteractionTimeSpanTests: XCTestCase {
     }
 
     func testTimeSpanInNanos_twoEvents_matchesFirstAndSecond() {
-        let t0: Int64 = 100
-        let t1: Int64 = 500
+        let t0: Int64 = 1
+        let t1 = t0 + 1
         let events = [
             InteractionLocalEvent(name: "a", timeInNano: t0),
             InteractionLocalEvent(name: "b", timeInNano: t1),
